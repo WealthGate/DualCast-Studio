@@ -3,7 +3,15 @@ import { IpcChannels } from "../../src/shared/ipc";
 import { listDisplays } from "./displayService";
 import { getSettings, updateSettings } from "./settingsService";
 import { saveRecording } from "./recordingService";
-import { getStreamLogPath, sendStreamChunk, setStreamStatusPublisher, startStreaming, stopStreaming } from "./streamingService";
+import {
+  getStreamLogPath,
+  getStreamingCapabilities,
+  sendStreamChunk,
+  setStreamStatusPublisher,
+  startStreaming,
+  stopStreaming
+} from "./streamingService";
+import { clearStreamKey, getStreamKey, setStreamKey } from "./streamKeyService";
 import { SaveRecordingPayload, SettingsUpdate, ProgramState, StreamStartPayload } from "../../src/shared/types";
 import { closeProjectionWindow, openProjectionWindow, setProgramState, forwardProgramFrame } from "./projectionService";
 
@@ -54,6 +62,19 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IpcChannels.stopStream, async () => stopStreaming());
 
   ipcMain.handle(IpcChannels.getStreamLogPath, async () => getStreamLogPath());
+
+  ipcMain.handle(IpcChannels.getStreamingCapabilities, async () => getStreamingCapabilities());
+
+  ipcMain.handle(IpcChannels.getStoredStreamKey, async () => getStreamKey());
+
+  ipcMain.handle(IpcChannels.setStoredStreamKey, async (_event, payload: { streamKey: string }) => {
+    if (!payload?.streamKey) {
+      return false;
+    }
+    return setStreamKey(payload.streamKey);
+  });
+
+  ipcMain.handle(IpcChannels.clearStoredStreamKey, async () => clearStreamKey());
 
   ipcMain.on(IpcChannels.updateProgramState, (_event, state: ProgramState) => {
     if (state) {

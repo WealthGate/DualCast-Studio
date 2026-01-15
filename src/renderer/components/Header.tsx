@@ -69,7 +69,7 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
         <span className="brand-dot" />
         <div>
           <h1>DualCast Studio</h1>
-          <p>Phase 2a - Program Capture + Streaming</p>
+          <p>Phase 2b - Streaming Hardened</p>
         </div>
       </div>
       <div className="header-controls">

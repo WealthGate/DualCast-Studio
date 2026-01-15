@@ -3,7 +3,11 @@ import { useAppStore } from "../store/useAppStore";
 import { getDisplayStream, pickRecorderMimeType, stopMediaStream } from "../utils/media";
 import { AudioMode, StreamingStatus } from "../../shared/types";
 
-const DEFAULT_VIDEO_BITRATE = 4_500_000;
+const presetBitrateMap: Record<string, number> = {
+  low: 2_500_000,
+  medium: 4_500_000,
+  high: 6_500_000
+};
 
 const shouldIncludeSystem = (mode: AudioMode) => mode === "system" || mode === "both";
 const shouldIncludeMic = (mode: AudioMode) => mode === "microphone" || mode === "both";
@@ -29,6 +33,8 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [formattedElapsed, setFormattedElapsed] = useState("00:00");
+  const [stats, setStats] = useState<{ fps?: number | null; bitrateKbps?: number | null; time?: string | null; droppedFrames?: number | null } | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -62,6 +68,8 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       setStatus(payload.status);
       setStatusMessage(payload.message ?? null);
       startedAtRef.current = payload.startedAt ?? null;
+      setStats(payload.stats ?? null);
+      setLastError(payload.lastError ?? null);
     });
     return () => {
       unsubscribe();
@@ -120,7 +128,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       setStatusMessage(null);
       setElapsedSeconds(0);
 
-      const canvasStream = canvasRef.current.captureStream(settings.frameRate);
+      const canvasStream = canvasRef.current.captureStream(settings.streamFps);
       canvasStreamRef.current = canvasStream;
       const tracks = [...canvasStream.getVideoTracks()];
 
@@ -167,7 +175,11 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       const startResult = await window.dualcast.startStream({
         rtmpUrl,
         streamKey,
-        hasAudio
+        hasAudio,
+        preset: settings.streamPreset,
+        fps: settings.streamFps,
+        audioBitrate: settings.streamAudioBitrate,
+        encoder: settings.streamEncoder
       });
 
       if (!startResult.ok) {
@@ -179,9 +191,10 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
       try {
         const mimeType = pickRecorderMimeType();
+        const bitrate = presetBitrateMap[settings.streamPreset] ?? presetBitrateMap.medium;
         const recorder = new MediaRecorder(outputStream, {
           mimeType: mimeType || undefined,
-          videoBitsPerSecond: DEFAULT_VIDEO_BITRATE
+          videoBitsPerSecond: bitrate
         });
 
         recorderRef.current = recorder;
@@ -217,7 +230,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         return { ok: false, message: "Unable to start streaming capture." };
       }
     },
-    [canvasRef, programSourceId, settings.audioMode, settings.frameRate]
+    [canvasRef, programSourceId, settings.audioMode, settings.streamFps, settings.streamPreset, settings.streamAudioBitrate, settings.streamEncoder]
   );
 
   const stopStream = useCallback(() => {
@@ -232,6 +245,8 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     statusMessage,
     elapsedSeconds,
     formattedElapsed,
+    stats,
+    lastError,
     startStream,
     stopStream
   };
