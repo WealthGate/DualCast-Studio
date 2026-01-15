@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { getDisplayStream, stopMediaStream } from "../utils/media";
+import { getCameraStream, getMediaStream, parseCameraSourceId, stopMediaStream } from "../utils/media";
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
 
 type PreviewProgramProps = {
@@ -20,7 +20,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
     clearCutToBlack,
     toggleFreeze,
     settings,
-    displays
+    displays,
+    cameraDeviceId,
+    cameraOverlayMode,
+    cameraRect
   } = useAppStore();
 
   const [projectionTargetId, setProjectionTargetId] = useState<string>("");
@@ -32,7 +35,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
 
   const previewStreamRef = useRef<MediaStream | null>(null);
   const programStreamRef = useRef<MediaStream | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     const loadPreview = async () => {
@@ -40,10 +45,14 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
       if (!previewSourceId || !previewVideoRef.current) {
         return;
       }
-      const stream = await getDisplayStream(previewSourceId, false);
-      previewStreamRef.current = stream;
-      previewVideoRef.current.srcObject = stream;
-      previewVideoRef.current.play();
+      try {
+        const stream = await getMediaStream(previewSourceId, false);
+        previewStreamRef.current = stream;
+        previewVideoRef.current.srcObject = stream;
+        previewVideoRef.current.play();
+      } catch {
+        // Ignore preview failures; user can retry.
+      }
     };
 
     loadPreview();
@@ -59,10 +68,14 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
       if (!programSourceId || !programVideoRef.current) {
         return;
       }
-      const stream = await getDisplayStream(programSourceId, false);
-      programStreamRef.current = stream;
-      programVideoRef.current.srcObject = stream;
-      programVideoRef.current.play();
+      try {
+        const stream = await getMediaStream(programSourceId, false);
+        programStreamRef.current = stream;
+        programVideoRef.current.srcObject = stream;
+        programVideoRef.current.play();
+      } catch {
+        // Ignore program failures; user can retry.
+      }
     };
 
     loadProgram();
@@ -73,23 +86,78 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
   }, [programSourceId, programVideoRef]);
 
   useEffect(() => {
+    const loadCamera = async () => {
+      stopMediaStream(cameraStreamRef.current);
+      if (!cameraDeviceId || cameraOverlayMode === "none") {
+        return;
+      }
+
+      const programCameraId = programSourceId ? parseCameraSourceId(programSourceId) : null;
+      if (programCameraId && programCameraId === cameraDeviceId) {
+        return;
+      }
+
+      try {
+        const stream = await getCameraStream(cameraDeviceId);
+        cameraStreamRef.current = stream;
+        if (cameraVideoRef.current) {
+          cameraVideoRef.current.srcObject = stream;
+          cameraVideoRef.current.play();
+        }
+      } catch {
+        // Ignore camera load failures; user can retry.
+      }
+    };
+
+    loadCamera();
+
+    return () => {
+      stopMediaStream(cameraStreamRef.current);
+    };
+  }, [cameraDeviceId, cameraOverlayMode, programSourceId]);
+
+  useEffect(() => {
     const canvas = programCanvasRef.current;
-    const video = programVideoRef.current;
-    if (!canvas || !video) {
+    const programVideo = programVideoRef.current;
+    if (!canvas || !programVideo) {
       return;
     }
 
+    const programCameraId = programSourceId ? parseCameraSourceId(programSourceId) : null;
+    const overlayMode = cameraOverlayMode;
+    const cameraVideo = cameraVideoRef.current ?? null;
+
+    const getBaseVideo = () => {
+      if (overlayMode === "program-over-camera") {
+        if (cameraVideo && cameraVideo.readyState >= 2) {
+          return cameraVideo;
+        }
+        if (programCameraId && programVideo.readyState >= 2) {
+          return programVideo;
+        }
+      }
+      return programVideo.readyState >= 2 ? programVideo : null;
+    };
+
     const updateCanvasSize = () => {
+      const baseVideo = getBaseVideo();
+      if (!baseVideo) {
+        return;
+      }
       const profile = getQualityProfile(settings.qualityPreset);
-      const target = fitToBounds(video.videoWidth || 1920, video.videoHeight || 1080, profile.maxWidth, profile.maxHeight);
+      const target = fitToBounds(baseVideo.videoWidth || 1920, baseVideo.videoHeight || 1080, profile.maxWidth, profile.maxHeight);
       canvas.width = target.width;
       canvas.height = target.height;
     };
 
-    if (video.readyState >= 2) {
+    if (programVideo.readyState >= 2) {
       updateCanvasSize();
     } else {
-      video.onloadedmetadata = updateCanvasSize;
+      programVideo.onloadedmetadata = updateCanvasSize;
+    }
+
+    if (cameraVideo && cameraVideo.readyState < 2) {
+      cameraVideo.onloadedmetadata = updateCanvasSize;
     }
 
     const ctx = canvas.getContext("2d");
@@ -97,12 +165,35 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
       return;
     }
 
+    const drawOverlay = (video: HTMLVideoElement) => {
+      const rect = {
+        x: (cameraRect.x / 100) * canvas.width,
+        y: (cameraRect.y / 100) * canvas.height,
+        width: (cameraRect.width / 100) * canvas.width,
+        height: (cameraRect.height / 100) * canvas.height
+      };
+      ctx.drawImage(video, rect.x, rect.y, rect.width, rect.height);
+    };
+
     const render = () => {
       if (isCutToBlack) {
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-      } else if (video.readyState >= 2) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      } else {
+        const baseVideo = getBaseVideo();
+        if (baseVideo) {
+          ctx.drawImage(baseVideo, 0, 0, canvas.width, canvas.height);
+        }
+
+        if (overlayMode === "camera-over-program" && cameraVideo && cameraVideo.readyState >= 2) {
+          if (!programCameraId || programCameraId !== cameraDeviceId) {
+            drawOverlay(cameraVideo);
+          }
+        }
+
+        if (overlayMode === "program-over-camera" && programVideo.readyState >= 2) {
+          drawOverlay(programVideo);
+        }
       }
 
       if (!isFrozen) {
@@ -117,7 +208,17 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [programSourceId, programCanvasRef, programVideoRef, isCutToBlack, isFrozen, settings.qualityPreset]);
+  }, [
+    programSourceId,
+    programCanvasRef,
+    programVideoRef,
+    isCutToBlack,
+    isFrozen,
+    settings.qualityPreset,
+    cameraOverlayMode,
+    cameraRect,
+    cameraDeviceId
+  ]);
 
   useEffect(() => {
     if (!projectionTargetId && screenTargets.length > 0) {
@@ -152,7 +253,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
       <div className="pane">
         <div className="pane-header">
           <h2>Preview</h2>
-          <span className="tag">Select a display</span>
+          <span className="tag">Select a source</span>
         </div>
         <div className="pane-body">
           <video ref={previewVideoRef} muted playsInline className="video-surface" />
@@ -166,6 +267,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
         <div className="pane-body">
           <canvas ref={programCanvasRef} className="video-surface" />
           <video ref={programVideoRef} muted playsInline className="hidden" />
+          <video ref={cameraVideoRef} muted playsInline className="hidden" />
         </div>
         <div className="pane-controls">
           <button className="btn btn-primary" onClick={takeToProgram} disabled={!previewSourceId}>

@@ -3,6 +3,7 @@ import Header from "./components/Header";
 import DisplayPicker from "./components/DisplayPicker";
 import SettingsPanel from "./components/SettingsPanel";
 import StreamingPanel from "./components/StreamingPanel";
+import CameraPanel from "./components/CameraPanel";
 import PreviewProgram from "./components/PreviewProgram";
 import { useAppStore } from "./store/useAppStore";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
@@ -121,6 +122,7 @@ const App: React.FC = () => {
         />
         <aside className="side-panel">
           <DisplayPicker />
+          <CameraPanel />
           <SettingsPanel />
           <StreamingPanel programCanvasRef={programCanvasRef} />
         </aside>

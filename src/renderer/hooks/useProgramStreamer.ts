@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { getDisplayStream, pickRecorderMimeType, stopMediaStream } from "../utils/media";
+import { getDisplayStream, parseCameraSourceId, pickRecorderMimeType, stopMediaStream } from "../utils/media";
 import { AudioMode, StreamingStatus } from "../../shared/types";
 
 const presetBitrateMap: Record<string, number> = {
@@ -140,6 +140,9 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
       if (shouldIncludeSystem(audioMode)) {
         try {
+          if (parseCameraSourceId(programSourceId)) {
+            throw new Error("System audio is unavailable for camera sources.");
+          }
           const systemStream = await getDisplayStream(programSourceId, true);
           systemStreamRef.current = systemStream;
           if (audioContext && destination && systemStream.getAudioTracks().length > 0) {

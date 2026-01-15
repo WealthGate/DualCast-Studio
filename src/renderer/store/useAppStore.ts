@@ -19,6 +19,9 @@ type AppState = {
   displays: DisplaySource[];
   previewSourceId: string | null;
   programSourceId: string | null;
+  cameraDeviceId: string | null;
+  cameraOverlayMode: "none" | "camera-over-program" | "program-over-camera";
+  cameraRect: { x: number; y: number; width: number; height: number };
   isCutToBlack: boolean;
   isFrozen: boolean;
   isRecording: boolean;
@@ -30,6 +33,9 @@ type AppState = {
   refreshDisplays: () => Promise<void>;
   setPreviewSourceId: (id: string) => Promise<void>;
   setProgramSourceId: (id: string | null) => void;
+  setCameraDeviceId: (id: string | null) => void;
+  setCameraOverlayMode: (mode: "none" | "camera-over-program" | "program-over-camera") => void;
+  updateCameraRect: (rect: Partial<{ x: number; y: number; width: number; height: number }>) => void;
   takeToProgram: () => void;
   cutToBlack: () => void;
   clearCutToBlack: () => void;
@@ -46,6 +52,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   displays: [],
   previewSourceId: null,
   programSourceId: null,
+  cameraDeviceId: null,
+  cameraOverlayMode: "none",
+  cameraRect: { x: 70, y: 70, width: 25, height: 25 },
   isCutToBlack: false,
   isFrozen: false,
   isRecording: false,
@@ -68,6 +77,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     await window.dualcast.updateSettings({ lastDisplayId: id });
   },
   setProgramSourceId: (id) => set({ programSourceId: id, isCutToBlack: false }),
+  setCameraDeviceId: (id) => set({ cameraDeviceId: id }),
+  setCameraOverlayMode: (mode) => set({ cameraOverlayMode: mode }),
+  updateCameraRect: (rect) =>
+    set((state) => ({
+      cameraRect: {
+        x: rect.x ?? state.cameraRect.x,
+        y: rect.y ?? state.cameraRect.y,
+        width: rect.width ?? state.cameraRect.width,
+        height: rect.height ?? state.cameraRect.height
+      }
+    })),
   takeToProgram: () =>
     set((state) => ({
       programSourceId: state.previewSourceId,
