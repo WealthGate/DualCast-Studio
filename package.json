@@ -1,0 +1,74 @@
+{
+  "name": "dualcast-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DualCast Studio Phase 1",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:main": "tsup --watch",
+    "dev:electron": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 nodemon --watch dist-electron --exec \"electron .\"",
+    "build": "tsup && vite build",
+    "package": "npm run build && electron-builder",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "electron-log": "^5.1.2",
+    "electron-store": "^8.1.0",
+    "ffmpeg-static": "^5.2.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/react": "^18.2.61",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^29.1.1",
+    "electron-builder": "^24.13.3",
+    "nodemon": "^3.1.0",
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.2",
+    "vite": "^5.2.2",
+    "vitest": "^1.4.0"
+  },
+  "build": {
+    "appId": "com.dualcast.studio",
+    "productName": "DualCast Studio",
+    "files": [
+      "dist-electron/**",
+      "dist/renderer/**",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.video",
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  }
+}
