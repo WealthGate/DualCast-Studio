@@ -17,7 +17,11 @@ export const IpcChannels = {
   stopStream: "dualcast:stop-stream",
   streamChunk: "dualcast:stream-chunk",
   streamStatus: "dualcast:stream-status",
-  getStreamLogPath: "dualcast:get-stream-log-path"
+  getStreamLogPath: "dualcast:get-stream-log-path",
+  getStreamingCapabilities: "dualcast:get-streaming-capabilities",
+  getStoredStreamKey: "dualcast:get-stored-stream-key",
+  setStoredStreamKey: "dualcast:set-stored-stream-key",
+  clearStoredStreamKey: "dualcast:clear-stored-stream-key"
 } as const;
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];

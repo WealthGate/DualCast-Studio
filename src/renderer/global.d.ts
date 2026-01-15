@@ -9,7 +9,8 @@ import {
   StreamStartPayload,
   StreamStartResult,
   StreamStopResult,
-  StreamStatusPayload
+  StreamStatusPayload,
+  StreamingEncoder
 } from "../shared/types";
 
 declare global {
@@ -27,6 +28,10 @@ declare global {
       stopStream: () => Promise<StreamStopResult>;
       sendStreamChunk: (payload: Uint8Array) => void;
       getStreamLogPath: () => Promise<string | null>;
+      getStreamingCapabilities: () => Promise<{ encoders: StreamingEncoder[] }>;
+      getStoredStreamKey: () => Promise<string | null>;
+      setStoredStreamKey: (payload: { streamKey: string }) => Promise<boolean>;
+      clearStoredStreamKey: () => Promise<boolean>;
       onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => () => void;
       updateProgramState: (state: ProgramState) => void;
       sendProgramFrame: (dataUrl: string) => void;

@@ -11,7 +11,8 @@ import {
   StreamStartPayload,
   StreamStartResult,
   StreamStopResult,
-  StreamStatusPayload
+  StreamStatusPayload,
+  StreamingEncoder
 } from "../src/shared/types";
 
 const api = {
@@ -28,6 +29,12 @@ const api = {
   stopStream: (): Promise<StreamStopResult> => ipcRenderer.invoke(IpcChannels.stopStream),
   sendStreamChunk: (payload: Uint8Array) => ipcRenderer.send(IpcChannels.streamChunk, payload),
   getStreamLogPath: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.getStreamLogPath),
+  getStreamingCapabilities: (): Promise<{ encoders: StreamingEncoder[] }> =>
+    ipcRenderer.invoke(IpcChannels.getStreamingCapabilities),
+  getStoredStreamKey: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.getStoredStreamKey),
+  setStoredStreamKey: (payload: { streamKey: string }): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.setStoredStreamKey, payload),
+  clearStoredStreamKey: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.clearStoredStreamKey),
   updateProgramState: (state: ProgramState) => ipcRenderer.send(IpcChannels.updateProgramState, state),
   sendProgramFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.programFrame, dataUrl),
   onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => {

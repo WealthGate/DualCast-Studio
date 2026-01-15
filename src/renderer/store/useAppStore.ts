@@ -6,7 +6,13 @@ const defaultSettings: Settings = {
   qualityPreset: "medium",
   frameRate: 30,
   audioMode: "system",
-  lastDisplayId: null
+  lastDisplayId: null,
+  streamRtmpUrl: "",
+  streamPreset: "medium",
+  streamFps: 30,
+  streamAudioBitrate: 128,
+  streamEncoder: "auto",
+  rememberStreamKey: false
 };
 
 type AppState = {
