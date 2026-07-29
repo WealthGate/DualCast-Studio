@@ -2,6 +2,16 @@
 
 DualCast Studio is a desktop production suite for churches and large venues. It combines live presentation, multi-display projection, lower thirds, recording, multi-destination streaming, operator controls, audio mixing, and lightweight post-production in one interface.
 
+## Download
+
+Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
+
+- Windows: download the `.exe` installer or portable `.zip`.
+- macOS: download the `.dmg` or `.zip`.
+- Linux: download the `.AppImage` or `.deb`.
+
+The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper may therefore ask users to confirm that they trust the download.
+
 ## Current Capabilities
 
 ### Live Production
