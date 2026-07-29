@@ -1,10 +1,12 @@
 import { ipcMain, dialog, shell, BrowserWindow } from "electron";
+import { pathToFileURL } from "url";
 import { IpcChannels } from "../../src/shared/ipc";
 import { listDisplays } from "./displayService";
 import { getSettings, updateSettings } from "./settingsService";
 import { saveRecording } from "./recordingService";
 import {
   getStreamLogPath,
+  getStreamLogContent,
   getStreamingCapabilities,
   sendStreamChunk,
   setStreamStatusPublisher,
@@ -12,8 +14,31 @@ import {
   stopStreaming
 } from "./streamingService";
 import { clearStreamKey, getStreamKey, setStreamKey } from "./streamKeyService";
-import { SaveRecordingPayload, SettingsUpdate, ProgramState, StreamStartPayload } from "../../src/shared/types";
-import { closeProjectionWindow, openProjectionWindow, setProgramState, forwardProgramFrame } from "./projectionService";
+import {
+  ExportClipPayload,
+  SaveRecordingPayload,
+  SettingsUpdate,
+  ProgramState,
+  StreamStartPayload
+} from "../../src/shared/types";
+import {
+  closeLowerThirdWindow,
+  closeProjectionWindows,
+  forwardLowerThirdFrame,
+  forwardProgramFrame,
+  openLowerThirdWindow,
+  openProjectionWindows,
+  setProgramState
+} from "./projectionService";
+import { createBrowserSource, destroyBrowserSource, updateBrowserSource } from "./browserSourceService";
+import {
+  getNetworkOutputStatus,
+  setRemoteActionPublisher,
+  startNetworkOutput,
+  stopNetworkOutput,
+  updateNetworkProgramFrame
+} from "./networkOutputService";
+import { exportClip } from "./editorService";
 
 export const registerIpcHandlers = () => {
   setStreamStatusPublisher((payload) => {
@@ -39,6 +64,32 @@ export const registerIpcHandlers = () => {
 
   ipcMain.handle(IpcChannels.saveRecording, async (_event, payload: SaveRecordingPayload) => saveRecording(payload));
 
+  ipcMain.handle(IpcChannels.selectMediaFile, async (_event, payload: { kind: "image" | "video" | "audio" }) => {
+    const window = BrowserWindow.getFocusedWindow();
+    const filters = payload?.kind
+      ? [
+          payload.kind === "image"
+            ? { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }
+            : payload.kind === "video"
+              ? { name: "Video", extensions: ["mp4", "webm", "mov", "mkv", "avi"] }
+              : { name: "Audio", extensions: ["mp3", "wav", "ogg", "aac", "m4a"] }
+        ]
+      : [];
+    const result = await dialog.showOpenDialog(window ?? undefined, {
+      properties: ["openFile"],
+      filters
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    const filePath = result.filePaths[0];
+    const fileUrl = pathToFileURL(filePath).toString();
+    return { filePath, fileUrl, name: filePath.split(/[\\/]/).pop() ?? "Media" };
+  });
+  setRemoteActionPublisher((action) => {
+    BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(IpcChannels.remoteOperatorAction, action));
+  });
+
   ipcMain.handle(IpcChannels.openFolder, async (_event, filePath: string) => {
     if (typeof filePath !== "string") {
       return false;
@@ -47,15 +98,30 @@ export const registerIpcHandlers = () => {
     return true;
   });
 
-  ipcMain.handle(IpcChannels.openProjection, async (_event, displayId?: string | null) => {
-    await openProjectionWindow(displayId);
+  ipcMain.handle(IpcChannels.openProjection, async (_event, displayIds?: string[] | string | null) => {
+    const targets = Array.isArray(displayIds) ? displayIds : displayIds ? [displayIds] : [];
+    await openProjectionWindows(targets);
     return true;
   });
 
   ipcMain.handle(IpcChannels.closeProjection, async () => {
-    await closeProjectionWindow();
+    await closeProjectionWindows();
     return true;
   });
+
+  ipcMain.handle(IpcChannels.openLowerThird, async (_event, displayId: string) => {
+    await openLowerThirdWindow(displayId);
+    return true;
+  });
+
+  ipcMain.handle(IpcChannels.closeLowerThird, async () => {
+    await closeLowerThirdWindow();
+    return true;
+  });
+
+  ipcMain.handle(IpcChannels.createBrowserSource, async (_event, payload) => createBrowserSource(payload));
+  ipcMain.handle(IpcChannels.updateBrowserSource, async (_event, payload) => updateBrowserSource(payload));
+  ipcMain.handle(IpcChannels.destroyBrowserSource, async (_event, payload) => destroyBrowserSource(payload));
 
   ipcMain.handle(IpcChannels.startStream, async (_event, payload: StreamStartPayload) => startStreaming(payload));
 
@@ -63,18 +129,34 @@ export const registerIpcHandlers = () => {
 
   ipcMain.handle(IpcChannels.getStreamLogPath, async () => getStreamLogPath());
 
+  ipcMain.handle(IpcChannels.getStreamLogContent, async (_event, payload?: { maxLines?: number }) =>
+    getStreamLogContent(payload)
+  );
+
   ipcMain.handle(IpcChannels.getStreamingCapabilities, async () => getStreamingCapabilities());
 
-  ipcMain.handle(IpcChannels.getStoredStreamKey, async () => getStreamKey());
+  ipcMain.handle(IpcChannels.getStoredStreamKey, async (_event, payload?: { destinationId?: string }) =>
+    getStreamKey(payload?.destinationId)
+  );
 
-  ipcMain.handle(IpcChannels.setStoredStreamKey, async (_event, payload: { streamKey: string }) => {
-    if (!payload?.streamKey) {
-      return false;
+  ipcMain.handle(
+    IpcChannels.setStoredStreamKey,
+    async (_event, payload: { destinationId?: string; streamKey: string }) => {
+      if (!payload?.streamKey) {
+        return false;
+      }
+      return setStreamKey(payload.streamKey, payload.destinationId);
     }
-    return setStreamKey(payload.streamKey);
-  });
+  );
 
-  ipcMain.handle(IpcChannels.clearStoredStreamKey, async () => clearStreamKey());
+  ipcMain.handle(IpcChannels.clearStoredStreamKey, async (_event, payload?: { destinationId?: string }) =>
+    clearStreamKey(payload?.destinationId)
+  );
+
+  ipcMain.handle(IpcChannels.startNetworkOutput, async (_event, payload) => startNetworkOutput(payload));
+  ipcMain.handle(IpcChannels.stopNetworkOutput, async () => stopNetworkOutput());
+  ipcMain.handle(IpcChannels.getNetworkOutputStatus, async () => getNetworkOutputStatus());
+  ipcMain.handle(IpcChannels.exportClip, async (_event, payload: ExportClipPayload) => exportClip(payload));
 
   ipcMain.on(IpcChannels.updateProgramState, (_event, state: ProgramState) => {
     if (state) {
@@ -85,6 +167,13 @@ export const registerIpcHandlers = () => {
   ipcMain.on(IpcChannels.programFrame, (_event, dataUrl: string) => {
     if (typeof dataUrl === "string" && dataUrl.length > 0) {
       forwardProgramFrame(dataUrl);
+      updateNetworkProgramFrame(dataUrl);
+    }
+  });
+
+  ipcMain.on(IpcChannels.lowerThirdFrame, (_event, dataUrl: string) => {
+    if (typeof dataUrl === "string" && dataUrl.length > 0) {
+      forwardLowerThirdFrame(dataUrl);
     }
   });
 

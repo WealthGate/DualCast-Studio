@@ -1,12 +1,12 @@
 {
   "name": "dualcast-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "DualCast Studio Phase 1",
+  "description": "Large-venue church production, presentation, recording, and multi-destination streaming studio",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
-    "dev:renderer": "vite",
+    "dev:renderer": "vite --port 5173 --strictPort",
     "dev:main": "tsup --watch",
     "dev:electron": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 nodemon --watch dist-electron --exec \"electron .\"",
     "build": "tsup && vite build",

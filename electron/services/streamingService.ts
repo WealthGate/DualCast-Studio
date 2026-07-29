@@ -5,52 +5,49 @@ import { app } from "electron";
 import ffmpegPath from "ffmpeg-static";
 import log from "./logger";
 import {
+  StreamDestinationInput,
   StreamStartPayload,
   StreamStartResult,
   StreamStatusPayload,
   StreamStopResult,
   StreamingEncoder,
-  StreamingPreset
+  StreamingPreset,
+  StreamingStatus
 } from "../../src/shared/types";
 
 type StatusPublisher = (payload: StreamStatusPayload) => void;
+
+type DestinationRuntime = {
+  destination: StreamDestinationInput;
+  process: ChildProcessWithoutNullStreams | null;
+  status: StreamingStatus;
+  reconnectAttempt: number;
+  reconnectTimer: NodeJS.Timeout | null;
+  needsHeader: boolean;
+  lastError: string | null;
+  stats: StreamStatusPayload["stats"];
+};
 
 const STOP_TIMEOUT_MS = 4000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
 
-const presetConfig: Record<
-  StreamingPreset,
-  { maxWidth: number; videoBitrateKbps: number }
-> = {
+const presetConfig: Record<StreamingPreset, { maxWidth: number; videoBitrateKbps: number }> = {
   low: { maxWidth: 1280, videoBitrateKbps: 2500 },
   medium: { maxWidth: 1920, videoBitrateKbps: 4500 },
   high: { maxWidth: 1920, videoBitrateKbps: 6500 }
 };
 
-let ffmpegProcess: ChildProcessWithoutNullStreams | null = null;
+const runtimes = new Map<string, DestinationRuntime>();
+const availableEncoders = new Set<StreamingEncoder>(["x264"]);
 let statusPublisher: StatusPublisher | null = null;
 let currentStatus: StreamStatusPayload = { status: "idle", message: null, startedAt: null };
-let stopRequested = false;
-let logStream: fs.WriteStream | null = null;
-let currentStreamKey: string | null = null;
-let currentEndpoint: string | null = null;
-let sessionLogPath: string | null = null;
-let cachedHeader: Buffer | null = null;
-let needsHeader = false;
-let reconnectAttempts = 0;
-let reconnectTimer: NodeJS.Timeout | null = null;
 let lastStartPayload: StreamStartPayload | null = null;
-let lastError: string | null = null;
-
-const availableEncoders = new Set<StreamingEncoder>(["x264"]);
-
-const publishStatus = (payload: StreamStatusPayload) => {
-  currentStatus = payload;
-  if (statusPublisher) {
-    statusPublisher(payload);
-  }
-};
+let stopRequested = false;
+let startedAt: number | null = null;
+let sessionLogPath: string | null = null;
+let logStream: fs.WriteStream | null = null;
+let cachedHeader: Buffer | null = null;
 
 const createSessionLogPath = () => {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -68,18 +65,19 @@ const ensureLogStream = () => {
 
 const sanitizeLogLine = (line: string) => {
   let sanitized = line;
-  if (currentStreamKey) {
-    sanitized = sanitized.split(currentStreamKey).join("***");
-  }
-  if (currentEndpoint) {
-    sanitized = sanitized.split(currentEndpoint).join(currentEndpoint.replace(/\/[^/]+$/, "/***"));
-  }
+  runtimes.forEach(({ destination }) => {
+    if (destination.streamKey) {
+      sanitized = sanitized.split(destination.streamKey).join("***");
+    }
+    const endpoint = `${destination.rtmpUrl.replace(/\/+$/, "")}/${destination.streamKey}`;
+    sanitized = sanitized.split(endpoint).join(`${destination.rtmpUrl.replace(/\/+$/, "")}/***`);
+  });
   return sanitized;
 };
 
-const writeStreamLog = (line: string) => {
+const writeStreamLog = (destinationName: string, line: string) => {
   ensureLogStream();
-  logStream?.write(`${sanitizeLogLine(line)}\n`);
+  logStream?.write(`[${destinationName}] ${sanitizeLogLine(line)}\n`);
 };
 
 const isValidRtmpUrl = (rtmpUrl: string) => {
@@ -89,11 +87,6 @@ const isValidRtmpUrl = (rtmpUrl: string) => {
   } catch {
     return false;
   }
-};
-
-const buildEndpoint = (rtmpUrl: string, streamKey: string) => {
-  const trimmed = rtmpUrl.replace(/\/+$/, "");
-  return `${trimmed}/${streamKey}`;
 };
 
 const parseStats = (line: string) => {
@@ -121,20 +114,12 @@ const detectEncoders = () => {
   try {
     const result = spawnSync(ffmpegPath, ["-hide_banner", "-encoders"], { encoding: "utf8" });
     const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    if (output.includes("libx264")) {
-      availableEncoders.add("x264");
-    }
-    if (output.includes("h264_nvenc")) {
-      availableEncoders.add("nvenc");
-    }
-    if (output.includes("h264_qsv")) {
-      availableEncoders.add("qsv");
-    }
-    if (output.includes("h264_amf")) {
-      availableEncoders.add("amf");
-    }
+    if (output.includes("libx264")) availableEncoders.add("x264");
+    if (output.includes("h264_nvenc")) availableEncoders.add("nvenc");
+    if (output.includes("h264_qsv")) availableEncoders.add("qsv");
+    if (output.includes("h264_amf")) availableEncoders.add("amf");
   } catch {
-    // Ignore detection failures; fall back to x264.
+    // x264 remains the safe fallback.
   }
 };
 
@@ -142,47 +127,22 @@ const resolveEncoder = (requested: StreamingEncoder) => {
   if (requested !== "auto" && availableEncoders.has(requested)) {
     return requested;
   }
-  const priority: StreamingEncoder[] = ["nvenc", "qsv", "amf", "x264"];
-  for (const encoder of priority) {
-    if (availableEncoders.has(encoder)) {
-      return encoder;
-    }
-  }
-  return "x264";
+  return (["nvenc", "qsv", "amf", "x264"] as StreamingEncoder[]).find((encoder) =>
+    availableEncoders.has(encoder)
+  ) ?? "x264";
 };
 
 const mapEncoder = (encoder: StreamingEncoder) => {
-  switch (encoder) {
-    case "nvenc":
-      return "h264_nvenc";
-    case "qsv":
-      return "h264_qsv";
-    case "amf":
-      return "h264_amf";
-    case "x264":
-    default:
-      return "libx264";
-  }
-};
-
-const mapEncoderPreset = (encoder: StreamingEncoder) => {
-  if (encoder === "x264") {
-    return "veryfast";
-  }
-  if (encoder === "nvenc") {
-    return "p4";
-  }
-  return null;
+  if (encoder === "nvenc") return "h264_nvenc";
+  if (encoder === "qsv") return "h264_qsv";
+  if (encoder === "amf") return "h264_amf";
+  return "libx264";
 };
 
 const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder) => {
   const preset = presetConfig[payload.preset];
-  const fps = payload.fps;
-  const gop = fps * 2;
+  const gop = payload.fps * 2;
   const bitrate = `${preset.videoBitrateKbps}k`;
-  const encoderName = mapEncoder(encoder);
-  const encoderPreset = mapEncoderPreset(encoder);
-
   const args = [
     "-hide_banner",
     "-loglevel",
@@ -200,11 +160,18 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     "-vf",
     `scale='min(${preset.maxWidth},iw)':-2`,
     "-r",
-    String(fps),
+    String(payload.fps),
     "-c:v",
-    encoderName,
-    "-tune",
-    "zerolatency",
+    mapEncoder(encoder)
+  ];
+
+  if (encoder === "x264") {
+    args.push("-preset", "veryfast", "-tune", "zerolatency");
+  } else if (encoder === "nvenc") {
+    args.push("-preset", "p4", "-tune", "ll");
+  }
+
+  args.push(
     "-b:v",
     bitrate,
     "-maxrate",
@@ -219,15 +186,10 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     String(gop),
     "-sc_threshold",
     "0"
-  ];
-
-  if (encoderPreset) {
-    args.splice(args.indexOf("-tune"), 0, "-preset", encoderPreset);
-  }
+  );
 
   if (payload.hasAudio) {
-    args.push("-map", "0:a:0?");
-    args.push("-c:a", "aac", "-b:a", `${payload.audioBitrate}k`, "-ar", "44100");
+    args.push("-map", "0:a:0?", "-c:a", "aac", "-b:a", `${payload.audioBitrate}k`, "-ar", "44100");
   } else {
     args.push("-an");
   }
@@ -236,147 +198,163 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
   return args;
 };
 
-const scheduleReconnect = () => {
-  if (!lastStartPayload || stopRequested) {
-    return;
-  }
-  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    publishStatus({
-      status: "error",
-      message: "Stream failed after multiple reconnect attempts. Check your network or RTMP settings.",
+const publishAggregateStatus = () => {
+  const entries = Array.from(runtimes.values());
+  if (entries.length === 0) {
+    currentStatus = {
+      status: "idle",
+      message: null,
       startedAt: null,
       logPath: sessionLogPath,
-      lastError
-    });
-    if (logStream) {
-      logStream.end();
-      logStream = null;
-    }
+      destinationStatuses: []
+    };
+    statusPublisher?.(currentStatus);
     return;
   }
 
-  reconnectAttempts += 1;
-  const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempts - 1, RECONNECT_DELAYS_MS.length - 1)];
+  const liveCount = entries.filter((entry) => entry.status === "live").length;
+  const connectingCount = entries.filter((entry) => entry.status === "connecting").length;
+  const reconnectingCount = entries.filter((entry) => entry.status === "reconnecting").length;
+  const errorCount = entries.filter((entry) => entry.status === "error").length;
 
-  publishStatus({
-    status: "reconnecting",
-    message: `Reconnecting (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`,
-    startedAt: currentStatus.startedAt ?? null,
+  let status: StreamingStatus = "connecting";
+  if (liveCount > 0) status = "live";
+  else if (reconnectingCount > 0) status = "reconnecting";
+  else if (connectingCount > 0) status = "connecting";
+  else if (errorCount === entries.length) status = "error";
+
+  const message =
+    entries.length > 1
+      ? `${liveCount}/${entries.length} destinations live${errorCount ? `, ${errorCount} failed` : ""}`
+      : entries[0].lastError;
+  const stats = entries.find((entry) => entry.status === "live")?.stats ?? entries[0].stats ?? null;
+
+  currentStatus = {
+    status,
+    message,
+    startedAt: status === "live" ? startedAt : null,
     logPath: sessionLogPath,
-    reconnectAttempt: reconnectAttempts,
+    stats,
+    reconnectAttempt: Math.max(...entries.map((entry) => entry.reconnectAttempt)),
     reconnectMax: MAX_RECONNECT_ATTEMPTS,
-    lastError
-  });
+    lastError: entries.find((entry) => entry.lastError)?.lastError ?? null,
+    destinationStatuses: entries.map((entry) => ({
+      id: entry.destination.id,
+      name: entry.destination.name,
+      status: entry.status,
+      message: entry.lastError,
+      reconnectAttempt: entry.reconnectAttempt
+    }))
+  };
+  statusPublisher?.(currentStatus);
+};
 
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    if (stopRequested) {
-      return;
+const scheduleReconnect = (runtime: DestinationRuntime) => {
+  if (stopRequested || !lastStartPayload) {
+    return;
+  }
+  if (runtime.reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+    runtime.status = "error";
+    runtime.lastError = runtime.lastError ?? "Reconnect limit reached.";
+    publishAggregateStatus();
+    return;
+  }
+
+  runtime.reconnectAttempt += 1;
+  runtime.status = "reconnecting";
+  const delay = RECONNECT_DELAYS_MS[Math.min(runtime.reconnectAttempt - 1, RECONNECT_DELAYS_MS.length - 1)];
+  publishAggregateStatus();
+
+  runtime.reconnectTimer = setTimeout(() => {
+    runtime.reconnectTimer = null;
+    if (!stopRequested) {
+      startDestination(runtime, true);
     }
-    startFfmpeg(lastStartPayload, true);
   }, delay);
 };
 
-const startFfmpeg = (payload: StreamStartPayload, isReconnect: boolean) => {
-  if (!ffmpegPath) {
-    publishStatus({
-      status: "error",
-      message: "FFmpeg is unavailable. Install ffmpeg or reinstall dependencies.",
-      startedAt: null
-    });
+const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => {
+  if (!ffmpegPath || !lastStartPayload) {
+    runtime.status = "error";
+    runtime.lastError = "FFmpeg is unavailable.";
+    publishAggregateStatus();
     return;
   }
 
-  const chosenEncoder = resolveEncoder(payload.encoder);
-  const endpoint = buildEndpoint(payload.rtmpUrl, payload.streamKey);
-  currentStreamKey = payload.streamKey;
-  currentEndpoint = endpoint;
-  needsHeader = true;
-
-  const args = buildFfmpegArgs(payload, chosenEncoder);
+  const encoder = resolveEncoder(lastStartPayload.encoder);
+  const endpoint = `${runtime.destination.rtmpUrl.replace(/\/+$/, "")}/${runtime.destination.streamKey}`;
+  const args = buildFfmpegArgs(lastStartPayload, encoder);
   args.push(endpoint);
 
-  if (!isReconnect) {
-    reconnectAttempts = 0;
-    lastError = null;
-  }
+  runtime.status = isReconnect ? "reconnecting" : "connecting";
+  runtime.needsHeader = true;
+  runtime.lastError = null;
+  publishAggregateStatus();
 
-  publishStatus({
-    status: "connecting",
-    message: null,
-    startedAt: isReconnect ? currentStatus.startedAt ?? null : null,
-    logPath: sessionLogPath,
-    stats: isReconnect ? currentStatus.stats ?? null : null,
-    reconnectAttempt: reconnectAttempts,
-    reconnectMax: MAX_RECONNECT_ATTEMPTS,
-    lastError
-  });
-
-  ffmpegProcess = spawn(ffmpegPath, args, {
+  const process = spawn(ffmpegPath, args, {
     stdio: ["pipe", "ignore", "pipe"],
     windowsHide: true
   });
+  runtime.process = process;
 
-  ffmpegProcess.stderr.setEncoding("utf8");
-  ffmpegProcess.stderr.on("data", (chunk: string) => {
-    const lines = chunk.split(/\r?\n/).filter(Boolean);
-    for (const line of lines) {
-      writeStreamLog(line);
-      const stats = parseStats(line);
-      if (stats) {
-        currentStatus = {
-          ...currentStatus,
-          stats,
-          logPath: sessionLogPath,
-          lastError
-        };
-        if (statusPublisher) {
-          statusPublisher(currentStatus);
+  process.stderr.setEncoding("utf8");
+  process.stderr.on("data", (chunk: string) => {
+    chunk
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .forEach((line) => {
+        writeStreamLog(runtime.destination.name, line);
+        const stats = parseStats(line);
+        if (stats) {
+          runtime.stats = stats;
         }
-      }
-      if (line.toLowerCase().includes("error") || line.toLowerCase().includes("failed")) {
-        lastError = sanitizeLogLine(line.trim());
-      }
-      if (currentStatus.status === "connecting" && line.includes("frame=")) {
-        publishStatus({
-          status: "live",
-          message: null,
-          startedAt: currentStatus.startedAt ?? Date.now(),
-          logPath: sessionLogPath,
-          stats: currentStatus.stats ?? null,
-          lastError
-        });
-      }
-    }
+        if (line.toLowerCase().includes("error") || line.toLowerCase().includes("failed")) {
+          runtime.lastError = sanitizeLogLine(line.trim());
+        }
+        if ((runtime.status === "connecting" || runtime.status === "reconnecting") && line.includes("frame=")) {
+          runtime.status = "live";
+          runtime.reconnectAttempt = 0;
+          startedAt = startedAt ?? Date.now();
+        }
+        publishAggregateStatus();
+      });
   });
 
-  ffmpegProcess.on("error", (error) => {
-    writeStreamLog(`ffmpeg spawn error: ${error.message}`);
-    lastError = error.message;
-    publishStatus({
-      status: "error",
-      message: "Unable to start streaming. Check FFmpeg and RTMP settings.",
-      startedAt: null,
-      logPath: sessionLogPath,
-      lastError
-    });
+  process.on("error", (error) => {
+    runtime.lastError = error.message;
+    runtime.status = "error";
+    writeStreamLog(runtime.destination.name, `ffmpeg spawn error: ${error.message}`);
+    publishAggregateStatus();
   });
 
-  ffmpegProcess.on("close", (code, signal) => {
-    const wasStopped = stopRequested;
-    ffmpegProcess = null;
-    currentStreamKey = null;
-    currentEndpoint = null;
-
-    if (wasStopped) {
-      publishStatus({ status: "idle", message: null, startedAt: null, logPath: sessionLogPath });
+  process.on("close", (code, signal) => {
+    runtime.process = null;
+    if (stopRequested) {
       return;
     }
-
-    lastError = lastError ?? `FFmpeg exited (code ${code ?? "?"}, signal ${signal ?? "?"}).`;
-    log.warn(`Streaming stopped unexpectedly (code ${code ?? "?"}, signal ${signal ?? "?"}).`);
-    scheduleReconnect();
+    runtime.lastError =
+      runtime.lastError ?? `FFmpeg exited (code ${code ?? "?"}, signal ${signal ?? "?"}).`;
+    log.warn(`${runtime.destination.name} stopped unexpectedly.`);
+    scheduleReconnect(runtime);
   });
+};
+
+const normalizeDestinations = (payload: StreamStartPayload): StreamDestinationInput[] => {
+  if (payload.destinations?.length) {
+    return payload.destinations.filter((destination) => destination.enabled);
+  }
+  if (payload.rtmpUrl && payload.streamKey) {
+    return [
+      {
+        id: "primary",
+        name: "Primary Stream",
+        rtmpUrl: payload.rtmpUrl,
+        streamKey: payload.streamKey,
+        enabled: true
+      }
+    ];
+  }
+  return [];
 };
 
 export const setStreamStatusPublisher = (publisher: StatusPublisher) => {
@@ -386,6 +364,19 @@ export const setStreamStatusPublisher = (publisher: StatusPublisher) => {
 
 export const getStreamLogPath = () => sessionLogPath;
 
+export const getStreamLogContent = async (payload?: { maxLines?: number }) => {
+  if (!sessionLogPath) {
+    return "";
+  }
+  try {
+    const maxLines = Math.max(50, Math.min(2000, payload?.maxLines ?? 400));
+    const content = await fs.promises.readFile(sessionLogPath, "utf8");
+    return content.split(/\r?\n/).filter(Boolean).slice(-maxLines).join("\n");
+  } catch {
+    return "";
+  }
+};
+
 export const getStreamingCapabilities = () => ({
   encoders: Array.from(availableEncoders)
 });
@@ -393,101 +384,114 @@ export const getStreamingCapabilities = () => ({
 export const getStreamingStatus = () => currentStatus;
 
 export const startStreaming = async (payload: StreamStartPayload): Promise<StreamStartResult> => {
-  if (ffmpegProcess) {
+  if (runtimes.size > 0) {
     return { ok: false, message: "Streaming is already active." };
   }
-  if (!payload?.rtmpUrl || !payload?.streamKey) {
-    return { ok: false, message: "RTMP URL and stream key are required." };
-  }
-  if (!isValidRtmpUrl(payload.rtmpUrl)) {
-    return { ok: false, message: "Enter a valid RTMP URL (rtmp:// or rtmps://)." };
-  }
   if (!ffmpegPath) {
-    publishStatus({ status: "error", message: "FFmpeg is unavailable. Install ffmpeg or reinstall dependencies.", startedAt: null });
     return { ok: false, message: "FFmpeg is unavailable." };
   }
 
+  const destinations = normalizeDestinations(payload);
+  if (destinations.length === 0) {
+    return { ok: false, message: "Enable at least one stream destination." };
+  }
+  const invalid = destinations.find(
+    (destination) => !destination.streamKey || !isValidRtmpUrl(destination.rtmpUrl)
+  );
+  if (invalid) {
+    return { ok: false, message: `Check the RTMP URL and stream key for ${invalid.name}.` };
+  }
+
+  stopRequested = false;
+  startedAt = null;
+  cachedHeader = null;
   sessionLogPath = createSessionLogPath();
   logStream = null;
-  cachedHeader = null;
-  reconnectAttempts = 0;
-  stopRequested = false;
   lastStartPayload = payload;
-  lastError = null;
 
-  startFfmpeg(payload, false);
-  log.info("Streaming started.");
+  destinations.forEach((destination) => {
+    const runtime: DestinationRuntime = {
+      destination,
+      process: null,
+      status: "connecting",
+      reconnectAttempt: 0,
+      reconnectTimer: null,
+      needsHeader: true,
+      lastError: null,
+      stats: null
+    };
+    runtimes.set(destination.id, runtime);
+    startDestination(runtime, false);
+  });
+
+  log.info(`Streaming started for ${destinations.length} destination(s).`);
   return { ok: true };
 };
 
 export const sendStreamChunk = (payload: Uint8Array) => {
-  if (!payload || payload.length === 0) {
+  if (!payload?.length) {
     return;
   }
+  const chunk = Buffer.from(payload);
+  cachedHeader = cachedHeader ?? chunk;
 
-  if (!cachedHeader) {
-    cachedHeader = Buffer.from(payload);
-  }
-
-  if (!ffmpegProcess?.stdin || !ffmpegProcess.stdin.writable) {
-    return;
-  }
-
-  try {
-    if (needsHeader && cachedHeader) {
-      ffmpegProcess.stdin.write(cachedHeader);
-      needsHeader = false;
+  runtimes.forEach((runtime) => {
+    const stdin = runtime.process?.stdin;
+    if (!stdin?.writable) {
+      return;
     }
-    ffmpegProcess.stdin.write(Buffer.from(payload));
-    if (currentStatus.status === "connecting") {
-      publishStatus({
-        status: "live",
-        message: null,
-        startedAt: currentStatus.startedAt ?? Date.now(),
-        logPath: sessionLogPath,
-        stats: currentStatus.stats ?? null,
-        lastError
-      });
+    try {
+      if (runtime.needsHeader && cachedHeader) {
+        stdin.write(cachedHeader);
+        runtime.needsHeader = false;
+        if (chunk.equals(cachedHeader)) {
+          return;
+        }
+      }
+      stdin.write(chunk);
+    } catch (error) {
+      runtime.lastError = (error as Error).message;
+      writeStreamLog(runtime.destination.name, `stdin write failed: ${runtime.lastError}`);
     }
-  } catch (error) {
-    writeStreamLog(`stdin write failed: ${(error as Error).message}`);
-  }
+  });
 };
 
 export const stopStreaming = async (): Promise<StreamStopResult> => {
-  stopRequested = true;
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  needsHeader = false;
-  cachedHeader = null;
-
-  if (!ffmpegProcess) {
-    publishStatus({ status: "idle", message: null, startedAt: null, logPath: sessionLogPath });
+  if (runtimes.size === 0) {
     return { ok: false, message: "No active stream to stop." };
   }
 
-  try {
-    ffmpegProcess.stdin.end();
-  } catch {
-    // Ignore stdin shutdown failures.
-  }
-
-  ffmpegProcess.kill("SIGINT");
-
-  const processRef = ffmpegProcess;
-  setTimeout(() => {
-    if (processRef && !processRef.killed) {
-      processRef.kill("SIGKILL");
+  stopRequested = true;
+  runtimes.forEach((runtime) => {
+    if (runtime.reconnectTimer) {
+      clearTimeout(runtime.reconnectTimer);
+      runtime.reconnectTimer = null;
     }
-  }, STOP_TIMEOUT_MS);
+    const process = runtime.process;
+    if (!process) {
+      return;
+    }
+    try {
+      process.stdin.end();
+    } catch {
+      // Process may already be closing.
+    }
+    process.kill("SIGINT");
+    setTimeout(() => {
+      if (process.exitCode === null) {
+        process.kill("SIGKILL");
+      }
+    }, STOP_TIMEOUT_MS);
+  });
 
-  log.info("Streaming stop requested.");
-  if (logStream) {
-    logStream.end();
-    logStream = null;
-  }
+  runtimes.clear();
+  cachedHeader = null;
+  startedAt = null;
+  lastStartPayload = null;
+  logStream?.end();
+  logStream = null;
+  publishAggregateStatus();
+  log.info("Streaming stop requested for all destinations.");
   return { ok: true };
 };
 

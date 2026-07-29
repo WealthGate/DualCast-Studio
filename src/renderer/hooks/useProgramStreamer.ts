@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { getDisplayStream, parseCameraSourceId, pickRecorderMimeType, stopMediaStream } from "../utils/media";
-import { AudioMode, StreamingStatus } from "../../shared/types";
+import { pickRecorderMimeType, stopMediaStream } from "../utils/media";
+import { AudioMode, StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "../../shared/types";
 
 const presetBitrateMap: Record<string, number> = {
   low: 2_500_000,
@@ -28,18 +28,20 @@ const isValidRtmpUrl = (rtmpUrl: string) => {
 };
 
 export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
-  const { programSourceId, settings } = useAppStore();
+  const { programSceneId, scenes, settings, programAudioStream } = useAppStore();
   const [status, setStatus] = useState<StreamingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [formattedElapsed, setFormattedElapsed] = useState("00:00");
   const [stats, setStats] = useState<{ fps?: number | null; bitrateKbps?: number | null; time?: string | null; droppedFrames?: number | null } | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [destinationStatuses, setDestinationStatuses] = useState<
+    NonNullable<StreamStatusPayload["destinationStatuses"]>
+  >([]);
   const startedAtRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const systemStreamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const canvasStreamRef = useRef<MediaStream | null>(null);
   const stopRequestedRef = useRef(false);
@@ -54,10 +56,8 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
   const cleanupCapture = () => {
     stopMediaStream(canvasStreamRef.current);
-    stopMediaStream(systemStreamRef.current);
     stopMediaStream(micStreamRef.current);
     canvasStreamRef.current = null;
-    systemStreamRef.current = null;
     micStreamRef.current = null;
     audioContextRef.current?.close();
     audioContextRef.current = null;
@@ -70,6 +70,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       startedAtRef.current = payload.startedAt ?? null;
       setStats(payload.stats ?? null);
       setLastError(payload.lastError ?? null);
+      setDestinationStatuses(payload.destinationStatuses ?? []);
     });
     return () => {
       unsubscribe();
@@ -104,24 +105,32 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   }, [status]);
 
   const startStream = useCallback(
-    async (rtmpUrl: string, streamKey: string) => {
+    async (destinations: StreamDestinationInput[]) => {
       if (startInFlightRef.current) {
         return { ok: false, message: "Stream is already starting." };
       }
       if (!canvasRef.current) {
         return { ok: false, message: "Program output is not ready." };
       }
-      if (!programSourceId) {
-        return { ok: false, message: "Select a display and TAKE it to Program before streaming." };
+      const programScene = scenes.find((scene) => scene.id === programSceneId) ?? null;
+      if (!programSceneId || !programScene || programScene.sourceIds.length === 0) {
+        return { ok: false, message: "Select a scene and TAKE it to Program before streaming." };
       }
       if (recorderRef.current) {
         return { ok: false, message: "Stream is already active." };
       }
-      if (!rtmpUrl || !streamKey) {
-        return { ok: false, message: "RTMP URL and stream key are required." };
+      const enabledDestinations = destinations.filter((destination) => destination.enabled);
+      if (enabledDestinations.length === 0) {
+        return { ok: false, message: "Enable at least one stream destination." };
       }
-      if (!isValidRtmpUrl(rtmpUrl)) {
-        return { ok: false, message: "Enter a valid RTMP URL (rtmp:// or rtmps://)." };
+      const invalidDestination = enabledDestinations.find(
+        (destination) => !destination.streamKey || !isValidRtmpUrl(destination.rtmpUrl)
+      );
+      if (invalidDestination) {
+        return {
+          ok: false,
+          message: `Check the RTMP URL and stream key for ${invalidDestination.name}.`
+        };
       }
 
       startInFlightRef.current = true;
@@ -133,25 +142,18 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       const tracks = [...canvasStream.getVideoTracks()];
 
       const audioMode = settings.audioMode;
-      const captureAudio = shouldIncludeSystem(audioMode) || shouldIncludeMic(audioMode);
+      const includeProgramAudio = shouldIncludeSystem(audioMode);
+      const captureAudio = includeProgramAudio || shouldIncludeMic(audioMode);
       const audioContext = captureAudio ? new AudioContext() : null;
       const destination = audioContext ? audioContext.createMediaStreamDestination() : null;
       audioContextRef.current = audioContext;
 
-      if (shouldIncludeSystem(audioMode)) {
+      if (includeProgramAudio && programAudioStream && audioContext && destination && programAudioStream.getAudioTracks().length > 0) {
         try {
-          if (parseCameraSourceId(programSourceId)) {
-            throw new Error("System audio is unavailable for camera sources.");
-          }
-          const systemStream = await getDisplayStream(programSourceId, true);
-          systemStreamRef.current = systemStream;
-          if (audioContext && destination && systemStream.getAudioTracks().length > 0) {
-            const source = audioContext.createMediaStreamSource(systemStream);
-            source.connect(destination);
-          }
-          systemStream.getVideoTracks().forEach((track) => track.stop());
-        } catch (error) {
-          setStatusMessage("System audio is unavailable for this display.");
+          const source = audioContext.createMediaStreamSource(programAudioStream);
+          source.connect(destination);
+        } catch {
+          setStatusMessage("Program audio is unavailable for this scene.");
         }
       }
 
@@ -176,8 +178,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       const hasAudio = outputStream.getAudioTracks().length > 0;
 
       const startResult = await window.dualcast.startStream({
-        rtmpUrl,
-        streamKey,
+        destinations: enabledDestinations,
         hasAudio,
         preset: settings.streamPreset,
         fps: settings.streamFps,
@@ -233,14 +234,27 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         return { ok: false, message: "Unable to start streaming capture." };
       }
     },
-    [canvasRef, programSourceId, settings.audioMode, settings.streamFps, settings.streamPreset, settings.streamAudioBitrate, settings.streamEncoder]
+    [
+      canvasRef,
+      programSceneId,
+      scenes,
+      programAudioStream,
+      settings.audioMode,
+      settings.streamFps,
+      settings.streamPreset,
+      settings.streamAudioBitrate,
+      settings.streamEncoder
+    ]
   );
 
   const stopStream = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== "inactive") {
       stopRequestedRef.current = true;
       recorderRef.current.stop();
+      return;
     }
+    stopRequestedRef.current = true;
+    void window.dualcast.stopStream();
   }, []);
 
   return {
@@ -250,6 +264,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     formattedElapsed,
     stats,
     lastError,
+    destinationStatuses,
     startStream,
     stopStream
   };

@@ -5,10 +5,11 @@ import Projection from "./Projection";
 import "./styles.css";
 
 const params = new URLSearchParams(window.location.search);
-const isProjection = params.get("projection") === "1";
+const projectionMode = params.get("projection");
+const isProjection = projectionMode === "program" || projectionMode === "lower-third" || projectionMode === "1";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {isProjection ? <Projection /> : <App />}
+    {isProjection ? <Projection mode={projectionMode === "lower-third" ? "lower-third" : "program"} /> : <App />}
   </React.StrictMode>
 );

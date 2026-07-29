@@ -16,6 +16,7 @@ let mainWindow: BrowserWindow | null = null;
 
 const createMainWindow = () => {
   mainWindow = new BrowserWindow({
+    title: `DualCast Studio v${app.getVersion()}`,
     width: 1400,
     height: 900,
     minWidth: 1100,
@@ -25,7 +26,8 @@ const createMainWindow = () => {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, "preload.js")
+      preload: path.join(__dirname, "preload.js"),
+      backgroundThrottling: false
     }
   });
 
@@ -34,7 +36,7 @@ const createMainWindow = () => {
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+    mainWindow.loadFile(path.join(__dirname, "../dist/renderer/index.html"));
   }
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());

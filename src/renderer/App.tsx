@@ -1,27 +1,27 @@
 import React, { useEffect, useRef, useState } from "react";
 import Header from "./components/Header";
-import DisplayPicker from "./components/DisplayPicker";
 import SettingsPanel from "./components/SettingsPanel";
 import StreamingPanel from "./components/StreamingPanel";
-import CameraPanel from "./components/CameraPanel";
 import PreviewProgram from "./components/PreviewProgram";
+import VenuePanel from "./components/VenuePanel";
+import EditorPanel from "./components/EditorPanel";
 import { useAppStore } from "./store/useAppStore";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
 
 const App: React.FC = () => {
-  const previewVideoRef = useRef<HTMLVideoElement>(null);
-  const programVideoRef = useRef<HTMLVideoElement>(null);
   const programCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [projectionActive, setProjectionActive] = useState(false);
+  const [sideTab, setSideTab] = useState<"system" | "streaming" | "venue" | "editor">("streaming");
 
   const {
     setSettings,
+    setStudioState,
     refreshDisplays,
     takeToProgram,
     cutToBlack,
     clearCutToBlack,
+    toggleFreeze,
     isRecording,
-    programSourceId,
+    programSceneId,
     isCutToBlack,
     isFrozen,
     settings
@@ -33,19 +33,26 @@ const App: React.FC = () => {
     const init = async () => {
       const settings = await window.dualcast.getSettings();
       setSettings(settings);
+      setStudioState(settings.studioState);
       await refreshDisplays();
+      if (settings.networkOutput.enabled) {
+        await window.dualcast.startNetworkOutput({
+          port: settings.networkOutput.port,
+          operatorPin: settings.networkOutput.operatorPin
+        });
+      }
     };
     init();
-  }, [refreshDisplays, setSettings]);
+  }, [refreshDisplays, setSettings, setStudioState]);
 
   useEffect(() => {
     window.dualcast.updateProgramState({
-      programSourceId,
+      programSceneId,
       isCutToBlack,
       isFrozen,
       qualityPreset: settings.qualityPreset
     });
-  }, [programSourceId, isCutToBlack, isFrozen, settings.qualityPreset]);
+  }, [programSceneId, isCutToBlack, isFrozen, settings.qualityPreset]);
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onHotkey((action) => {
@@ -60,52 +67,49 @@ const App: React.FC = () => {
         takeToProgram();
       }
       if (action === "cut-black") {
-        clearCutToBlack();
-        cutToBlack();
+        if (isCutToBlack) {
+          clearCutToBlack();
+        } else {
+          cutToBlack();
+        }
       }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [clearCutToBlack, cutToBlack, isRecording, recorder, takeToProgram]);
+  }, [clearCutToBlack, cutToBlack, isCutToBlack, isRecording, recorder, takeToProgram]);
 
   useEffect(() => {
-    const unsubscribeOpen = window.dualcast.onProjectionOpened(() => setProjectionActive(true));
-    const unsubscribeClose = window.dualcast.onProjectionClosed(() => setProjectionActive(false));
-
-    return () => {
-      unsubscribeOpen();
-      unsubscribeClose();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!projectionActive) {
-      return;
-    }
-
-    const sendFrame = () => {
-      const canvas = programCanvasRef.current;
-      if (!canvas) {
-        return;
+    const unsubscribe = window.dualcast.onRemoteOperatorAction((action) => {
+      if (action === "toggle-record") {
+        if (isRecording) {
+          recorder.stopRecording();
+        } else {
+          recorder.startRecording();
+        }
+      } else if (action === "take") {
+        takeToProgram();
+      } else if (action === "cut-black") {
+        if (isCutToBlack) {
+          clearCutToBlack();
+        } else {
+          cutToBlack();
+        }
+      } else if (action === "toggle-freeze") {
+        toggleFreeze();
       }
-      try {
-        const dataUrl = canvas.toDataURL("image/webp", 0.8);
-        window.dualcast.sendProgramFrame(dataUrl);
-      } catch {
-        const dataUrl = canvas.toDataURL("image/png");
-        window.dualcast.sendProgramFrame(dataUrl);
-      }
-    };
-
-    sendFrame();
-    const interval = window.setInterval(sendFrame, 1000 / 15);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [projectionActive]);
+    });
+    return () => unsubscribe();
+  }, [
+    clearCutToBlack,
+    cutToBlack,
+    isCutToBlack,
+    isRecording,
+    recorder,
+    takeToProgram,
+    toggleFreeze
+  ]);
 
   return (
     <div className="app-shell">
@@ -115,16 +119,26 @@ const App: React.FC = () => {
         onOpenFolder={recorder.openRecordingFolder}
       />
       <main className="main-layout">
-        <PreviewProgram
-          previewVideoRef={previewVideoRef}
-          programVideoRef={programVideoRef}
-          programCanvasRef={programCanvasRef}
-        />
+        <PreviewProgram programCanvasRef={programCanvasRef} />
         <aside className="side-panel">
-          <DisplayPicker />
-          <CameraPanel />
-          <SettingsPanel />
-          <StreamingPanel programCanvasRef={programCanvasRef} />
+          <nav className="side-nav" aria-label="Control center">
+            <button className={sideTab === "system" ? "active" : ""} onClick={() => setSideTab("system")}>
+              System
+            </button>
+            <button className={sideTab === "streaming" ? "active" : ""} onClick={() => setSideTab("streaming")}>
+              Streaming
+            </button>
+            <button className={sideTab === "venue" ? "active" : ""} onClick={() => setSideTab("venue")}>
+              Venue
+            </button>
+            <button className={sideTab === "editor" ? "active" : ""} onClick={() => setSideTab("editor")}>
+              Editor
+            </button>
+          </nav>
+          {sideTab === "system" ? <SettingsPanel /> : null}
+          {sideTab === "streaming" ? <StreamingPanel programCanvasRef={programCanvasRef} /> : null}
+          {sideTab === "venue" ? <VenuePanel /> : null}
+          {sideTab === "editor" ? <EditorPanel /> : null}
         </aside>
       </main>
     </div>

@@ -1,7 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useProgramStreamer } from "../hooks/useProgramStreamer";
 import { useAppStore } from "../store/useAppStore";
-import { StreamingAudioBitrate, StreamingEncoder, StreamingFps, StreamingPreset } from "../../shared/types";
+import {
+  StreamDestinationConfig,
+  StreamingAudioBitrate,
+  StreamingEncoder,
+  StreamingFps,
+  StreamingPreset
+} from "../../shared/types";
 
 type StreamingPanelProps = {
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
@@ -16,17 +22,25 @@ const formatEndpoint = (rtmpUrl: string, streamKey: string) => {
 };
 
 const StreamingPanel: React.FC<StreamingPanelProps> = ({ programCanvasRef }) => {
-  const { status, statusMessage, formattedElapsed, stats, lastError, startStream, stopStream } = useProgramStreamer(programCanvasRef);
+  const {
+    status,
+    statusMessage,
+    formattedElapsed,
+    stats,
+    lastError,
+    destinationStatuses,
+    startStream,
+    stopStream
+  } = useProgramStreamer(programCanvasRef);
   const { settings, updateSettings } = useAppStore();
-  const [rtmpUrl, setRtmpUrl] = useState(settings.streamRtmpUrl);
-  const [streamKey, setStreamKey] = useState("");
+  const [streamKeys, setStreamKeys] = useState<Record<string, string>>({});
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [logPath, setLogPath] = useState<string | null>(null);
   const [availableEncoders, setAvailableEncoders] = useState<StreamingEncoder[]>([]);
-
-  useEffect(() => {
-    setRtmpUrl(settings.streamRtmpUrl);
-  }, [settings.streamRtmpUrl]);
+  const [logOpen, setLogOpen] = useState(false);
+  const [logContent, setLogContent] = useState("");
+  const [logLoading, setLogLoading] = useState(false);
+  const destinationIds = settings.streamDestinations.map((destination) => destination.id).join("|");
 
   useEffect(() => {
     window.dualcast
@@ -37,31 +51,52 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ programCanvasRef }) => 
 
   useEffect(() => {
     if (!settings.rememberStreamKey) {
-      setStreamKey("");
+      setStreamKeys({});
       return;
     }
-    window.dualcast
-      .getStoredStreamKey()
+    Promise.all(
+      settings.streamDestinations.map(async (destination) => ({
+        id: destination.id,
+        key: await window.dualcast.getStoredStreamKey({ destinationId: destination.id })
+      }))
+    )
       .then((stored) => {
-        if (stored) {
-          setStreamKey(stored);
-        }
+        setStreamKeys(
+          Object.fromEntries(stored.filter((entry) => entry.key).map((entry) => [entry.id, entry.key as string]))
+        );
       })
       .catch(() => undefined);
-  }, [settings.rememberStreamKey]);
+  }, [destinationIds, settings.rememberStreamKey]);
 
-  const endpoint = useMemo(() => formatEndpoint(rtmpUrl, streamKey), [rtmpUrl, streamKey]);
-  const isActive = status === "connecting" || status === "live" || status === "reconnecting";
+  const isActive =
+    status === "connecting" ||
+    status === "live" ||
+    status === "reconnecting" ||
+    (status === "error" && destinationStatuses.length > 0);
 
   const handleStart = async () => {
     setLocalMessage(null);
-    const result = await startStream(rtmpUrl.trim(), streamKey.trim());
+    const destinations = settings.streamDestinations.map((destination) => ({
+      ...destination,
+      rtmpUrl: destination.rtmpUrl.trim(),
+      streamKey: (streamKeys[destination.id] ?? "").trim()
+    }));
+    const result = await startStream(destinations);
     if (!result.ok) {
       setLocalMessage(result.message ?? "Unable to start streaming.");
       return;
     }
-    if (settings.rememberStreamKey && streamKey.trim().length > 0) {
-      await window.dualcast.setStoredStreamKey({ streamKey: streamKey.trim() });
+    if (settings.rememberStreamKey) {
+      await Promise.all(
+        destinations
+          .filter((destination) => destination.streamKey)
+          .map((destination) =>
+            window.dualcast.setStoredStreamKey({
+              destinationId: destination.id,
+              streamKey: destination.streamKey
+            })
+          )
+      );
     }
   };
 
@@ -69,8 +104,43 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ programCanvasRef }) => 
     await updateSettings({ rememberStreamKey: checked });
     if (!checked) {
       await window.dualcast.clearStoredStreamKey();
-      setStreamKey("");
+      setStreamKeys({});
     }
+  };
+
+  const updateDestination = async (destinationId: string, update: Partial<StreamDestinationConfig>) => {
+    await updateSettings({
+      streamDestinations: settings.streamDestinations.map((destination) =>
+        destination.id === destinationId ? { ...destination, ...update } : destination
+      )
+    });
+  };
+
+  const addDestination = async () => {
+    const id = crypto.randomUUID ? crypto.randomUUID() : `stream-${Date.now()}`;
+    await updateSettings({
+      streamDestinations: [
+        ...settings.streamDestinations,
+        { id, name: `Destination ${settings.streamDestinations.length + 1}`, rtmpUrl: "", enabled: true }
+      ]
+    });
+  };
+
+  const removeDestination = async (destinationId: string) => {
+    if (settings.streamDestinations.length <= 1) {
+      return;
+    }
+    await window.dualcast.clearStoredStreamKey({ destinationId });
+    setStreamKeys((current) => {
+      const next = { ...current };
+      delete next[destinationId];
+      return next;
+    });
+    await updateSettings({
+      streamDestinations: settings.streamDestinations.filter(
+        (destination) => destination.id !== destinationId
+      )
+    });
   };
 
   const handlePresetChange = async (value: StreamingPreset) => {
@@ -101,32 +171,91 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ programCanvasRef }) => 
     }
   };
 
+  const fetchLogContent = async () => {
+    try {
+      setLogLoading(true);
+      const content = await window.dualcast.getStreamLogContent({ maxLines: 400 });
+      setLogContent(content || "No logs yet.");
+    } catch {
+      setLogContent("Unable to load logs.");
+    } finally {
+      setLogLoading(false);
+    }
+  };
+
+  const handleToggleLogViewer = async () => {
+    const next = !logOpen;
+    setLogOpen(next);
+    if (next) {
+      await fetchLogContent();
+    }
+  };
+
   return (
     <section className="panel streaming-panel">
-      <h2>Streaming</h2>
-      <div className="field">
-        <label htmlFor="rtmpUrl">RTMP URL</label>
-        <input
-          id="rtmpUrl"
-          type="text"
-          placeholder="rtmp://a.rtmp.youtube.com/live2"
-          value={rtmpUrl}
-          onChange={(event) => {
-            const value = event.target.value;
-            setRtmpUrl(value);
-            updateSettings({ streamRtmpUrl: value });
-          }}
-        />
+      <div className="panel-header">
+        <h2>Streaming Destinations</h2>
+        <button className="btn btn-outline btn-compact" onClick={addDestination} disabled={isActive}>
+          Add Destination
+        </button>
       </div>
-      <div className="field">
-        <label htmlFor="streamKey">Stream Key</label>
-        <input
-          id="streamKey"
-          type="password"
-          placeholder="Enter stream key"
-          value={streamKey}
-          onChange={(event) => setStreamKey(event.target.value)}
-        />
+      <div className="destination-list">
+        {settings.streamDestinations.map((destination, index) => (
+          <div key={destination.id} className="destination-card">
+            <div className="destination-card-header">
+              <label className="destination-enabled">
+                <input
+                  type="checkbox"
+                  checked={destination.enabled}
+                  onChange={(event) => updateDestination(destination.id, { enabled: event.target.checked })}
+                  disabled={isActive}
+                />
+                Enabled
+              </label>
+              <button
+                className="btn btn-danger btn-compact"
+                onClick={() => removeDestination(destination.id)}
+                disabled={isActive || settings.streamDestinations.length <= 1}
+              >
+                Remove
+              </button>
+            </div>
+            <div className="field">
+              <label htmlFor={`destination-name-${index}`}>Name</label>
+              <input
+                id={`destination-name-${index}`}
+                value={destination.name}
+                onChange={(event) => updateDestination(destination.id, { name: event.target.value })}
+                disabled={isActive}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor={`destination-url-${index}`}>RTMP URL</label>
+              <input
+                id={`destination-url-${index}`}
+                placeholder="rtmp://a.rtmp.youtube.com/live2"
+                value={destination.rtmpUrl}
+                onChange={(event) => updateDestination(destination.id, { rtmpUrl: event.target.value })}
+                disabled={isActive}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor={`destination-key-${index}`}>Stream Key</label>
+              <input
+                id={`destination-key-${index}`}
+                type="password"
+                value={streamKeys[destination.id] ?? ""}
+                onChange={(event) =>
+                  setStreamKeys((current) => ({ ...current, [destination.id]: event.target.value }))
+                }
+                disabled={isActive}
+              />
+            </div>
+            <div className="endpoint-preview">
+              {formatEndpoint(destination.rtmpUrl, streamKeys[destination.id] ?? "") || "Endpoint not configured"}
+            </div>
+          </div>
+        ))}
       </div>
       <div className="field field-row">
         <label htmlFor="rememberKey">Remember Stream Key</label>
@@ -211,17 +340,52 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ programCanvasRef }) => 
           <span className="warn-pill">{lastError}</span>
         ) : null}
       </div>
+      {destinationStatuses.length > 0 ? (
+        <div className="destination-status-list">
+          {destinationStatuses.map((destination) => (
+            <div key={destination.id} className={`destination-status ${destination.status}`}>
+              <strong>{destination.name}</strong>
+              <span>{destination.status}</span>
+              {destination.message ? <small>{destination.message}</small> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="streaming-actions">
-        <button className="btn btn-primary" onClick={handleStart} disabled={isActive || !rtmpUrl || !streamKey}>
+        <button
+          className="btn btn-primary"
+          onClick={handleStart}
+          disabled={
+            isActive ||
+            !settings.streamDestinations.some(
+              (destination) =>
+                destination.enabled && destination.rtmpUrl && (streamKeys[destination.id] ?? "")
+            )
+          }
+        >
           Start Stream
         </button>
         <button className="btn btn-danger" onClick={stopStream} disabled={!isActive}>
           Stop Stream
         </button>
+        <button className="btn btn-outline" onClick={handleToggleLogViewer}>
+          {logOpen ? "Hide Logs" : "View Logs"}
+        </button>
         <button className="btn btn-outline" onClick={handleOpenLogs}>
           Open Stream Logs
         </button>
       </div>
+      {logOpen ? (
+        <div className="log-viewer">
+          <div className="log-viewer-header">
+            <span>Latest log lines</span>
+            <button className="btn btn-outline btn-compact" onClick={fetchLogContent} disabled={logLoading}>
+              {logLoading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+          <pre>{logContent}</pre>
+        </div>
+      ) : null}
     </section>
   );
 };

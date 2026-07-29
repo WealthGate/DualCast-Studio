@@ -25,6 +25,20 @@ const SettingsPanel: React.FC = () => {
         </div>
       </div>
       <div className="field">
+        <label htmlFor="masterAudioGain">
+          Master Program Audio ({Math.round(settings.masterAudioGain * 100)}%)
+        </label>
+        <input
+          id="masterAudioGain"
+          type="range"
+          min={0}
+          max={2}
+          step={0.01}
+          value={settings.masterAudioGain}
+          onChange={(event) => updateSettings({ masterAudioGain: Number(event.target.value) })}
+        />
+      </div>
+      <div className="field">
         <label htmlFor="quality">Quality</label>
         <select
           id="quality"

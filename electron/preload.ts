@@ -12,7 +12,14 @@ import {
   StreamStartResult,
   StreamStopResult,
   StreamStatusPayload,
-  StreamingEncoder
+  StreamingEncoder,
+  MediaFileResult,
+  BrowserFramePayload,
+  BrowserSourcePayload,
+  ExportClipPayload,
+  ExportClipResult,
+  NetworkOutputStatus,
+  RemoteOperatorAction
 } from "../src/shared/types";
 
 const api = {
@@ -22,21 +29,42 @@ const api = {
   selectSaveDirectory: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.selectSaveDirectory),
   saveRecording: (payload: SaveRecordingPayload): Promise<SaveRecordingResult> => ipcRenderer.invoke(IpcChannels.saveRecording, payload),
   openFolder: (filePath: string): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openFolder, filePath),
-  openProjection: (displayId?: string | null): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openProjection, displayId),
+  openProjection: (displayIds: string[]): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openProjection, displayIds),
   closeProjection: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.closeProjection),
+  openLowerThird: (displayId: string): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openLowerThird, displayId),
+  closeLowerThird: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.closeLowerThird),
   startStream: (payload: StreamStartPayload): Promise<StreamStartResult> =>
     ipcRenderer.invoke(IpcChannels.startStream, payload),
   stopStream: (): Promise<StreamStopResult> => ipcRenderer.invoke(IpcChannels.stopStream),
   sendStreamChunk: (payload: Uint8Array) => ipcRenderer.send(IpcChannels.streamChunk, payload),
   getStreamLogPath: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.getStreamLogPath),
+  getStreamLogContent: (payload: { maxLines?: number }): Promise<string> =>
+    ipcRenderer.invoke(IpcChannels.getStreamLogContent, payload),
   getStreamingCapabilities: (): Promise<{ encoders: StreamingEncoder[] }> =>
     ipcRenderer.invoke(IpcChannels.getStreamingCapabilities),
-  getStoredStreamKey: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.getStoredStreamKey),
-  setStoredStreamKey: (payload: { streamKey: string }): Promise<boolean> =>
+  getStoredStreamKey: (payload?: { destinationId?: string }): Promise<string | null> =>
+    ipcRenderer.invoke(IpcChannels.getStoredStreamKey, payload),
+  setStoredStreamKey: (payload: { destinationId?: string; streamKey: string }): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.setStoredStreamKey, payload),
-  clearStoredStreamKey: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.clearStoredStreamKey),
+  clearStoredStreamKey: (payload?: { destinationId?: string }): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.clearStoredStreamKey, payload),
+  startNetworkOutput: (payload: { port: number; operatorPin: string }): Promise<NetworkOutputStatus> =>
+    ipcRenderer.invoke(IpcChannels.startNetworkOutput, payload),
+  stopNetworkOutput: (): Promise<NetworkOutputStatus> => ipcRenderer.invoke(IpcChannels.stopNetworkOutput),
+  getNetworkOutputStatus: (): Promise<NetworkOutputStatus> => ipcRenderer.invoke(IpcChannels.getNetworkOutputStatus),
+  exportClip: (payload: ExportClipPayload): Promise<ExportClipResult> =>
+    ipcRenderer.invoke(IpcChannels.exportClip, payload),
+  selectMediaFile: (payload: { kind: "image" | "video" | "audio" }): Promise<MediaFileResult | null> =>
+    ipcRenderer.invoke(IpcChannels.selectMediaFile, payload),
+  createBrowserSource: (payload: BrowserSourcePayload): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.createBrowserSource, payload),
+  updateBrowserSource: (payload: BrowserSourcePayload): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.updateBrowserSource, payload),
+  destroyBrowserSource: (payload: { sourceId: string }): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.destroyBrowserSource, payload),
   updateProgramState: (state: ProgramState) => ipcRenderer.send(IpcChannels.updateProgramState, state),
   sendProgramFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.programFrame, dataUrl),
+  sendLowerThirdFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.lowerThirdFrame, dataUrl),
   onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: StreamStatusPayload) => handler(payload);
     ipcRenderer.on(IpcChannels.streamStatus, listener);
@@ -46,6 +74,16 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, payload: string) => handler(payload);
     ipcRenderer.on(IpcChannels.programFrame, listener);
     return () => ipcRenderer.removeListener(IpcChannels.programFrame, listener);
+  },
+  onLowerThirdFrame: (handler: (dataUrl: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: string) => handler(payload);
+    ipcRenderer.on(IpcChannels.lowerThirdFrame, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.lowerThirdFrame, listener);
+  },
+  onBrowserFrame: (handler: (payload: BrowserFramePayload) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: BrowserFramePayload) => handler(payload);
+    ipcRenderer.on(IpcChannels.browserFrame, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.browserFrame, listener);
   },
   onProgramState: (handler: (state: ProgramState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: ProgramState) => handler(payload);
@@ -66,6 +104,21 @@ const api = {
     const listener = () => handler();
     ipcRenderer.on(IpcChannels.projectionClosed, listener);
     return () => ipcRenderer.removeListener(IpcChannels.projectionClosed, listener);
+  },
+  onLowerThirdOpened: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on(IpcChannels.lowerThirdOpened, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.lowerThirdOpened, listener);
+  },
+  onLowerThirdClosed: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on(IpcChannels.lowerThirdClosed, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.lowerThirdClosed, listener);
+  },
+  onRemoteOperatorAction: (handler: (action: RemoteOperatorAction) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, action: RemoteOperatorAction) => handler(action);
+    ipcRenderer.on(IpcChannels.remoteOperatorAction, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.remoteOperatorAction, listener);
   }
 };
 

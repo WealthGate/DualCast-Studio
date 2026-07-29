@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { AudioMode } from "../../shared/types";
+import packageJson from "../../../package.json";
 
 const formatTimer = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -69,7 +70,7 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
         <span className="brand-dot" />
         <div>
           <h1>DualCast Studio</h1>
-          <p>Phase 2b - Streaming Hardened</p>
+          <p>Large Venue Edition · v{packageJson.version}</p>
         </div>
       </div>
       <div className="header-controls">

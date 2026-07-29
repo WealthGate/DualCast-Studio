@@ -1,6 +1,6 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { getDisplayStream, parseCameraSourceId, pickRecorderMimeType, stopMediaStream } from "../utils/media";
+import { pickRecorderMimeType, stopMediaStream } from "../utils/media";
 import { AudioMode } from "../../shared/types";
 import { getQualityProfile } from "../../shared/recording";
 
@@ -9,8 +9,10 @@ const shouldIncludeMic = (mode: AudioMode) => mode === "microphone" || mode === 
 
 export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const {
-    programSourceId,
+    programSceneId,
+    scenes,
     settings,
+    programAudioStream,
     setRecordingState,
     setRecordingSeconds,
     setRecordingResult,
@@ -22,8 +24,9 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const systemStreamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const programScene = useMemo(() => scenes.find((scene) => scene.id === programSceneId) ?? null, [programSceneId, scenes]);
+  const hasProgramSources = Boolean(programScene && programScene.sourceIds.length > 0);
 
   const clearTimer = () => {
     if (timerRef.current) {
@@ -38,8 +41,8 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
       return;
     }
 
-    if (!programSourceId) {
-      setRecordingError("Select a display and TAKE it to Program before recording.");
+    if (!programSceneId || !hasProgramSources) {
+      setRecordingError("Select a scene and TAKE it to Program before recording.");
       return;
     }
 
@@ -55,25 +58,18 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
     const tracks = [...canvasStream.getVideoTracks()];
 
     const audioMode = settings.audioMode;
-    const captureAudio = shouldIncludeSystem(audioMode) || shouldIncludeMic(audioMode);
+    const includeProgramAudio = shouldIncludeSystem(audioMode);
+    const captureAudio = includeProgramAudio || shouldIncludeMic(audioMode);
     const audioContext = captureAudio ? new AudioContext() : null;
     const destination = audioContext ? audioContext.createMediaStreamDestination() : null;
     audioContextRef.current = audioContext;
 
-    if (shouldIncludeSystem(audioMode)) {
+    if (includeProgramAudio && programAudioStream && audioContext && destination && programAudioStream.getAudioTracks().length > 0) {
       try {
-        if (parseCameraSourceId(programSourceId)) {
-          throw new Error("System audio is unavailable for camera sources.");
-        }
-        const systemStream = await getDisplayStream(programSourceId, true);
-        systemStreamRef.current = systemStream;
-        if (audioContext && destination && systemStream.getAudioTracks().length > 0) {
-          const source = audioContext.createMediaStreamSource(systemStream);
-          source.connect(destination);
-        }
-        systemStream.getVideoTracks().forEach((track) => track.stop());
-      } catch (error) {
-        setRecordingError("System audio is unavailable for this display.");
+        const source = audioContext.createMediaStreamSource(programAudioStream);
+        source.connect(destination);
+      } catch {
+        setRecordingError("Program audio is unavailable for this scene.");
       }
     }
 
@@ -123,11 +119,11 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
         const result = await window.dualcast.saveRecording({ data: buffer });
         setRecordingResult(result);
       } catch (error) {
-        setRecordingError("Failed to save recording.");
+        const message = error instanceof Error ? error.message : "Failed to save recording.";
+        setRecordingError(message);
       }
 
       stopMediaStream(canvasStream);
-      stopMediaStream(systemStreamRef.current);
       stopMediaStream(micStreamRef.current);
       audioContextRef.current?.close();
       recorderRef.current = null;
@@ -139,7 +135,19 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
     timerRef.current = window.setInterval(() => {
       setRecordingSeconds((prev) => prev + 1);
     }, 1000);
-  }, [canvasRef, programSourceId, setRecordingError, setRecordingResult, setRecordingSeconds, setRecordingState, settings.audioMode, settings.frameRate, settings.qualityPreset]);
+  }, [
+    canvasRef,
+    programSceneId,
+    hasProgramSources,
+    programAudioStream,
+    setRecordingError,
+    setRecordingResult,
+    setRecordingSeconds,
+    setRecordingState,
+    settings.audioMode,
+    settings.frameRate,
+    settings.qualityPreset
+  ]);
 
   const stopRecording = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== "inactive") {

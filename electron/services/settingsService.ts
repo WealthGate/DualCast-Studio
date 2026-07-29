@@ -10,7 +10,8 @@ import {
   StreamingAudioBitrate,
   StreamingEncoder,
   StreamingFps,
-  StreamingPreset
+  StreamingPreset,
+  StudioState
 } from "../../src/shared/types";
 
 let store: Store<Settings> | null = null;
@@ -22,8 +23,47 @@ const allowedStreamingPresets: StreamingPreset[] = ["low", "medium", "high"];
 const allowedStreamingFps: StreamingFps[] = [30, 60];
 const allowedStreamingAudio: StreamingAudioBitrate[] = [128, 192];
 const allowedStreamingEncoders: StreamingEncoder[] = ["auto", "x264", "nvenc", "qsv", "amf"];
+const allowedOperatorRoles = ["director", "graphics", "audio", "stream"];
 
 export const getDefaultSaveDirectory = () => path.join(app.getPath("videos"), "DualCast Studio");
+
+const defaultStudioState: StudioState = {
+  scenes: [{ id: "scene-1", name: "Scene 1", sourceIds: [] }],
+  sources: {},
+  groups: [],
+  previewSceneId: "scene-1",
+  programSceneId: "scene-1"
+};
+
+const defaultLowerThird = {
+  enabled: false,
+  displayId: null,
+  heightPercent: 28,
+  position: "bottom" as const,
+  backgroundColor: "#000000"
+};
+
+const defaultNetworkOutput = {
+  enabled: false,
+  port: 8787,
+  operatorPin: "2468"
+};
+
+const defaultIntegrations = {
+  songProvider: "local" as const,
+  songLibraryPath: "",
+  songApiUrl: "",
+  scriptureProvider: "api-bible" as const,
+  scriptureApiUrl: "https://api.scripture.api.bible/v1",
+  scriptureApiKeyEnv: "DUALCAST_SCRIPTURE_API_KEY",
+  aiProvider: "disabled" as const,
+  aiBaseUrl: "https://api.openai.com/v1",
+  aiModel: "gpt-5.6-sol",
+  aiApiKeyEnv: "OPENAI_API_KEY",
+  aiLiveCaptions: false,
+  aiSermonSummary: false,
+  aiHighlightDetection: false
+};
 
 const createStore = () => {
   return new Store<Settings>({
@@ -38,7 +78,15 @@ const createStore = () => {
       streamFps: 30,
       streamAudioBitrate: 128,
       streamEncoder: "auto",
-      rememberStreamKey: false
+      rememberStreamKey: false,
+      streamDestinations: [{ id: "primary", name: "Primary Stream", rtmpUrl: "", enabled: true }],
+      operatorStationName: "Main Director",
+      operatorRole: "director",
+      masterAudioGain: 1,
+      lowerThird: defaultLowerThird,
+      networkOutput: defaultNetworkOutput,
+      integrations: defaultIntegrations,
+      studioState: defaultStudioState
     },
     schema: {
       saveDirectory: { type: "string" },
@@ -51,7 +99,15 @@ const createStore = () => {
       streamFps: { type: "number" },
       streamAudioBitrate: { type: "number" },
       streamEncoder: { type: "string" },
-      rememberStreamKey: { type: "boolean" }
+      rememberStreamKey: { type: "boolean" },
+      streamDestinations: { type: "array" },
+      operatorStationName: { type: "string" },
+      operatorRole: { type: "string" },
+      masterAudioGain: { type: "number" },
+      lowerThird: { type: "object" },
+      networkOutput: { type: "object" },
+      integrations: { type: "object" },
+      studioState: { type: "object" }
     }
   });
 };
@@ -64,7 +120,21 @@ const getStore = () => {
 };
 
 export const getSettings = (): Settings => {
-  return getStore().store;
+  const stored = getStore().store;
+  const destinations =
+    stored.streamDestinations?.length
+      ? stored.streamDestinations
+      : [{ id: "primary", name: "Primary Stream", rtmpUrl: stored.streamRtmpUrl ?? "", enabled: true }];
+  return {
+    ...stored,
+    streamDestinations: destinations,
+    operatorStationName: stored.operatorStationName || "Main Director",
+    operatorRole: stored.operatorRole || "director",
+    masterAudioGain: Number.isFinite(stored.masterAudioGain) ? stored.masterAudioGain : 1,
+    lowerThird: { ...defaultLowerThird, ...(stored.lowerThird ?? {}) },
+    networkOutput: { ...defaultNetworkOutput, ...(stored.networkOutput ?? {}) },
+    integrations: { ...defaultIntegrations, ...(stored.integrations ?? {}) }
+  };
 };
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
@@ -114,6 +184,57 @@ export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate =
     sanitized.rememberStreamKey = update.rememberStreamKey;
   }
 
+  if (Array.isArray(update.streamDestinations)) {
+    sanitized.streamDestinations = update.streamDestinations
+      .filter((destination) => destination && typeof destination.id === "string")
+      .map((destination) => ({
+        id: destination.id,
+        name: typeof destination.name === "string" ? destination.name : "Stream",
+        rtmpUrl: typeof destination.rtmpUrl === "string" ? destination.rtmpUrl : "",
+        enabled: destination.enabled !== false
+      }));
+  }
+
+  if (typeof update.operatorStationName === "string") {
+    sanitized.operatorStationName = update.operatorStationName.slice(0, 80);
+  }
+
+  if (allowedOperatorRoles.includes(update.operatorRole as string)) {
+    sanitized.operatorRole = update.operatorRole;
+  }
+
+  if (typeof update.masterAudioGain === "number" && Number.isFinite(update.masterAudioGain)) {
+    sanitized.masterAudioGain = Math.max(0, Math.min(2, update.masterAudioGain));
+  }
+
+  if (update.lowerThird && typeof update.lowerThird === "object") {
+    sanitized.lowerThird = {
+      ...defaultLowerThird,
+      ...update.lowerThird,
+      heightPercent: Math.max(10, Math.min(50, update.lowerThird.heightPercent ?? defaultLowerThird.heightPercent))
+    };
+  }
+
+  if (update.networkOutput && typeof update.networkOutput === "object") {
+    sanitized.networkOutput = {
+      ...defaultNetworkOutput,
+      ...update.networkOutput,
+      port: Math.max(1024, Math.min(65535, update.networkOutput.port ?? defaultNetworkOutput.port)),
+      operatorPin: String(update.networkOutput.operatorPin ?? defaultNetworkOutput.operatorPin).slice(0, 16)
+    };
+  }
+
+  if (update.integrations && typeof update.integrations === "object") {
+    sanitized.integrations = {
+      ...defaultIntegrations,
+      ...update.integrations
+    };
+  }
+
+  if (typeof update.studioState === "object" && update.studioState) {
+    sanitized.studioState = update.studioState;
+  }
+
   return sanitized;
 };
 
@@ -121,5 +242,5 @@ export const updateSettings = (update: SettingsUpdate): Settings => {
   const sanitized = sanitizeSettingsUpdate(update);
   const storeInstance = getStore();
   storeInstance.set(sanitized);
-  return storeInstance.store;
+  return getSettings();
 };

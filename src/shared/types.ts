@@ -5,8 +5,76 @@ export type StreamingPreset = "low" | "medium" | "high";
 export type StreamingFps = 30 | 60;
 export type StreamingAudioBitrate = 128 | 192;
 export type StreamingEncoder = "auto" | "x264" | "nvenc" | "qsv" | "amf";
+export type OperatorRole = "director" | "graphics" | "audio" | "stream";
+export type TextSourceRole = "standard" | "lower-third";
 
 export type CaptureSourceType = "screen" | "window";
+
+export type SourceType = "display" | "window" | "camera" | "image" | "video" | "browser" | "audio" | "text";
+
+export type SourceRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type SourceGroup = {
+  id: string;
+  name: string;
+  locked?: boolean;
+};
+
+export type Scene = {
+  id: string;
+  name: string;
+  sourceIds: string[];
+  locked?: boolean;
+};
+
+type SourceBase = {
+  id: string;
+  name: string;
+  type: SourceType;
+  rect: SourceRect;
+  enabled: boolean;
+  audioEnabled: boolean;
+  volume?: number;
+  rotation?: number;
+  locked?: boolean;
+  groupId?: string | null;
+  media?: {
+    paused?: boolean;
+    restartToken?: number;
+  };
+};
+
+export type Source =
+  | (SourceBase & { type: "display" | "window"; data: { captureId: string } })
+  | (SourceBase & { type: "camera"; data: { deviceId: string } })
+  | (SourceBase & { type: "image"; data: { url: string } })
+  | (SourceBase & { type: "video"; data: { url: string; loop: boolean } })
+  | (SourceBase & { type: "browser"; data: { url: string } })
+  | (SourceBase & { type: "audio"; data: { url: string; loop: boolean } })
+  | (SourceBase & {
+      type: "text";
+      data: {
+        text: string;
+        fontSize: number;
+        color: string;
+        backgroundColor: string;
+        align: "left" | "center" | "right";
+        role?: TextSourceRole;
+      };
+    });
+
+export type StudioState = {
+  scenes: Scene[];
+  sources: Record<string, Source>;
+  groups: SourceGroup[];
+  previewSceneId: string | null;
+  programSceneId: string | null;
+};
 
 export type DisplaySource = {
   id: string;
@@ -21,6 +89,47 @@ export type DisplaySource = {
   appIconUrl?: string | null;
 };
 
+export type StreamDestinationConfig = {
+  id: string;
+  name: string;
+  rtmpUrl: string;
+  enabled: boolean;
+};
+
+export type StreamDestinationInput = StreamDestinationConfig & {
+  streamKey: string;
+};
+
+export type LowerThirdSettings = {
+  enabled: boolean;
+  displayId: string | null;
+  heightPercent: number;
+  position: "top" | "bottom";
+  backgroundColor: string;
+};
+
+export type NetworkOutputSettings = {
+  enabled: boolean;
+  port: number;
+  operatorPin: string;
+};
+
+export type ChurchIntegrationSettings = {
+  songProvider: "local" | "planning-center" | "custom";
+  songLibraryPath: string;
+  songApiUrl: string;
+  scriptureProvider: "api-bible" | "bible-api" | "custom";
+  scriptureApiUrl: string;
+  scriptureApiKeyEnv: string;
+  aiProvider: "disabled" | "openai" | "azure-openai" | "custom";
+  aiBaseUrl: string;
+  aiModel: string;
+  aiApiKeyEnv: string;
+  aiLiveCaptions: boolean;
+  aiSermonSummary: boolean;
+  aiHighlightDetection: boolean;
+};
+
 export type Settings = {
   saveDirectory: string;
   qualityPreset: QualityPreset;
@@ -33,6 +142,14 @@ export type Settings = {
   streamAudioBitrate: StreamingAudioBitrate;
   streamEncoder: StreamingEncoder;
   rememberStreamKey: boolean;
+  streamDestinations: StreamDestinationConfig[];
+  operatorStationName: string;
+  operatorRole: OperatorRole;
+  masterAudioGain: number;
+  lowerThird: LowerThirdSettings;
+  networkOutput: NetworkOutputSettings;
+  integrations: ChurchIntegrationSettings;
+  studioState: StudioState;
 };
 
 export type SettingsUpdate = Partial<Settings>;
@@ -47,13 +164,32 @@ export type SaveRecordingResult = {
   usedFallback: boolean;
 };
 
+export type MediaFileResult = {
+  filePath: string;
+  fileUrl: string;
+  name: string;
+};
+
+export type BrowserFramePayload = {
+  sourceId: string;
+  dataUrl: string;
+};
+
+export type BrowserSourcePayload = {
+  sourceId: string;
+  url: string;
+  width: number;
+  height: number;
+};
+
 export type HotkeyAction = "toggle-record" | "take" | "cut-black";
 
 export type StreamingStatus = "idle" | "connecting" | "live" | "reconnecting" | "error";
 
 export type StreamStartPayload = {
-  rtmpUrl: string;
-  streamKey: string;
+  rtmpUrl?: string;
+  streamKey?: string;
+  destinations?: StreamDestinationInput[];
   hasAudio: boolean;
   preset: StreamingPreset;
   fps: StreamingFps;
@@ -85,10 +221,37 @@ export type StreamStatusPayload = {
   reconnectAttempt?: number | null;
   reconnectMax?: number | null;
   lastError?: string | null;
+  destinationStatuses?: Array<{
+    id: string;
+    name: string;
+    status: StreamingStatus;
+    message?: string | null;
+    reconnectAttempt?: number | null;
+  }>;
+};
+
+export type NetworkOutputStatus = {
+  running: boolean;
+  port: number;
+  programUrls: string[];
+  operatorUrls: string[];
+};
+
+export type RemoteOperatorAction = "toggle-record" | "take" | "cut-black" | "toggle-freeze";
+
+export type ExportClipPayload = {
+  inputPath: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+export type ExportClipResult = {
+  filePath: string;
+  fileName: string;
 };
 
 export type ProgramState = {
-  programSourceId: string | null;
+  programSceneId: string | null;
   isCutToBlack: boolean;
   isFrozen: boolean;
   qualityPreset: QualityPreset;

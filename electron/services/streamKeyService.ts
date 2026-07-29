@@ -8,6 +8,7 @@ type StreamKeyRecord =
 
 type SecretsStore = {
   streamKey?: string;
+  streamKeys?: Record<string, string>;
   localKey?: string;
 };
 
@@ -56,7 +57,7 @@ const decryptLocal = (payload: { iv: string; tag: string; data: string }) => {
 
 export const isEncryptionAvailable = () => safeStorage.isEncryptionAvailable();
 
-export const setStreamKey = (streamKey: string) => {
+export const setStreamKey = (streamKey: string, destinationId = "primary") => {
   if (!streamKey) {
     return false;
   }
@@ -69,12 +70,16 @@ export const setStreamKey = (streamKey: string) => {
     record = { mode: "local", payload: encryptLocal(streamKey) };
   }
 
-  getStore().set("streamKey", JSON.stringify(record));
+  const storeInstance = getStore();
+  const streamKeys = storeInstance.get("streamKeys") ?? {};
+  streamKeys[destinationId] = JSON.stringify(record);
+  storeInstance.set("streamKeys", streamKeys);
   return true;
 };
 
-export const getStreamKey = () => {
-  const stored = getStore().get("streamKey");
+export const getStreamKey = (destinationId = "primary") => {
+  const storeInstance = getStore();
+  const stored = storeInstance.get("streamKeys")?.[destinationId] ?? storeInstance.get("streamKey");
   if (!stored) {
     return null;
   }
@@ -97,8 +102,15 @@ export const getStreamKey = () => {
   return null;
 };
 
-export const clearStreamKey = () => {
+export const clearStreamKey = (destinationId?: string) => {
   const storeInstance = getStore();
-  storeInstance.delete("streamKey");
+  if (!destinationId) {
+    storeInstance.delete("streamKey");
+    storeInstance.delete("streamKeys");
+    return true;
+  }
+  const streamKeys = storeInstance.get("streamKeys") ?? {};
+  delete streamKeys[destinationId];
+  storeInstance.set("streamKeys", streamKeys);
   return true;
 };

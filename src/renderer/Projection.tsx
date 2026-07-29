@@ -2,13 +2,17 @@ import React, { useEffect, useRef, useState } from "react";
 import { ProgramState } from "../shared/types";
 
 const defaultState: ProgramState = {
-  programSourceId: null,
+  programSceneId: null,
   isCutToBlack: false,
   isFrozen: false,
   qualityPreset: "medium"
 };
 
-const Projection: React.FC = () => {
+type ProjectionProps = {
+  mode?: "program" | "lower-third";
+};
+
+const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   const [programState, setProgramState] = useState<ProgramState>(defaultState);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const latestFrameRef = useRef<HTMLImageElement | null>(null);
@@ -29,7 +33,8 @@ const Projection: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = window.dualcast.onProgramFrame((dataUrl) => {
+    const subscribe = mode === "lower-third" ? window.dualcast.onLowerThirdFrame : window.dualcast.onProgramFrame;
+    const unsubscribe = subscribe((dataUrl) => {
       const img = new Image();
       img.onload = () => {
         latestFrameRef.current = img;
@@ -40,12 +45,11 @@ const Projection: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const video = videoRef.current;
-    if (!canvas || !video) {
+    if (!canvas) {
       return;
     }
 
@@ -65,7 +69,7 @@ const Projection: React.FC = () => {
     }
 
     const render = () => {
-      if (programState.isCutToBlack || !programState.programSourceId) {
+      if (programState.isCutToBlack || !programState.programSceneId) {
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       } else if (latestFrameRef.current) {
@@ -85,7 +89,7 @@ const Projection: React.FC = () => {
       }
       window.removeEventListener("resize", resize);
     };
-  }, [programState.isCutToBlack, programState.isFrozen, programState.programSourceId]);
+  }, [programState.isCutToBlack, programState.isFrozen, programState.programSceneId]);
 
   return (
     <div className="projection-root">

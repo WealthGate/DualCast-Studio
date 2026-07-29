@@ -1,88 +1,120 @@
-# DualCast Studio (Phase 2b)
+# DualCast Studio
 
-DualCast Studio is a cross-platform desktop app for selecting a display source, previewing it, pushing it to Program, recording Program output, and streaming Program to RTMP endpoints. This Phase 2b milestone hardens streaming with presets, stats, and reconnect logic while laying the groundwork for conferencing and editing.
+DualCast Studio is a desktop production suite for churches and large venues. It combines live presentation, multi-display projection, lower thirds, recording, multi-destination streaming, operator controls, audio mixing, and lightweight post-production in one interface.
 
-## Features in Phase 2b
-- Enumerates connected displays with thumbnails and resolution.
-- Preview and Program panes with TAKE, CUT TO BLACK, and FREEZE controls.
-- Records Program output only (canvas-based) with audio modes (System/Mic/Both/None).
-- MP4 output via FFmpeg remux (WebM fallback when FFmpeg fails).
-- Global hotkeys for record and cuts.
-- Settings for save directory, quality preset, frame rate, and last display memory.
-- Streams Program output to RTMP endpoints (FFmpeg + x264 + AAC).
-- Streaming presets for resolution/bitrate + FPS and audio bitrate controls.
-- Encoder auto-detection with graceful fallback.
-- Live streaming stats (fps/bitrate/time) and reconnect strategy.
-- Stream key storage with opt-in remember toggle.
+## Current Capabilities
+
+### Live Production
+- Captures connected displays and builds layered scenes from display, camera, image, video, and text sources.
+- Provides Preview and Program buses with TAKE, CUT TO BLACK, and FREEZE controls.
+- Supports live text changes so an operator can update projected words, notices, or lower thirds without rebuilding the scene.
+- Records the Program canvas with configurable quality, frame rate, and System/Mic/Both/None audio modes.
+- Saves MP4 through bundled FFmpeg, with WebM fallback when conversion fails.
+- Provides global record and cut hotkeys.
+
+### Large-Venue Outputs
+- Sends the same Program feed to multiple selected sanctuary projectors or displays.
+- Provides a separate lower-third output for confidence monitors, broadcast graphics, or dedicated screens.
+- Configures lower-third position, height, background, and target display.
+- Publishes Program to browser-capable displays and OBS Browser Sources over the local network.
+- Supplies a PIN-protected remote operator page for TAKE, freeze, black, and record controls.
+- Supports operator station names and Director, Presentation, Streaming, Audio, and Viewer roles.
+
+### Streaming and Audio
+- Streams to multiple enabled RTMP/RTMPS destinations at the same time.
+- Stores stream keys per destination when the operator opts in.
+- Reports destination-level connecting, live, reconnecting, and error states.
+- Supports stream presets, encoder selection, audio bitrate controls, logs, and reconnect attempts.
+- Mixes source-level volume controls into a master Program audio gain.
+
+### Church Content and Integrations
+- Configures a local worship-song folder or Planning Center/custom song provider.
+- Configures API.Bible, Bible API, or a custom Scripture provider.
+- Keeps provider credentials outside normal settings by referencing environment-variable names.
+- Configures OpenAI, Azure OpenAI, or a custom AI-compatible provider for future captions, summaries, and highlight suggestions.
+- Defaults new OpenAI-compatible setups to `gpt-5.6-sol`; the provider can be changed without rebuilding the app.
+
+### Post-Production
+- Opens a recorded video, selects start/end times, and exports an H.264/AAC MP4 clip with FFmpeg.
+- Opens the exported file location from the Editor panel.
+
+## Large-Congregation Workflow
+
+1. Build scenes and assign display, camera, media, and text sources.
+2. Mark text sources as Standard or Lower Third.
+3. Select one or more main projector targets in Program.
+4. Select a separate lower-third display if needed.
+5. Enable the Venue LAN hub for wireless browser displays or an OBS Browser Source.
+6. Add and enable every streaming destination in Streaming.
+7. Set per-source and master audio levels.
+8. Give authorized operators the LAN operator URL and PIN.
+9. Record the Program output and create clips in Editor after the service.
+
+## Wireless Display Setup
+
+Wireless output uses the venue LAN rather than vendor-specific casting:
+
+- Start the LAN hub in the Venue tab.
+- Open the generated Program URL on a smart display, browser device, mini PC, tablet, or wireless HDMI receiver with a browser.
+- Add the same URL as an OBS Browser Source when feeding streaming software.
+- Keep production devices on a dedicated wired or managed Wi-Fi network where possible.
+
+This approach works across display brands that can show a web page. Native Miracast, AirPlay, Chromecast discovery, NDI, and SDI hardware control are not yet built in.
 
 ## Setup
-1. Install dependencies
-   ```bash
-   npm install
-   ```
-2. Start the app (development)
-   ```bash
-   npm run dev
-   ```
-3. Build renderer + Electron bundles
-   ```bash
-   npm run build
-   ```
-4. Package installers
-   ```bash
-   npm run package
-   ```
+
+```bash
+npm install
+npm run dev
+```
+
+Build and package:
+
+```bash
+npm run build
+npm run package
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+## Provider Configuration
+
+Provider API keys are not saved in ordinary app settings. Enter the name of an environment variable in Venue, then set that variable before starting DualCast Studio. Examples:
+
+```powershell
+$env:OPENAI_API_KEY="your-key"
+$env:DUALCAST_SCRIPTURE_API_KEY="your-key"
+npm run dev
+```
+
+Provider subscriptions and licensing remain the church's responsibility. Worship lyrics and Bible translations may have display, reporting, or streaming license requirements.
 
 ## Production Notes
-- **macOS Screen Recording Permission**: Users must grant Screen Recording access in System Settings > Privacy & Security > Screen Recording. If the preview is black, check this permission.
-- **Audio Capture**: System audio availability varies by OS. The app will warn if system audio is unavailable.
-- **FFmpeg**: `ffmpeg-static` is used for remuxing WebM to MP4 after recording. If it fails, the recording is saved as WebM.
-- **Streaming Logs**: Each stream session writes a log to `app.getPath("userData")/logs/streaming-<timestamp>.log` (for example on Windows: `C:\Users\<you>\AppData\Roaming\DualCast Studio\logs\streaming-2026-01-14T02-30-00-000Z.log`).
-- **Stream Key Storage**: Stream keys are only stored when “Remember Stream Key” is enabled. If OS encryption is unavailable, the key is encrypted locally (still stored on disk).
 
-## Streaming to YouTube (RTMP)
-1. Open YouTube Studio and create a live stream.
-2. Copy the RTMP URL (Server URL) and Stream Key.
-3. Paste the RTMP URL and Stream Key into the Streaming panel in DualCast Studio.
-4. Click Start Stream. Status should move from Connecting to Live.
-5. Click Stop Stream when finished.
+- Screen and system-audio capture permissions vary by operating system.
+- Each recording is captured as WebM internally and converted to MP4 after stop.
+- Each stream session writes a log under the app user-data `logs` directory.
+- Stream keys are stored only when Remember Stream Key is enabled.
+- Hardware encoders depend on the bundled FFmpeg build and machine drivers.
+- Use wired Ethernet for the production computer and critical outputs whenever possible.
 
-## Common Streaming Failures
-- **Invalid RTMP URL**: Ensure the URL starts with `rtmp://` or `rtmps://`.
-- **Missing FFmpeg**: Reinstall dependencies or provide a compatible ffmpeg binary.
-- **No Program Source**: Select a display and TAKE it to Program before streaming.
-- **Stream Ends Immediately**: Check the RTMP URL/key and review the streaming log.
+## Known Limits
 
-## Phase 2b QA Checklist
-- Start/Stop streaming multiple times in a row.
-- Kill network mid-stream and confirm reconnect attempts and recovery.
-- Verify macOS permissions flow for screen/audio capture.
-- Remove or block FFmpeg and confirm the UI reports the failure.
-- Force encoder fallback by selecting an unavailable encoder.
+- Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
+- Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
+- Song, Scripture, and AI panels configure providers; provider-specific browsing/import and paid API calls still require adapters and valid subscriptions.
+- The post-production editor currently provides trim/export rather than a multitrack timeline.
+- Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
+- Recording chunks are retained in memory before saving, so very long recordings should be split until direct-to-disk recording is added.
 
 ## Project Structure
-- `electron/` main process, IPC, permissions, logging, hotkeys
-- `electron/preload.ts` secure IPC bridge
-- `src/renderer/` React UI and capture logic
-- `src/shared/` shared types, constants, and utilities
-- `src/services/` Phase 2 service interfaces (stubs)
 
-## Phase 2+ Roadmap (Extension Points)
-- **Streaming**: Expand presets, bitrate metrics, and WHIP output.
-- **Conferencing**: Implement `IConferenceService` for multi-user rooms and remote feeds.
-- **Editor**: Implement `IEditorService` for timeline editing and export presets.
-- **AI**: Implement `IAIService` for transcription and highlight detection.
-- **Accounts/Billing**: Implement `IAccountsBillingService` for sign-in and subscription state.
-
-## Known Limitations
-- Large recordings are held in memory before saving; Phase 2 should stream to disk.
-- System audio capture may be unavailable on some Linux distributions.
-- Recording is WebM internally and remuxed to MP4 after stop.
-- Streaming presets are tuned for typical RTMP targets; advanced metrics and auto-bitrate are future work.
-- Hardware encoder availability depends on the bundled FFmpeg build.
-- If OS encryption is unavailable, locally encrypted stream keys are still stored on disk.
-
-## Phase 3 Next Step
-Pick one:
-- Conferencing MVP (room join/leave, remote video tiles).
-- Editor MVP (timeline ingest and export presets).
+- `electron/` — main process, FFmpeg services, outputs, storage, IPC, and hotkeys
+- `electron/preload.ts` — secure renderer bridge
+- `src/renderer/` — React production interface and capture pipeline
+- `src/shared/` — shared types and IPC constants
+- `src/services/` — service interfaces and extension points

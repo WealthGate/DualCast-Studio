@@ -1,18 +1,41 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { getCameraStream, getMediaStream, parseCameraSourceId, stopMediaStream } from "../utils/media";
+import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
+import { Scene, Source, SourceRect } from "../../shared/types";
+import SceneSourcesPanel from "./SceneSourcesPanel";
 
 type PreviewProgramProps = {
-  previewVideoRef: React.RefObject<HTMLVideoElement>;
-  programVideoRef: React.RefObject<HTMLVideoElement>;
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
 };
 
-const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, programVideoRef, programCanvasRef }) => {
+type SourceMedia = {
+  signature: string;
+  type: Source["type"];
+  videoEl?: HTMLVideoElement;
+  imageEl?: HTMLImageElement;
+  audioEl?: HTMLAudioElement;
+  stream?: MediaStream;
+  captureStream?: MediaStream;
+  lastRestartToken?: number;
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const getSignature = (source: Source) =>
+  JSON.stringify({
+    type: source.type,
+    data: source.data,
+    audioEnabled: source.audioEnabled
+  });
+
+const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => {
   const {
-    previewSourceId,
-    programSourceId,
+    scenes,
+    sources,
+    previewSceneId,
+    programSceneId,
+    selectedSourceId,
     isCutToBlack,
     isFrozen,
     takeToProgram,
@@ -21,220 +44,659 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
     toggleFreeze,
     settings,
     displays,
-    cameraDeviceId,
-    cameraOverlayMode,
-    cameraRect
+    updateSourceRect,
+    setSelectedSourceId,
+    persistStudioState,
+    setProgramAudioStream,
+    transitionType,
+    transitionDurationMs,
+    setTransitionType,
+    setTransitionDuration,
+    updateSettings
   } = useAppStore();
 
-  const [projectionTargetId, setProjectionTargetId] = useState<string>("");
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const sourceMediaRef = useRef<Map<string, SourceMedia>>(new Map());
+  const browserFramesRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const browserSizeRef = useRef<Map<string, { width: number; height: number; url: string }>>(new Map());
+  const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 });
   const [isProjecting, setIsProjecting] = useState(false);
+  const [projectionTargetIds, setProjectionTargetIds] = useState<string[]>([]);
+  const [isLowerThirdProjecting, setIsLowerThirdProjecting] = useState(false);
+  const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
+  const transitionRef = useRef<{
+    type: "fade" | "crossfade";
+    startAt: number;
+    duration: number;
+    fromSceneId: string | null;
+    toSceneId: string | null;
+  } | null>(null);
+  const prevProgramSceneIdRef = useRef<string | null>(null);
+
   const screenTargets = useMemo(
     () => displays.filter((display) => display.sourceType === "screen" && display.displayId),
     [displays]
   );
 
-  const previewStreamRef = useRef<MediaStream | null>(null);
-  const programStreamRef = useRef<MediaStream | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
+  const programScene = useMemo(() => scenes.find((scene) => scene.id === programSceneId) ?? null, [programSceneId, scenes]);
+  const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
+  const previewSceneLocked = Boolean(previewScene?.locked);
+  const activeSourceIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (programScene) {
+      programScene.sourceIds.forEach((id) => ids.add(id));
+    }
+    if (previewScene) {
+      previewScene.sourceIds.forEach((id) => ids.add(id));
+    }
+    return ids;
+  }, [programScene, previewScene]);
+
+  const profile = getQualityProfile(settings.qualityPreset);
+  const programSize = { width: profile.maxWidth, height: profile.maxHeight };
+  const previewCanvasSize = fitToBounds(programSize.width, programSize.height, previewSize.width, previewSize.height);
 
   useEffect(() => {
-    const loadPreview = async () => {
-      stopMediaStream(previewStreamRef.current);
-      if (!previewSourceId || !previewVideoRef.current) {
-        return;
-      }
-      try {
-        const stream = await getMediaStream(previewSourceId, false);
-        previewStreamRef.current = stream;
-        previewVideoRef.current.srcObject = stream;
-        previewVideoRef.current.play();
-      } catch {
-        // Ignore preview failures; user can retry.
-      }
-    };
+    const prev = prevProgramSceneIdRef.current;
+    if (prev && prev !== programSceneId && transitionType !== "cut") {
+      transitionRef.current = {
+        type: transitionType === "fade" ? "fade" : "crossfade",
+        startAt: performance.now(),
+        duration: transitionDurationMs,
+        fromSceneId: prev,
+        toSceneId: programSceneId
+      };
+    }
+    prevProgramSceneIdRef.current = programSceneId;
+  }, [programSceneId, transitionType, transitionDurationMs]);
 
-    loadPreview();
+  useEffect(() => {
+    const element = previewContainerRef.current;
+    if (!element) {
+      return;
+    }
+    const resizeObserver = new ResizeObserver(() => {
+      setPreviewSize({
+        width: element.clientWidth || 1,
+        height: element.clientHeight || 1
+      });
+    });
+    resizeObserver.observe(element);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribeOpen = window.dualcast.onProjectionOpened(() => setIsProjecting(true));
+    const unsubscribeClose = window.dualcast.onProjectionClosed(() => setIsProjecting(false));
+    const unsubscribeLowerOpen = window.dualcast.onLowerThirdOpened(() => setIsLowerThirdProjecting(true));
+    const unsubscribeLowerClose = window.dualcast.onLowerThirdClosed(() => setIsLowerThirdProjecting(false));
+    const unsubscribeBrowser = window.dualcast.onBrowserFrame((payload) => {
+      const img = new Image();
+      img.onload = () => {
+        browserFramesRef.current.set(payload.sourceId, img);
+      };
+      img.src = payload.dataUrl;
+    });
 
     return () => {
-      stopMediaStream(previewStreamRef.current);
+      unsubscribeOpen();
+      unsubscribeClose();
+      unsubscribeLowerOpen();
+      unsubscribeLowerClose();
+      unsubscribeBrowser();
     };
-  }, [previewSourceId, previewVideoRef]);
+  }, []);
 
   useEffect(() => {
-    const loadProgram = async () => {
-      stopMediaStream(programStreamRef.current);
-      if (!programSourceId || !programVideoRef.current) {
-        return;
-      }
-      try {
-        const stream = await getMediaStream(programSourceId, false);
-        programStreamRef.current = stream;
-        programVideoRef.current.srcObject = stream;
-        programVideoRef.current.play();
-      } catch {
-        // Ignore program failures; user can retry.
-      }
-    };
-
-    loadProgram();
-
-    return () => {
-      stopMediaStream(programStreamRef.current);
-    };
-  }, [programSourceId, programVideoRef]);
+    if (projectionTargetIds.length === 0 && screenTargets.length > 0) {
+      setProjectionTargetIds([String(screenTargets[0].displayId)]);
+    }
+  }, [projectionTargetIds.length, screenTargets]);
 
   useEffect(() => {
-    const loadCamera = async () => {
-      stopMediaStream(cameraStreamRef.current);
-      if (!cameraDeviceId || cameraOverlayMode === "none") {
-        return;
-      }
+    const mediaMap = sourceMediaRef.current;
 
-      const programCameraId = programSourceId ? parseCameraSourceId(programSourceId) : null;
-      if (programCameraId && programCameraId === cameraDeviceId) {
-        return;
+    const cleanup = (sourceId: string, entry: SourceMedia) => {
+      stopMediaStream(entry.stream ?? null);
+      stopMediaStream(entry.captureStream ?? null);
+      entry.videoEl?.pause();
+      entry.audioEl?.pause();
+      if (entry.type === "browser") {
+        window.dualcast.destroyBrowserSource({ sourceId }).catch(() => undefined);
       }
+    };
 
-      try {
-        const stream = await getCameraStream(cameraDeviceId);
-        cameraStreamRef.current = stream;
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream;
-          cameraVideoRef.current.play();
+    const createMedia = async (source: Source) => {
+      const signature = getSignature(source);
+      const entry: SourceMedia = { signature, type: source.type };
+
+      if (source.type === "display" || source.type === "window") {
+        const video = document.createElement("video");
+        video.playsInline = true;
+        video.muted = true;
+        video.autoplay = true;
+        try {
+          const stream = await getDisplayStream(source.data.captureId, source.audioEnabled);
+          entry.stream = stream;
+          video.srcObject = stream;
+          await video.play();
+        } catch {
+          // Ignore capture failures; user can retry.
         }
-      } catch {
-        // Ignore camera load failures; user can retry.
+        entry.videoEl = video;
+      } else if (source.type === "camera") {
+        const video = document.createElement("video");
+        video.playsInline = true;
+        video.muted = true;
+        video.autoplay = true;
+        try {
+          const stream = await getCameraStream(source.data.deviceId);
+          entry.stream = stream;
+          video.srcObject = stream;
+          await video.play();
+        } catch {
+          // Ignore camera failures; user can retry.
+        }
+        entry.videoEl = video;
+      } else if (source.type === "image") {
+        const img = new Image();
+        img.src = source.data.url;
+        entry.imageEl = img;
+      } else if (source.type === "video") {
+        const video = document.createElement("video");
+        video.src = source.data.url;
+        video.loop = source.data.loop;
+        video.muted = true;
+        video.playsInline = true;
+        video.autoplay = true;
+        video.crossOrigin = "anonymous";
+        video.addEventListener("loadedmetadata", () => {
+          if (video.paused) {
+            video.play().catch(() => undefined);
+          }
+        });
+        video.play().catch(() => undefined);
+        entry.videoEl = video;
+        try {
+          entry.captureStream = video.captureStream();
+        } catch {
+          // captureStream is optional.
+        }
+      } else if (source.type === "audio") {
+        const audio = document.createElement("audio");
+        audio.src = source.data.url;
+        audio.loop = source.data.loop;
+        audio.muted = true;
+        audio.autoplay = true;
+        audio.crossOrigin = "anonymous";
+        audio.play().catch(() => undefined);
+        entry.audioEl = audio;
+        try {
+          entry.captureStream = audio.captureStream();
+        } catch {
+          // captureStream is optional.
+        }
+      } else if (source.type === "browser") {
+        window.dualcast
+          .createBrowserSource({
+            sourceId: source.id,
+            url: source.data.url,
+            width: Math.max(1, Math.round(programSize.width * (source.rect.width / 100))),
+            height: Math.max(1, Math.round(programSize.height * (source.rect.height / 100)))
+          })
+          .catch(() => undefined);
       }
+
+      mediaMap.set(source.id, entry);
     };
 
-    loadCamera();
+    activeSourceIds.forEach((id) => {
+      const source = sources[id];
+      if (!source) {
+        return;
+      }
+      const entry = mediaMap.get(id);
+      const signature = getSignature(source);
+      if (entry && entry.signature === signature) {
+        return;
+      }
+      if (entry) {
+        cleanup(id, entry);
+      }
+      createMedia(source).catch(() => undefined);
+    });
 
-    return () => {
-      stopMediaStream(cameraStreamRef.current);
-    };
-  }, [cameraDeviceId, cameraOverlayMode, programSourceId]);
+    Array.from(mediaMap.entries()).forEach(([id, entry]) => {
+      if (!activeSourceIds.has(id)) {
+        cleanup(id, entry);
+        mediaMap.delete(id);
+        browserFramesRef.current.delete(id);
+        browserSizeRef.current.delete(id);
+      }
+    });
+  }, [activeSourceIds, sources, programSize.height, programSize.width]);
 
   useEffect(() => {
-    const canvas = programCanvasRef.current;
-    const programVideo = programVideoRef.current;
-    if (!canvas || !programVideo) {
+    activeSourceIds.forEach((id) => {
+      const source = sources[id];
+      if (!source) {
+        return;
+      }
+      const media = sourceMediaRef.current.get(id);
+      if (!media) {
+        return;
+      }
+      const paused = source.media?.paused ?? false;
+      if (source.type === "video" && media.videoEl) {
+        media.videoEl.loop = source.data.loop;
+        if (media.lastRestartToken !== source.media?.restartToken) {
+          media.videoEl.currentTime = 0;
+          media.lastRestartToken = source.media?.restartToken;
+        }
+        if (paused) {
+          media.videoEl.pause();
+        } else {
+          media.videoEl.play().catch(() => undefined);
+        }
+      }
+      if (source.type === "audio" && media.audioEl) {
+        media.audioEl.loop = source.data.loop;
+        if (media.lastRestartToken !== source.media?.restartToken) {
+          media.audioEl.currentTime = 0;
+          media.lastRestartToken = source.media?.restartToken;
+        }
+        if (paused) {
+          media.audioEl.pause();
+        } else {
+          media.audioEl.play().catch(() => undefined);
+        }
+      }
+    });
+  }, [activeSourceIds, sources]);
+
+  useEffect(() => {
+    const scene = programScene;
+    if (!scene || scene.sourceIds.length === 0) {
+      setProgramAudioStream(null);
       return;
     }
 
-    const programCameraId = programSourceId ? parseCameraSourceId(programSourceId) : null;
-    const overlayMode = cameraOverlayMode;
-    const cameraVideo = cameraVideoRef.current ?? null;
-
-    const getBaseVideo = () => {
-      if (overlayMode === "program-over-camera") {
-        if (cameraVideo && cameraVideo.readyState >= 2) {
-          return cameraVideo;
-        }
-        if (programCameraId && programVideo.readyState >= 2) {
-          return programVideo;
-        }
+    const hasAudioSources = scene.sourceIds.some((id) => {
+      const source = sources[id];
+      if (!source || !source.enabled || !source.audioEnabled) {
+        return false;
       }
-      return programVideo.readyState >= 2 ? programVideo : null;
-    };
+      return source.type === "display" || source.type === "window" || source.type === "video" || source.type === "audio";
+    });
 
-    const updateCanvasSize = () => {
-      const baseVideo = getBaseVideo();
-      if (!baseVideo) {
+    if (!hasAudioSources) {
+      setProgramAudioStream(null);
+      return;
+    }
+
+    const audioContext = new AudioContext();
+    const destination = audioContext.createMediaStreamDestination();
+    const masterGain = audioContext.createGain();
+    masterGain.gain.value = Math.max(0, Math.min(2, settings.masterAudioGain ?? 1));
+    masterGain.connect(destination);
+
+    scene.sourceIds.forEach((id) => {
+      const source = sources[id];
+      if (!source || !source.enabled || !source.audioEnabled) {
         return;
       }
-      const profile = getQualityProfile(settings.qualityPreset);
-      const target = fitToBounds(baseVideo.videoWidth || 1920, baseVideo.videoHeight || 1080, profile.maxWidth, profile.maxHeight);
-      canvas.width = target.width;
-      canvas.height = target.height;
+      const media = sourceMediaRef.current.get(id);
+      const sourceGain = audioContext.createGain();
+      sourceGain.gain.value = Math.max(0, Math.min(2, source.volume ?? 1));
+      sourceGain.connect(masterGain);
+      if (source.type === "display" || source.type === "window") {
+        if (media?.stream && media.stream.getAudioTracks().length > 0) {
+          const streamSource = audioContext.createMediaStreamSource(media.stream);
+          streamSource.connect(sourceGain);
+        }
+      } else if (source.type === "video" || source.type === "audio") {
+        if (media?.captureStream && media.captureStream.getAudioTracks().length > 0) {
+          const streamSource = audioContext.createMediaStreamSource(media.captureStream);
+          streamSource.connect(sourceGain);
+        }
+      }
+    });
+
+    setProgramAudioStream(destination.stream);
+
+    return () => {
+      setProgramAudioStream(null);
+      audioContext.close().catch(() => undefined);
     };
+  }, [programScene, settings.masterAudioGain, sources, setProgramAudioStream]);
 
-    if (programVideo.readyState >= 2) {
-      updateCanvasSize();
-    } else {
-      programVideo.onloadedmetadata = updateCanvasSize;
+  const drawSource = (
+    ctx: CanvasRenderingContext2D,
+    source: Source,
+    canvasWidth: number,
+    canvasHeight: number
+  ) => {
+    if (!source.enabled || source.type === "audio") {
+      return;
     }
 
-    if (cameraVideo && cameraVideo.readyState < 2) {
-      cameraVideo.onloadedmetadata = updateCanvasSize;
+    const rect = source.rect;
+    const x = (rect.x / 100) * canvasWidth;
+    const y = (rect.y / 100) * canvasHeight;
+    const width = (rect.width / 100) * canvasWidth;
+    const height = (rect.height / 100) * canvasHeight;
+    const rotation = ((source.rotation ?? 0) * Math.PI) / 180;
+    const media = sourceMediaRef.current.get(source.id);
+
+    let drawable: CanvasImageSource | null = null;
+    if (source.type === "image" && media?.imageEl) {
+      drawable = media.imageEl;
+    } else if (
+      (source.type === "display" || source.type === "window" || source.type === "camera") &&
+      media?.videoEl
+    ) {
+      drawable = media.videoEl;
+    } else if (source.type === "video" && media?.videoEl) {
+      drawable = media.videoEl;
+    } else if (source.type === "browser") {
+      const frame = browserFramesRef.current.get(source.id);
+      if (frame) {
+        drawable = frame;
+      }
     }
+
+    if (source.type === "text") {
+      const padding = Math.max(12, source.data.fontSize * 0.28);
+      const lineHeight = source.data.fontSize * 1.18;
+      const maxTextWidth = Math.max(1, width - padding * 2);
+      ctx.font = `${source.data.fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      const paragraphs = source.data.text.split(/\r?\n/);
+      const lines = paragraphs.flatMap((paragraph) => {
+        const words = paragraph.split(/\s+/).filter(Boolean);
+        if (words.length === 0) {
+          return [""];
+        }
+        return words.reduce<string[]>((wrapped, word) => {
+          const current = wrapped[wrapped.length - 1] ?? "";
+          const next = current ? `${current} ${word}` : word;
+          if (ctx.measureText(next).width <= maxTextWidth || !current) {
+            wrapped[wrapped.length - 1] = next;
+          } else {
+            wrapped.push(word);
+          }
+          return wrapped;
+        }, [""]);
+      });
+
+      ctx.save();
+      ctx.translate(x + width / 2, y + height / 2);
+      if (rotation) {
+        ctx.rotate(rotation);
+      }
+      ctx.fillStyle = source.data.backgroundColor || "transparent";
+      ctx.fillRect(-width / 2, -height / 2, width, height);
+      ctx.fillStyle = source.data.color || "#ffffff";
+      ctx.textBaseline = "top";
+      ctx.textAlign = source.data.align;
+      const textX =
+        source.data.align === "left" ? -width / 2 + padding : source.data.align === "right" ? width / 2 - padding : 0;
+      const startY = -Math.min(lines.length * lineHeight, height - padding * 2) / 2;
+      lines.forEach((line, index) => {
+        const textY = startY + index * lineHeight;
+        if (textY + lineHeight <= height / 2) {
+          ctx.fillText(line, textX, textY, maxTextWidth);
+        }
+      });
+      ctx.restore();
+      return;
+    }
+
+    if (!drawable) {
+      return;
+    }
+
+    ctx.save();
+    ctx.translate(x + width / 2, y + height / 2);
+    if (rotation) {
+      ctx.rotate(rotation);
+    }
+    ctx.drawImage(drawable, -width / 2, -height / 2, width, height);
+    ctx.restore();
+  };
+
+  const drawScene = (ctx: CanvasRenderingContext2D, scene: Scene | null, canvasWidth: number, canvasHeight: number) => {
+    if (!scene) {
+      return;
+    }
+    scene.sourceIds.forEach((id) => {
+      const source = sources[id];
+      if (!source) {
+        return;
+      }
+      drawSource(ctx, source, canvasWidth, canvasHeight);
+    });
+  };
+
+  const syncBrowserSources = (scene: Scene | null, canvasWidth: number, canvasHeight: number) => {
+    if (!scene) {
+      return;
+    }
+    scene.sourceIds.forEach((id) => {
+      const source = sources[id];
+      if (!source || source.type !== "browser") {
+        return;
+      }
+      const rect = source.rect;
+      const width = (rect.width / 100) * canvasWidth;
+      const height = (rect.height / 100) * canvasHeight;
+      const current = browserSizeRef.current.get(id);
+      const next = {
+        width: Math.max(1, Math.round(width)),
+        height: Math.max(1, Math.round(height)),
+        url: source.data.url
+      };
+      if (!current || current.width !== next.width || current.height !== next.height || current.url !== next.url) {
+        browserSizeRef.current.set(id, next);
+        window.dualcast
+          .updateBrowserSource({
+            sourceId: id,
+            url: source.data.url,
+            width: next.width,
+            height: next.height
+          })
+          .catch(() => undefined);
+      }
+    });
+  };
+
+  useEffect(() => {
+    const canvas = previewCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    canvas.width = programSize.width;
+    canvas.height = programSize.height;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       return;
     }
 
-    const drawOverlay = (video: HTMLVideoElement) => {
-      const rect = {
-        x: (cameraRect.x / 100) * canvas.width,
-        y: (cameraRect.y / 100) * canvas.height,
-        width: (cameraRect.width / 100) * canvas.width,
-        height: (cameraRect.height / 100) * canvas.height
-      };
-      ctx.drawImage(video, rect.x, rect.y, rect.width, rect.height);
-    };
+    let rafId: number | null = null;
 
     const render = () => {
-      if (isCutToBlack) {
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      } else {
-        const baseVideo = getBaseVideo();
-        if (baseVideo) {
-          ctx.drawImage(baseVideo, 0, 0, canvas.width, canvas.height);
-        }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        if (overlayMode === "camera-over-program" && cameraVideo && cameraVideo.readyState >= 2) {
-          if (!programCameraId || programCameraId !== cameraDeviceId) {
-            drawOverlay(cameraVideo);
+      drawScene(ctx, previewScene, canvas.width, canvas.height);
+
+      rafId = requestAnimationFrame(render);
+    };
+
+    render();
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, [previewScene, sources, programSize.height, programSize.width]);
+
+  useEffect(() => {
+    const canvas = programCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    canvas.width = programSize.width;
+    canvas.height = programSize.height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    let rafId: number | null = null;
+
+    const render = () => {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (!isCutToBlack) {
+        const transition = transitionRef.current;
+        if (
+          transition &&
+          transition.fromSceneId &&
+          transition.toSceneId &&
+          performance.now() - transition.startAt < transition.duration
+        ) {
+          const elapsed = performance.now() - transition.startAt;
+          const progress = Math.min(1, elapsed / transition.duration);
+          const fromScene = scenes.find((scene) => scene.id === transition.fromSceneId) ?? null;
+          const toScene = scenes.find((scene) => scene.id === transition.toSceneId) ?? null;
+
+          if (transition.type === "crossfade") {
+            ctx.save();
+            ctx.globalAlpha = 1 - progress;
+            drawScene(ctx, fromScene, canvas.width, canvas.height);
+            ctx.globalAlpha = progress;
+            drawScene(ctx, toScene, canvas.width, canvas.height);
+            ctx.restore();
+          } else {
+            if (progress < 0.5) {
+              ctx.save();
+              ctx.globalAlpha = 1 - progress * 2;
+              drawScene(ctx, fromScene, canvas.width, canvas.height);
+              ctx.restore();
+            } else {
+              ctx.save();
+              ctx.globalAlpha = (progress - 0.5) * 2;
+              drawScene(ctx, toScene, canvas.width, canvas.height);
+              ctx.restore();
+            }
           }
-        }
 
-        if (overlayMode === "program-over-camera" && programVideo.readyState >= 2) {
-          drawOverlay(programVideo);
+          syncBrowserSources(toScene ?? fromScene, canvas.width, canvas.height);
+        } else {
+          if (transition) {
+            transitionRef.current = null;
+          }
+          drawScene(ctx, programScene, canvas.width, canvas.height);
+          syncBrowserSources(programScene, canvas.width, canvas.height);
         }
       }
 
       if (!isFrozen) {
-        rafRef.current = requestAnimationFrame(render);
+        rafId = requestAnimationFrame(render);
       }
     };
 
     render();
 
     return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
       }
     };
   }, [
-    programSourceId,
-    programCanvasRef,
-    programVideoRef,
+    programScene,
+    scenes,
+    sources,
     isCutToBlack,
     isFrozen,
-    settings.qualityPreset,
-    cameraOverlayMode,
-    cameraRect,
-    cameraDeviceId
+    programCanvasRef,
+    programSize.height,
+    programSize.width
   ]);
 
   useEffect(() => {
-    if (!projectionTargetId && screenTargets.length > 0) {
-      setProjectionTargetId(String(screenTargets[0].displayId));
+    if (!isProjecting && !settings.networkOutput.enabled) {
+      return;
     }
-  }, [projectionTargetId, screenTargets]);
 
-  useEffect(() => {
-    const unsubscribeOpen = window.dualcast.onProjectionOpened(() => setIsProjecting(true));
-    const unsubscribeClose = window.dualcast.onProjectionClosed(() => setIsProjecting(false));
+    const sendFrame = () => {
+      const canvas = programCanvasRef.current;
+      if (!canvas) {
+        return;
+      }
+      try {
+        const dataUrl = canvas.toDataURL("image/webp", 0.8);
+        window.dualcast.sendProgramFrame(dataUrl);
+      } catch {
+        const dataUrl = canvas.toDataURL("image/png");
+        window.dualcast.sendProgramFrame(dataUrl);
+      }
+    };
+
+    sendFrame();
+    const interval = window.setInterval(sendFrame, 1000 / 15);
 
     return () => {
-      unsubscribeOpen();
-      unsubscribeClose();
+      window.clearInterval(interval);
     };
-  }, []);
+  }, [isProjecting, programCanvasRef, settings.networkOutput.enabled]);
+
+  useEffect(() => {
+    if (!isLowerThirdProjecting) {
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = programSize.width;
+    canvas.height = programSize.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    const sendLowerThirdFrame = () => {
+      ctx.fillStyle = settings.lowerThird.backgroundColor || "#000000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (!isCutToBlack && programScene) {
+        programScene.sourceIds.forEach((id) => {
+          const source = sources[id];
+          if (source?.type === "text" && source.data.role === "lower-third") {
+            drawSource(ctx, source, canvas.width, canvas.height);
+          }
+        });
+      }
+      window.dualcast.sendLowerThirdFrame(canvas.toDataURL("image/webp", 0.9));
+    };
+
+    sendLowerThirdFrame();
+    const interval = window.setInterval(sendLowerThirdFrame, 1000 / 15);
+    return () => window.clearInterval(interval);
+  }, [
+    isCutToBlack,
+    isLowerThirdProjecting,
+    programScene,
+    programSize.height,
+    programSize.width,
+    settings.lowerThird.backgroundColor,
+    sources
+  ]);
 
   const handleProjectionToggle = async () => {
     if (isProjecting) {
@@ -243,9 +705,168 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
       return;
     }
 
-    const target = projectionTargetId || null;
-    await window.dualcast.openProjection(target);
+    await window.dualcast.openProjection(projectionTargetIds);
     setIsProjecting(true);
+  };
+
+  const handleProjectionTargetToggle = (displayId: string, checked: boolean) => {
+    setProjectionTargetIds((current) =>
+      checked ? Array.from(new Set([...current, displayId])) : current.filter((id) => id !== displayId)
+    );
+  };
+
+  const handleLowerThirdToggle = async () => {
+    if (isLowerThirdProjecting) {
+      await window.dualcast.closeLowerThird();
+      setIsLowerThirdProjecting(false);
+      updateSettings({
+        lowerThird: {
+          ...settings.lowerThird,
+          enabled: false
+        }
+      });
+      return;
+    }
+    const displayId = settings.lowerThird.displayId;
+    if (!displayId) {
+      return;
+    }
+    await window.dualcast.openLowerThird(displayId);
+    setIsLowerThirdProjecting(true);
+    updateSettings({
+      lowerThird: {
+        ...settings.lowerThird,
+        enabled: true
+      }
+    });
+  };
+
+  const hasPreviewScene = Boolean(previewScene && previewScene.sourceIds.length > 0);
+  const hasProgramScene = Boolean(programScene && programScene.sourceIds.length > 0);
+
+  const handlePointerDrag = (
+    event: React.PointerEvent<HTMLDivElement>,
+    sourceId: string,
+    mode: "move" | "resize",
+    handle?: "nw" | "ne" | "sw" | "se"
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const stage = event.currentTarget.closest(".canvas-stage") as HTMLDivElement | null;
+    if (!stage) {
+      return;
+    }
+    if (previewSceneLocked) {
+      return;
+    }
+    const rect = stage.getBoundingClientRect();
+    const source = sources[sourceId];
+    if (!source || source.locked) {
+      return;
+    }
+    setSelectedSourceId(sourceId);
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startRect = { ...source.rect };
+
+    const snapRect = (nextRect: SourceRect) => {
+      const threshold = 1.2;
+      const guides: { vertical: number[]; horizontal: number[] } = { vertical: [], horizontal: [] };
+
+      const snapAxis = (
+        start: number,
+        size: number,
+        targets: number[]
+      ): { start: number; guide?: number } => {
+        const left = start;
+        const right = start + size;
+        const center = start + size / 2;
+
+        for (const target of targets) {
+          if (Math.abs(left - target) <= threshold) {
+            return { start: target, guide: target };
+          }
+          if (Math.abs(right - target) <= threshold) {
+            return { start: target - size, guide: target };
+          }
+          if (Math.abs(center - target) <= threshold) {
+            return { start: target - size / 2, guide: target };
+          }
+        }
+        return { start };
+      };
+
+      const horizontal = snapAxis(nextRect.x, nextRect.width, [0, 50, 100]);
+      const vertical = snapAxis(nextRect.y, nextRect.height, [0, 50, 100]);
+
+      const snapped = {
+        ...nextRect,
+        x: clamp(horizontal.start, 0, 100 - nextRect.width),
+        y: clamp(vertical.start, 0, 100 - nextRect.height)
+      };
+
+      if (horizontal.guide !== undefined) {
+        guides.vertical.push(horizontal.guide);
+      }
+      if (vertical.guide !== undefined) {
+        guides.horizontal.push(vertical.guide);
+      }
+
+      return { rect: snapped, guides };
+    };
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100;
+      const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100;
+      let next: SourceRect = { ...startRect };
+
+      if (mode === "move") {
+        next = {
+          ...startRect,
+          x: clamp(startRect.x + deltaX, 0, 100 - startRect.width),
+          y: clamp(startRect.y + deltaY, 0, 100 - startRect.height)
+        };
+      } else if (mode === "resize" && handle) {
+        let x = startRect.x;
+        let y = startRect.y;
+        let width = startRect.width;
+        let height = startRect.height;
+
+        if (handle.includes("e")) {
+          width = clamp(startRect.width + deltaX, 2, 100 - startRect.x);
+        }
+        if (handle.includes("s")) {
+          height = clamp(startRect.height + deltaY, 2, 100 - startRect.y);
+        }
+        if (handle.includes("w")) {
+          const nextWidth = clamp(startRect.width - deltaX, 2, 100);
+          x = clamp(startRect.x + deltaX, 0, startRect.x + startRect.width - 2);
+          width = clamp(nextWidth, 2, 100 - x);
+        }
+        if (handle.includes("n")) {
+          const nextHeight = clamp(startRect.height - deltaY, 2, 100);
+          y = clamp(startRect.y + deltaY, 0, startRect.y + startRect.height - 2);
+          height = clamp(nextHeight, 2, 100 - y);
+        }
+
+        next = { x, y, width, height };
+      }
+
+      const snapped = snapRect(next);
+      updateSourceRect(sourceId, snapped.rect);
+      setGuides(snapped.guides);
+    };
+
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      persistStudioState().catch(() => undefined);
+      setGuides({ vertical: [], horizontal: [] });
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
 
   return (
@@ -253,24 +874,58 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
       <div className="pane">
         <div className="pane-header">
           <h2>Preview</h2>
-          <span className="tag">Select a source</span>
+          <span className="tag">{hasPreviewScene ? "Staged" : "No Scene"}</span>
         </div>
-        <div className="pane-body">
-          <video ref={previewVideoRef} muted playsInline className="video-surface" />
-        </div>
-      </div>
-      <div className="pane">
-        <div className="pane-header program-header">
-          <h2>Program</h2>
-          <span className={isCutToBlack ? "tag alert" : "tag"}>{isCutToBlack ? "BLACK" : "LIVE"}</span>
-        </div>
-        <div className="pane-body">
-          <canvas ref={programCanvasRef} className="video-surface" />
-          <video ref={programVideoRef} muted playsInline className="hidden" />
-          <video ref={cameraVideoRef} muted playsInline className="hidden" />
+        <div className="pane-body preview-body" ref={previewContainerRef}>
+          <div className="canvas-stage" style={{ width: previewCanvasSize.width, height: previewCanvasSize.height }}>
+            <canvas ref={previewCanvasRef} className="video-surface" />
+            <div className="source-overlay">
+              {previewScene
+                ? previewScene.sourceIds
+                    .map((id) => sources[id])
+                    .filter(Boolean)
+                    .filter((source) => source.type !== "audio")
+                    .map((source) => {
+                      const rect = source.rect;
+                      const style = {
+                        left: `${rect.x}%`,
+                        top: `${rect.y}%`,
+                        width: `${rect.width}%`,
+                        height: `${rect.height}%`
+                      };
+                      return (
+                        <div
+                          key={source.id}
+                          className={`source-box ${selectedSourceId === source.id ? "selected" : ""} ${
+                            source.enabled ? "" : "disabled"
+                          } ${source.locked ? "locked" : ""}`}
+                          style={style}
+                          onPointerDown={(event) => handlePointerDrag(event, source.id, "move")}
+                        >
+                          <span className="source-title">{source.name}</span>
+                          {!source.locked ? (
+                            <>
+                              <span className="resize-handle nw" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "nw")} />
+                              <span className="resize-handle ne" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "ne")} />
+                              <span className="resize-handle sw" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "sw")} />
+                              <span className="resize-handle se" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "se")} />
+                            </>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                : null}
+              {guides.vertical.map((value) => (
+                <div key={`v-${value}`} className="guide guide-vertical" style={{ left: `${value}%` }} />
+              ))}
+              {guides.horizontal.map((value) => (
+                <div key={`h-${value}`} className="guide guide-horizontal" style={{ top: `${value}%` }} />
+              ))}
+            </div>
+          </div>
         </div>
         <div className="pane-controls">
-          <button className="btn btn-primary" onClick={takeToProgram} disabled={!previewSourceId}>
+          <button className="btn btn-primary" onClick={takeToProgram} disabled={!hasPreviewScene}>
             TAKE
           </button>
           <button className="btn btn-outline" onClick={isCutToBlack ? clearCutToBlack : cutToBlack}>
@@ -279,24 +934,94 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ previewVideoRef, progra
           <button className="btn btn-outline" onClick={toggleFreeze}>
             {isFrozen ? "UNFREEZE" : "FREEZE"}
           </button>
+          <div className="transition-controls">
+            <label htmlFor="transitionType">Transition</label>
+            <select
+              id="transitionType"
+              value={transitionType}
+              onChange={(event) => setTransitionType(event.target.value as "cut" | "fade" | "crossfade")}
+            >
+              <option value="cut">Cut</option>
+              <option value="fade">Fade</option>
+              <option value="crossfade">Crossfade</option>
+            </select>
+          </div>
+          <div className="transition-controls">
+            <label htmlFor="transitionDuration">Duration (ms)</label>
+            <input
+              id="transitionDuration"
+              type="number"
+              min={100}
+              max={3000}
+              value={transitionDurationMs}
+              onChange={(event) => setTransitionDuration(Number(event.target.value))}
+            />
+          </div>
         </div>
-        <div className="projection-row">
-          <label htmlFor="projectionDisplay">Project to</label>
-          <select
-            id="projectionDisplay"
-            value={projectionTargetId}
-            onChange={(event) => setProjectionTargetId(event.target.value)}
-            disabled={screenTargets.length === 0}
+        <SceneSourcesPanel />
+      </div>
+      <div className="pane">
+        <div className="pane-header program-header">
+          <h2>Program</h2>
+          <span className={isCutToBlack ? "tag alert" : "tag"}>{isCutToBlack ? "BLACK" : "LIVE"}</span>
+        </div>
+        <div className="pane-body">
+          <canvas ref={programCanvasRef} className="video-surface" />
+        </div>
+        <div className="projection-panel">
+          <div className="projection-title">Sanctuary Displays</div>
+          <div className="display-target-grid">
+            {screenTargets.map((display) => {
+              const displayId = String(display.displayId);
+              return (
+                <label key={display.displayId ?? display.id} className="display-target-option">
+                  <input
+                    type="checkbox"
+                    checked={projectionTargetIds.includes(displayId)}
+                    onChange={(event) => handleProjectionTargetToggle(displayId, event.target.checked)}
+                    disabled={isProjecting}
+                  />
+                  <span>
+                    {display.name} ({display.size.width} × {display.size.height})
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <button
+            className="btn btn-outline"
+            onClick={handleProjectionToggle}
+            disabled={!hasProgramScene || screenTargets.length === 0 || projectionTargetIds.length === 0}
           >
-            {screenTargets.map((display) => (
-              <option key={display.displayId ?? display.id} value={String(display.displayId)}>
-                {display.name} ({display.size.width} x {display.size.height})
-              </option>
-            ))}
-          </select>
-          <button className="btn btn-outline" onClick={handleProjectionToggle} disabled={!programSourceId || screenTargets.length === 0}>
             {isProjecting ? "Stop Projection" : "Project Program"}
           </button>
+          <div className="lower-third-output-row">
+            <label htmlFor="lowerThirdDisplay">Lower-third screen</label>
+            <select
+              id="lowerThirdDisplay"
+              value={settings.lowerThird.displayId ?? ""}
+              onChange={(event) =>
+                updateSettings({
+                  lowerThird: { ...settings.lowerThird, displayId: event.target.value || null }
+                })
+              }
+              disabled={isLowerThirdProjecting}
+            >
+              <option value="">Choose display...</option>
+              {screenTargets.map((display) => (
+                <option key={`lower-${display.displayId ?? display.id}`} value={String(display.displayId)}>
+                  {display.name}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn-outline"
+              onClick={handleLowerThirdToggle}
+              disabled={!settings.lowerThird.displayId}
+            >
+              {isLowerThirdProjecting ? "Stop Lower Third" : "Start Lower Third"}
+            </button>
+          </div>
         </div>
       </div>
     </section>
