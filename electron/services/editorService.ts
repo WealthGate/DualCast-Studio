@@ -37,7 +37,7 @@ export const exportClip = async (payload: ExportClipPayload): Promise<ExportClip
         "-b:a 192k",
         "-movflags +faststart"
       ])
-      .on("end", resolve)
+      .on("end", () => resolve())
       .on("error", reject)
       .save(outputPath);
   });

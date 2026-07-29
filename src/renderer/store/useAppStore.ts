@@ -219,18 +219,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   takeToProgram: () => set((state) => ({ programSceneId: state.previewSceneId })),
   addSourceToScene: (sceneId, source) => {
     const id = getId();
+    const nextSource = {
+      rotation: 0,
+      locked: false,
+      groupId: null,
+      volume: 1,
+      media: { paused: false, restartToken: 0 },
+      ...source,
+      id
+    } as Source;
     set((state) => ({
       sources: {
         ...state.sources,
-        [id]: {
-          rotation: 0,
-          locked: false,
-          groupId: null,
-          volume: 1,
-          media: { paused: false, restartToken: 0 },
-          ...source,
-          id
-        }
+        [id]: nextSource
       },
       scenes: state.scenes.map((scene) =>
         scene.id === sceneId ? { ...scene, sourceIds: [...scene.sourceIds, id] } : scene
@@ -292,7 +293,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         sources: {
           ...state.sources,
-          [sourceId]: { ...current, ...update }
+          [sourceId]: { ...current, ...update } as Source
         }
       };
     }),

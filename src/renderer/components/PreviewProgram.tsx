@@ -221,7 +221,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         video.play().catch(() => undefined);
         entry.videoEl = video;
         try {
-          entry.captureStream = video.captureStream();
+          entry.captureStream = (
+            video as HTMLVideoElement & { captureStream?: () => MediaStream }
+          ).captureStream?.();
         } catch {
           // captureStream is optional.
         }
@@ -235,7 +237,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         audio.play().catch(() => undefined);
         entry.audioEl = audio;
         try {
-          entry.captureStream = audio.captureStream();
+          entry.captureStream = (
+            audio as HTMLAudioElement & { captureStream?: () => MediaStream }
+          ).captureStream?.();
         } catch {
           // captureStream is optional.
         }
@@ -745,7 +749,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   const hasProgramScene = Boolean(programScene && programScene.sourceIds.length > 0);
 
   const handlePointerDrag = (
-    event: React.PointerEvent<HTMLDivElement>,
+    event: React.PointerEvent<HTMLElement>,
     sourceId: string,
     mode: "move" | "resize",
     handle?: "nw" | "ne" | "sw" | "se"

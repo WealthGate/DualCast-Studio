@@ -1,4 +1,5 @@
-import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "child_process";
+import { ChildProcessByStdio, spawn, spawnSync } from "child_process";
+import { Readable, Writable } from "stream";
 import fs from "fs";
 import path from "path";
 import { app } from "electron";
@@ -19,7 +20,7 @@ type StatusPublisher = (payload: StreamStatusPayload) => void;
 
 type DestinationRuntime = {
   destination: StreamDestinationInput;
-  process: ChildProcessWithoutNullStreams | null;
+  process: ChildProcessByStdio<Writable, null, Readable> | null;
   status: StreamingStatus;
   reconnectAttempt: number;
   reconnectTimer: NodeJS.Timeout | null;

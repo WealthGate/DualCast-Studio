@@ -53,9 +53,12 @@ export const registerIpcHandlers = () => {
 
   ipcMain.handle(IpcChannels.selectSaveDirectory, async () => {
     const window = BrowserWindow.getFocusedWindow();
-    const result = await dialog.showOpenDialog(window ?? undefined, {
+    const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"]
-    });
+    };
+    const result = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options);
     if (result.canceled || result.filePaths.length === 0) {
       return null;
     }
@@ -75,10 +78,13 @@ export const registerIpcHandlers = () => {
               : { name: "Audio", extensions: ["mp3", "wav", "ogg", "aac", "m4a"] }
         ]
       : [];
-    const result = await dialog.showOpenDialog(window ?? undefined, {
+    const options: Electron.OpenDialogOptions = {
       properties: ["openFile"],
       filters
-    });
+    };
+    const result = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options);
     if (result.canceled || result.filePaths.length === 0) {
       return null;
     }

@@ -267,10 +267,6 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ programCanvasRef }) => 
         />
       </div>
       <div className="field">
-        <label>Endpoint</label>
-        <input type="text" value={endpoint} readOnly />
-      </div>
-      <div className="field">
         <label htmlFor="preset">Preset</label>
         <select
           id="preset"

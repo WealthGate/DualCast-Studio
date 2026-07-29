@@ -155,7 +155,7 @@ export type Settings = {
 export type SettingsUpdate = Partial<Settings>;
 
 export type SaveRecordingPayload = {
-  data: Uint8Array;
+  data: Uint8Array | ArrayBuffer | number[];
 };
 
 export type SaveRecordingResult = {
