@@ -16,6 +16,8 @@ import {
 import { clearStreamKey, getStreamKey, setStreamKey } from "./streamKeyService";
 import {
   ExportClipPayload,
+  MultiviewAction,
+  MultiviewPayload,
   SaveRecordingPayload,
   SettingsUpdate,
   ProgramState,
@@ -39,6 +41,13 @@ import {
   updateNetworkProgramFrame
 } from "./networkOutputService";
 import { exportClip } from "./editorService";
+import { checkForUpdates, downloadUpdate, getUpdateStatus, installUpdate } from "./updateService";
+import {
+  closeMultiviewWindow,
+  forwardMultiviewAction,
+  forwardMultiviewData,
+  openMultiviewWindow
+} from "./multiviewService";
 
 export const registerIpcHandlers = () => {
   setStreamStatusPublisher((payload) => {
@@ -125,6 +134,17 @@ export const registerIpcHandlers = () => {
     return true;
   });
 
+  ipcMain.handle(IpcChannels.openMultiview, async () => openMultiviewWindow());
+  ipcMain.handle(IpcChannels.closeMultiview, async () => closeMultiviewWindow());
+  ipcMain.handle(IpcChannels.getUpdateStatus, () => getUpdateStatus());
+  ipcMain.handle(IpcChannels.checkForUpdates, async () => checkForUpdates());
+  ipcMain.handle(IpcChannels.downloadUpdate, async () => downloadUpdate());
+  ipcMain.handle(IpcChannels.installUpdate, () => installUpdate());
+  ipcMain.handle(IpcChannels.openReleasePage, async () => {
+    await shell.openExternal("https://github.com/WealthGate/DualCast-Studio/releases/latest");
+    return true;
+  });
+
   ipcMain.handle(IpcChannels.createBrowserSource, async (_event, payload) => createBrowserSource(payload));
   ipcMain.handle(IpcChannels.updateBrowserSource, async (_event, payload) => updateBrowserSource(payload));
   ipcMain.handle(IpcChannels.destroyBrowserSource, async (_event, payload) => destroyBrowserSource(payload));
@@ -180,6 +200,18 @@ export const registerIpcHandlers = () => {
   ipcMain.on(IpcChannels.lowerThirdFrame, (_event, dataUrl: string) => {
     if (typeof dataUrl === "string" && dataUrl.length > 0) {
       forwardLowerThirdFrame(dataUrl);
+    }
+  });
+
+  ipcMain.on(IpcChannels.multiviewData, (_event, payload: MultiviewPayload) => {
+    if (payload?.tiles) {
+      forwardMultiviewData(payload);
+    }
+  });
+
+  ipcMain.on(IpcChannels.multiviewAction, (_event, action: MultiviewAction) => {
+    if (action?.sceneId && (action.action === "preview" || action.action === "program")) {
+      forwardMultiviewAction(action);
     }
   });
 

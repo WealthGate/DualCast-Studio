@@ -1,8 +1,8 @@
 {
-  "name": "dualcast-studio",
-  "version": "0.3.0",
+  "name": "openchurch-broadcast-studio",
+  "version": "0.4.0",
   "private": true,
-  "description": "Large-venue church production, presentation, recording, and multi-destination streaming studio",
+  "description": "Open church production, presentation, recording, and multi-destination streaming studio",
   "author": {
     "name": "WealthGate",
     "email": "50961398+WealthGate@users.noreply.github.com"
@@ -26,6 +26,7 @@
   "dependencies": {
     "electron-log": "^5.1.2",
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.2.0",
     "fluent-ffmpeg": "^2.1.2",
     "react": "^18.2.0",
@@ -50,17 +51,27 @@
   },
   "build": {
     "appId": "com.dualcast.studio",
-    "productName": "DualCast Studio",
+    "productName": "OpenChurch Broadcast Studio",
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "files": [
       "dist-electron/**",
       "dist/renderer/**",
+      "assets/icon.png",
       "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "WealthGate",
+        "repo": "DualCast-Studio"
+      }
     ],
     "directories": {
       "buildResources": "assets",
       "output": "release"
     },
     "mac": {
+      "icon": "assets/icon.png",
       "target": [
         "dmg",
         "zip"
@@ -70,12 +81,14 @@
       "entitlementsInherit": "assets/entitlements.mac.plist"
     },
     "win": {
+      "icon": "assets/icon.png",
       "target": [
         "nsis",
         "zip"
       ]
     },
     "linux": {
+      "icon": "assets/icon.png",
       "target": [
         "AppImage",
         "deb"

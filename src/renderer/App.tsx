@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Header from "./components/Header";
 import SettingsPanel from "./components/SettingsPanel";
 import StreamingPanel from "./components/StreamingPanel";
@@ -10,17 +10,23 @@ import AudioMixerPanel from "./components/AudioMixerPanel";
 import TransitionsPanel from "./components/TransitionsPanel";
 import ProductionControlsPanel from "./components/ProductionControlsPanel";
 import DockWorkspace, { DockPanelDefinition } from "./components/DockWorkspace";
+import UpdateBanner from "./components/UpdateBanner";
 import { useAppStore } from "./store/useAppStore";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
 import { useProgramStreamer } from "./hooks/useProgramStreamer";
+import { UpdateStatusPayload } from "../shared/types";
 
 const App: React.FC = () => {
   const programCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null);
+  const [showUpdateStatus, setShowUpdateStatus] = useState(false);
 
   const {
     setSettings,
     setStudioState,
     refreshDisplays,
+    selectPreviewScene,
+    setProgramScene,
     takeToProgram,
     cutToBlack,
     clearCutToBlack,
@@ -117,6 +123,56 @@ const App: React.FC = () => {
     toggleFreeze
   ]);
 
+  useEffect(() => {
+    const unsubscribe = window.dualcast.onMultiviewAction((action) => {
+      if (action.action === "preview") {
+        selectPreviewScene(action.sceneId);
+      } else {
+        setProgramScene(action.sceneId);
+      }
+    });
+    return () => unsubscribe();
+  }, [selectPreviewScene, setProgramScene]);
+
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = window.dualcast.onUpdateStatus((status) => {
+      if (!active) {
+        return;
+      }
+      setUpdateStatus(status);
+      if (status.state === "available" || status.state === "downloading" || status.state === "downloaded") {
+        setShowUpdateStatus(true);
+      }
+    });
+    window.dualcast.getUpdateStatus().then((status) => {
+      if (active) {
+        setUpdateStatus(status);
+        if (status.state === "available" || status.state === "downloading" || status.state === "downloaded") {
+          setShowUpdateStatus(true);
+        }
+      }
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const handleCheckForUpdates = () => {
+    setShowUpdateStatus(true);
+    window.dualcast.checkForUpdates().then(setUpdateStatus).catch(() => undefined);
+  };
+
+  const handleDownloadUpdate = () => {
+    setShowUpdateStatus(true);
+    window.dualcast.downloadUpdate().catch(() => undefined);
+  };
+
+  const handleInstallUpdate = () => {
+    window.dualcast.installUpdate().catch(() => undefined);
+  };
+
   const dockPanels: DockPanelDefinition[] = [
     { id: "scenes", title: "Scenes & Sources", content: <SceneSourcesPanel /> },
     { id: "audio", title: "Audio Mixer", content: <AudioMixerPanel /> },
@@ -148,7 +204,19 @@ const App: React.FC = () => {
         onStartRecording={recorder.startRecording}
         onStopRecording={recorder.stopRecording}
         onOpenFolder={recorder.openRecordingFolder}
+        onOpenMultiview={() => window.dualcast.openMultiview()}
+        onCheckForUpdates={handleCheckForUpdates}
       />
+      {showUpdateStatus && updateStatus && updateStatus.state !== "idle" ? (
+        <UpdateBanner
+          status={updateStatus}
+          onCheck={handleCheckForUpdates}
+          onDownload={handleDownloadUpdate}
+          onInstall={handleInstallUpdate}
+          onOpenRelease={() => window.dualcast.openReleasePage()}
+          onDismiss={() => setShowUpdateStatus(false)}
+        />
+      ) : null}
       <DockWorkspace
         panels={dockPanels}
         center={<PreviewProgram programCanvasRef={programCanvasRef} />}

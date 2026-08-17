@@ -256,3 +256,33 @@ export type ProgramState = {
   isFrozen: boolean;
   qualityPreset: QualityPreset;
 };
+
+export type MultiviewTile = {
+  id: string;
+  kind: "scene" | "camera";
+  name: string;
+  sceneId: string;
+  subtitle?: string;
+  dataUrl?: string;
+};
+
+export type MultiviewPayload = {
+  previewSceneId: string | null;
+  programSceneId: string | null;
+  tiles: MultiviewTile[];
+};
+
+export type MultiviewAction = {
+  action: "preview" | "program";
+  sceneId: string;
+};
+
+export type UpdateState = "idle" | "checking" | "available" | "downloading" | "downloaded" | "up-to-date" | "error";
+
+export type UpdateStatusPayload = {
+  state: UpdateState;
+  currentVersion: string;
+  latestVersion?: string | null;
+  progressPercent?: number | null;
+  message?: string | null;
+};

@@ -3,20 +3,23 @@ import path from "path";
 import { registerIpcHandlers } from "./services/ipc";
 import { setupLogging } from "./services/logger";
 import { registerHotkeys, unregisterHotkeys } from "./services/hotkeyService";
+import { initializeUpdater, stopUpdater } from "./services/updateService";
 
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 if (isDev) {
-  const devUserData = path.join(app.getPath("appData"), "Dualcast Studio Dev");
+  const devUserData = path.join(app.getPath("appData"), "OpenChurch Broadcast Studio Dev");
   app.setPath("userData", devUserData);
   app.setPath("cache", path.join(devUserData, "Cache"));
+} else {
+  app.setPath("userData", path.join(app.getPath("appData"), "DualCast Studio"));
 }
 
 let mainWindow: BrowserWindow | null = null;
 
 const createMainWindow = () => {
   mainWindow = new BrowserWindow({
-    title: `DualCast Studio v${app.getVersion()}`,
+    title: `OpenChurch Broadcast Studio v${app.getVersion()}`,
     width: 1400,
     height: 900,
     minWidth: 1100,
@@ -50,6 +53,7 @@ app.whenReady().then(() => {
   createMainWindow();
   registerIpcHandlers();
   registerHotkeys(() => mainWindow);
+  initializeUpdater();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -66,4 +70,5 @@ app.on("window-all-closed", () => {
 
 app.on("will-quit", () => {
   unregisterHotkeys();
+  stopUpdater();
 });

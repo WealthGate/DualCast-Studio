@@ -56,7 +56,7 @@ const defaultSettings: Settings = {
     songApiUrl: "",
     scriptureProvider: "api-bible",
     scriptureApiUrl: "https://api.scripture.api.bible/v1",
-    scriptureApiKeyEnv: "DUALCAST_SCRIPTURE_API_KEY",
+    scriptureApiKeyEnv: "OPENCHURCH_SCRIPTURE_API_KEY",
     aiProvider: "disabled",
     aiBaseUrl: "https://api.openai.com/v1",
     aiModel: "gpt-5.6-sol",
@@ -97,6 +97,7 @@ type AppState = {
   removeScene: (sceneId: string) => void;
   toggleSceneLocked: (sceneId: string) => void;
   selectPreviewScene: (sceneId: string) => void;
+  setProgramScene: (sceneId: string) => void;
   takeToProgram: () => void;
   addSourceToScene: (sceneId: string, source: Omit<Source, "id">) => void;
   removeSourceFromScene: (sceneId: string, sourceId: string) => void;
@@ -215,7 +216,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         scene.id === sceneId ? { ...scene, locked: !scene.locked } : scene
       )
     })),
-  selectPreviewScene: (sceneId) => set({ previewSceneId: sceneId }),
+  selectPreviewScene: (sceneId) => {
+    if (get().scenes.some((scene) => scene.id === sceneId)) {
+      set({ previewSceneId: sceneId });
+    }
+  },
+  setProgramScene: (sceneId) => {
+    if (get().scenes.some((scene) => scene.id === sceneId)) {
+      set({ programSceneId: sceneId });
+    }
+  },
   takeToProgram: () => set((state) => ({ programSceneId: state.previewSceneId })),
   addSourceToScene: (sceneId, source) => {
     const id = getId();

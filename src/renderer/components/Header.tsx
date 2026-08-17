@@ -13,9 +13,11 @@ type HeaderProps = {
   onStartRecording: () => void;
   onStopRecording: () => void;
   onOpenFolder: () => void;
+  onOpenMultiview: () => void;
+  onCheckForUpdates: () => void;
 };
 
-const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOpenFolder }) => {
+const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOpenFolder, onOpenMultiview, onCheckForUpdates }) => {
   const {
     isRecording,
     recordingSeconds,
@@ -24,11 +26,11 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
     settings,
     updateSettings
   } = useAppStore();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<"menu" | "view" | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!menuOpen) {
+    if (!openMenu) {
       return;
     }
 
@@ -37,7 +39,7 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
         return;
       }
       if (!menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
+        setOpenMenu(null);
       }
     };
 
@@ -45,7 +47,7 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
     return () => {
       document.removeEventListener("mousedown", handleClick);
     };
-  }, [menuOpen]);
+  }, [openMenu]);
 
   const handleAudioChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     updateSettings({ audioMode: event.target.value as AudioMode });
@@ -54,23 +56,55 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
   return (
     <header className="app-header">
       <div className="brand">
-        <div className="menu" ref={menuRef}>
-          <button className="btn btn-outline btn-compact" onClick={() => setMenuOpen((open) => !open)}>
-            Menu
-          </button>
-          {menuOpen ? (
-            <div className="menu-panel">
-              <div className="menu-title">Hotkeys</div>
-              <div className="menu-item">Record: Ctrl/Cmd + Shift + R</div>
-              <div className="menu-item">TAKE: Ctrl/Cmd + Enter</div>
-              <div className="menu-item">Cut to Black: Ctrl/Cmd + B</div>
-            </div>
-          ) : null}
+        <div className="menu-bar" ref={menuRef}>
+          <div className="menu">
+            <button className="btn btn-outline btn-compact" onClick={() => setOpenMenu((value) => value === "menu" ? null : "menu")}>
+              Menu
+            </button>
+            {openMenu === "menu" ? (
+              <div className="menu-panel">
+                <div className="menu-title">Hotkeys</div>
+                <div className="menu-item">Record: Ctrl/Cmd + Shift + R</div>
+                <div className="menu-item">TAKE: Ctrl/Cmd + Enter</div>
+                <div className="menu-item">Cut to Black: Ctrl/Cmd + B</div>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onCheckForUpdates();
+                  }}
+                >
+                  Check for Updates
+                  <span>Installed v{packageJson.version}</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <div className="menu">
+            <button className="btn btn-outline btn-compact" onClick={() => setOpenMenu((value) => value === "view" ? null : "view")}>
+              View
+            </button>
+            {openMenu === "view" ? (
+              <div className="menu-panel">
+                <div className="menu-title">Windows</div>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onOpenMultiview();
+                  }}
+                >
+                  Open Multiview Window
+                  <span>Scenes + Cameras</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
         <span className="brand-dot" />
         <div>
-          <h1>DualCast Studio</h1>
-          <p>Large Venue Edition · v{packageJson.version}</p>
+          <h1>OpenChurch Broadcast Studio</h1>
+          <p>Open Church Production · v{packageJson.version}</p>
         </div>
       </div>
       <div className="header-controls">

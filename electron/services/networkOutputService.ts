@@ -49,14 +49,14 @@ const programPage = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>DualCast Program</title>
+    <title>OpenChurch Program</title>
     <style>
       html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
       img{width:100%;height:100%;object-fit:contain;background:#000}
     </style>
   </head>
   <body>
-    <img id="program" alt="DualCast Program" />
+    <img id="program" alt="OpenChurch Program" />
     <script>
       const image = document.getElementById("program");
       const refresh = () => {
@@ -75,7 +75,7 @@ const operatorPage = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>DualCast Remote Operator</title>
+    <title>OpenChurch Remote Operator</title>
     <style>
       :root{color-scheme:dark;font-family:system-ui,sans-serif}
       body{margin:0;background:#081018;color:#f8fafc;padding:24px}
@@ -90,7 +90,7 @@ const operatorPage = `<!doctype html>
   </head>
   <body>
     <main>
-      <h1>DualCast Remote Operator</h1>
+      <h1>OpenChurch Remote Operator</h1>
       <p>Large-congregation quick controls</p>
       <div class="grid">
         <button data-action="take">TAKE</button>
@@ -107,7 +107,7 @@ const operatorPage = `<!doctype html>
         button.addEventListener("click", async () => {
           const response = await fetch("/api/action", {
             method: "POST",
-            headers: {"Content-Type":"application/json","X-DualCast-Pin":pin},
+            headers: {"Content-Type":"application/json","X-OpenChurch-Pin":pin},
             body: JSON.stringify({action:button.dataset.action})
           });
           status.textContent = response.ok ? "Command sent" : "Command rejected";
@@ -191,7 +191,7 @@ export const startNetworkOutput = async (payload?: { port?: number; operatorPin?
     }
 
     if (url.pathname === "/api/action" && request.method === "POST") {
-      if (request.headers["x-dualcast-pin"] !== operatorPin) {
+      if (request.headers["x-openchurch-pin"] !== operatorPin && request.headers["x-dualcast-pin"] !== operatorPin) {
         response.writeHead(403);
         response.end("Invalid PIN");
         return;

@@ -55,6 +55,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   const browserSizeRef = useRef<Map<string, { width: number; height: number; url: string }>>(new Map());
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 });
   const [isProjecting, setIsProjecting] = useState(false);
+  const [isMultiviewOpen, setIsMultiviewOpen] = useState(false);
   const [projectionTargetIds, setProjectionTargetIds] = useState<string[]>([]);
   const [isLowerThirdProjecting, setIsLowerThirdProjecting] = useState(false);
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
@@ -77,6 +78,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   const previewSceneLocked = Boolean(previewScene?.locked);
   const activeSourceIds = useMemo(() => {
     const ids = new Set<string>();
+    if (isMultiviewOpen) {
+      scenes.forEach((scene) => scene.sourceIds.forEach((id) => ids.add(id)));
+      return ids;
+    }
     if (programScene) {
       programScene.sourceIds.forEach((id) => ids.add(id));
     }
@@ -84,7 +89,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       previewScene.sourceIds.forEach((id) => ids.add(id));
     }
     return ids;
-  }, [programScene, previewScene]);
+  }, [isMultiviewOpen, programScene, previewScene, scenes]);
 
   const profile = getQualityProfile(settings.qualityPreset);
   const programSize = { width: profile.maxWidth, height: profile.maxHeight };
@@ -126,6 +131,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     const unsubscribeClose = window.dualcast.onProjectionClosed(() => setIsProjecting(false));
     const unsubscribeLowerOpen = window.dualcast.onLowerThirdOpened(() => setIsLowerThirdProjecting(true));
     const unsubscribeLowerClose = window.dualcast.onLowerThirdClosed(() => setIsLowerThirdProjecting(false));
+    const unsubscribeMultiviewOpen = window.dualcast.onMultiviewOpened(() => setIsMultiviewOpen(true));
+    const unsubscribeMultiviewClose = window.dualcast.onMultiviewClosed(() => setIsMultiviewOpen(false));
     const unsubscribeBrowser = window.dualcast.onBrowserFrame((payload) => {
       const img = new Image();
       img.onload = () => {
@@ -139,6 +146,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       unsubscribeClose();
       unsubscribeLowerOpen();
       unsubscribeLowerClose();
+      unsubscribeMultiviewOpen();
+      unsubscribeMultiviewClose();
       unsubscribeBrowser();
     };
   }, []);
@@ -508,6 +517,78 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       }
     });
   };
+
+  useEffect(() => {
+    if (!isMultiviewOpen) {
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return;
+    }
+
+    const encodeCanvas = () => {
+      try {
+        return canvas.toDataURL("image/webp", 0.68);
+      } catch {
+        return canvas.toDataURL("image/jpeg", 0.68);
+      }
+    };
+
+    const sendMultiview = () => {
+      const sceneTiles = scenes.map((scene) => {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawScene(ctx, scene, canvas.width, canvas.height);
+        return {
+          id: `scene:${scene.id}`,
+          kind: "scene" as const,
+          name: scene.name,
+          sceneId: scene.id,
+          subtitle: `${scene.sourceIds.length} source${scene.sourceIds.length === 1 ? "" : "s"}`,
+          dataUrl: encodeCanvas()
+        };
+      });
+
+      const cameraTiles = Object.values(sources).flatMap((source) => {
+        if (source.type !== "camera") {
+          return [];
+        }
+        const scene = scenes.find((candidate) => candidate.sourceIds.includes(source.id));
+        if (!scene) {
+          return [];
+        }
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const video = sourceMediaRef.current.get(source.id)?.videoEl;
+        if (video && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
+        return [{
+          id: `camera:${source.id}`,
+          kind: "camera" as const,
+          name: source.name,
+          sceneId: scene.id,
+          subtitle: `Routes ${scene.name}`,
+          dataUrl: encodeCanvas()
+        }];
+      });
+
+      window.dualcast.sendMultiviewData({
+        previewSceneId,
+        programSceneId,
+        tiles: [...sceneTiles, ...cameraTiles]
+      });
+    };
+
+    sendMultiview();
+    const interval = window.setInterval(sendMultiview, 500);
+    return () => window.clearInterval(interval);
+  }, [isMultiviewOpen, previewSceneId, programSceneId, scenes, sources]);
 
   useEffect(() => {
     const canvas = previewCanvasRef.current;

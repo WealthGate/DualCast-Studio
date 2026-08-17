@@ -59,7 +59,7 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: DualCast-Studio-${{ matrix.platform }}
+          name: OpenChurch-Broadcast-Studio-${{ matrix.platform }}
           if-no-files-found: error
           path: |
             release/*.exe
@@ -67,6 +67,8 @@ jobs:
             release/*.dmg
             release/*.AppImage
             release/*.deb
+            release/*.yml
+            release/*.blockmap
 
   release:
     name: Publish GitHub Release
@@ -83,6 +85,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          name: DualCast Studio ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          name: OpenChurch Broadcast Studio ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           generate_release_notes: true
           files: artifacts/**/*

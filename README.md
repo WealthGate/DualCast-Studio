@@ -1,6 +1,6 @@
-# DualCast Studio
+# OpenChurch Broadcast Studio
 
-DualCast Studio is a desktop production suite for churches and large venues. It combines live presentation, multi-display projection, lower thirds, recording, multi-destination streaming, operator controls, audio mixing, and lightweight post-production in one interface.
+OpenChurch Broadcast Studio is an open desktop production suite for churches and large venues. It combines live presentation, multi-display projection, lower thirds, recording, multi-destination streaming, operator controls, audio mixing, Multiview, and lightweight post-production in one interface.
 
 ## Download
 
@@ -12,11 +12,15 @@ Download the current Windows, macOS, or Linux installer from the [latest GitHub 
 
 The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper may therefore ask users to confirm that they trust the download.
 
+Starting with v0.4.0, the installed app checks GitHub Releases automatically. When a newer version is available, it shows the exact version number and lets the operator download it, then restart and install. `Menu > Check for Updates` runs a manual check, and the alert includes a GitHub download fallback.
+
 ## Current Capabilities
 
 ### Live Production
 - Captures connected displays and builds layered scenes from display, camera, image, video, and text sources.
 - Provides Preview and Program buses with TAKE, CUT TO BLACK, and FREEZE controls.
+- Opens a separate Multiview from `View > Open Multiview Window` with every configured scene and camera source.
+- Sends a Multiview tile to Preview on single click and directly to Program on double-click.
 - Uses a compact OBS-inspired control-room layout that prioritizes Preview and Program space.
 - Lets operators drag docks to the top, bottom, left, or right of the workspace.
 - Merges panels dropped on another dock into persistent tabs and previews the target before docking.
@@ -25,6 +29,7 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 - Records the Program canvas with configurable quality, frame rate, and System/Mic/Both/None audio modes.
 - Saves MP4 through bundled FFmpeg, with WebM fallback when conversion fails.
 - Provides global record and cut hotkeys.
+- Checks GitHub Releases automatically and provides one-click download plus restart-to-install update controls.
 
 ### Large-Venue Outputs
 - Sends the same Program feed to multiple selected sanctuary projectors or displays.
@@ -55,14 +60,15 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 ## Large-Congregation Workflow
 
 1. Build scenes and assign display, camera, media, and text sources.
-2. Mark text sources as Standard or Lower Third.
-3. Select one or more main projector targets in Program.
-4. Select a separate lower-third display if needed.
-5. Enable the Venue LAN hub for wireless browser displays or an OBS Browser Source.
-6. Add and enable every streaming destination in Streaming.
-7. Set per-source and master audio levels.
-8. Give authorized operators the LAN operator URL and PIN.
-9. Record the Program output and create clips in Editor after the service.
+2. Open Multiview from the View menu for a wall of live scene and camera feeds.
+3. Mark text sources as Standard or Lower Third.
+4. Select one or more main projector targets in Program.
+5. Select a separate lower-third display if needed.
+6. Enable the Venue LAN hub for wireless browser displays or an OBS Browser Source.
+7. Add and enable every streaming destination in Streaming.
+8. Set per-source and master audio levels.
+9. Give authorized operators the LAN operator URL and PIN.
+10. Record the Program output and create clips in Editor after the service.
 
 ## Wireless Display Setup
 
@@ -97,11 +103,11 @@ npm test
 
 ## Provider Configuration
 
-Provider API keys are not saved in ordinary app settings. Enter the name of an environment variable in Venue, then set that variable before starting DualCast Studio. Examples:
+Provider API keys are not saved in ordinary app settings. Enter the name of an environment variable in Venue, then set that variable before starting OpenChurch Broadcast Studio. Examples:
 
 ```powershell
 $env:OPENAI_API_KEY="your-key"
-$env:DUALCAST_SCRIPTURE_API_KEY="your-key"
+$env:OPENCHURCH_SCRIPTURE_API_KEY="your-key"
 npm run dev
 ```
 

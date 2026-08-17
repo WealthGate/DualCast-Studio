@@ -25,7 +25,7 @@ const allowedStreamingAudio: StreamingAudioBitrate[] = [128, 192];
 const allowedStreamingEncoders: StreamingEncoder[] = ["auto", "x264", "nvenc", "qsv", "amf"];
 const allowedOperatorRoles = ["director", "graphics", "audio", "stream"];
 
-export const getDefaultSaveDirectory = () => path.join(app.getPath("videos"), "DualCast Studio");
+export const getDefaultSaveDirectory = () => path.join(app.getPath("videos"), "OpenChurch Broadcast Studio");
 
 const defaultStudioState: StudioState = {
   scenes: [{ id: "scene-1", name: "Scene 1", sourceIds: [] }],
@@ -55,7 +55,7 @@ const defaultIntegrations = {
   songApiUrl: "",
   scriptureProvider: "api-bible" as const,
   scriptureApiUrl: "https://api.scripture.api.bible/v1",
-  scriptureApiKeyEnv: "DUALCAST_SCRIPTURE_API_KEY",
+  scriptureApiKeyEnv: "OPENCHURCH_SCRIPTURE_API_KEY",
   aiProvider: "disabled" as const,
   aiBaseUrl: "https://api.openai.com/v1",
   aiModel: "gpt-5.6-sol",

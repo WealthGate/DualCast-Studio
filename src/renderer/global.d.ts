@@ -3,6 +3,9 @@ import {
   SaveRecordingPayload,
   SaveRecordingResult,
   MediaFileResult,
+  MultiviewAction,
+  MultiviewPayload,
+  UpdateStatusPayload,
   Settings,
   SettingsUpdate,
   HotkeyAction,
@@ -33,6 +36,13 @@ declare global {
       closeProjection: () => Promise<boolean>;
       openLowerThird: (displayId: string) => Promise<boolean>;
       closeLowerThird: () => Promise<boolean>;
+      openMultiview: () => Promise<boolean>;
+      closeMultiview: () => Promise<boolean>;
+      getUpdateStatus: () => Promise<UpdateStatusPayload>;
+      checkForUpdates: () => Promise<UpdateStatusPayload>;
+      downloadUpdate: () => Promise<boolean>;
+      installUpdate: () => Promise<boolean>;
+      openReleasePage: () => Promise<boolean>;
       startStream: (payload: StreamStartPayload) => Promise<StreamStartResult>;
       stopStream: () => Promise<StreamStopResult>;
       sendStreamChunk: (payload: Uint8Array) => void;
@@ -54,6 +64,8 @@ declare global {
       updateProgramState: (state: ProgramState) => void;
       sendProgramFrame: (dataUrl: string) => void;
       sendLowerThirdFrame: (dataUrl: string) => void;
+      sendMultiviewData: (payload: MultiviewPayload) => void;
+      sendMultiviewAction: (action: MultiviewAction) => void;
       onBrowserFrame: (handler: (payload: BrowserFramePayload) => void) => () => void;
       onProgramFrame: (handler: (dataUrl: string) => void) => () => void;
       onLowerThirdFrame: (handler: (dataUrl: string) => void) => () => void;
@@ -62,6 +74,11 @@ declare global {
       onProjectionClosed: (handler: () => void) => () => void;
       onLowerThirdOpened: (handler: () => void) => () => void;
       onLowerThirdClosed: (handler: () => void) => () => void;
+      onMultiviewOpened: (handler: () => void) => () => void;
+      onMultiviewClosed: (handler: () => void) => () => void;
+      onMultiviewData: (handler: (payload: MultiviewPayload) => void) => () => void;
+      onMultiviewAction: (handler: (action: MultiviewAction) => void) => () => void;
+      onUpdateStatus: (handler: (status: UpdateStatusPayload) => void) => () => void;
       onHotkey: (handler: (action: HotkeyAction) => void) => () => void;
       onRemoteOperatorAction: (handler: (action: RemoteOperatorAction) => void) => () => void;
     };

@@ -14,6 +14,9 @@ import {
   StreamStatusPayload,
   StreamingEncoder,
   MediaFileResult,
+  MultiviewAction,
+  MultiviewPayload,
+  UpdateStatusPayload,
   BrowserFramePayload,
   BrowserSourcePayload,
   ExportClipPayload,
@@ -33,6 +36,13 @@ const api = {
   closeProjection: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.closeProjection),
   openLowerThird: (displayId: string): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openLowerThird, displayId),
   closeLowerThird: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.closeLowerThird),
+  openMultiview: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openMultiview),
+  closeMultiview: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.closeMultiview),
+  getUpdateStatus: (): Promise<UpdateStatusPayload> => ipcRenderer.invoke(IpcChannels.getUpdateStatus),
+  checkForUpdates: (): Promise<UpdateStatusPayload> => ipcRenderer.invoke(IpcChannels.checkForUpdates),
+  downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.downloadUpdate),
+  installUpdate: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.installUpdate),
+  openReleasePage: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openReleasePage),
   startStream: (payload: StreamStartPayload): Promise<StreamStartResult> =>
     ipcRenderer.invoke(IpcChannels.startStream, payload),
   stopStream: (): Promise<StreamStopResult> => ipcRenderer.invoke(IpcChannels.stopStream),
@@ -65,6 +75,8 @@ const api = {
   updateProgramState: (state: ProgramState) => ipcRenderer.send(IpcChannels.updateProgramState, state),
   sendProgramFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.programFrame, dataUrl),
   sendLowerThirdFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.lowerThirdFrame, dataUrl),
+  sendMultiviewData: (payload: MultiviewPayload) => ipcRenderer.send(IpcChannels.multiviewData, payload),
+  sendMultiviewAction: (action: MultiviewAction) => ipcRenderer.send(IpcChannels.multiviewAction, action),
   onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: StreamStatusPayload) => handler(payload);
     ipcRenderer.on(IpcChannels.streamStatus, listener);
@@ -114,6 +126,31 @@ const api = {
     const listener = () => handler();
     ipcRenderer.on(IpcChannels.lowerThirdClosed, listener);
     return () => ipcRenderer.removeListener(IpcChannels.lowerThirdClosed, listener);
+  },
+  onMultiviewOpened: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on(IpcChannels.multiviewOpened, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.multiviewOpened, listener);
+  },
+  onMultiviewClosed: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on(IpcChannels.multiviewClosed, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.multiviewClosed, listener);
+  },
+  onMultiviewData: (handler: (payload: MultiviewPayload) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: MultiviewPayload) => handler(payload);
+    ipcRenderer.on(IpcChannels.multiviewData, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.multiviewData, listener);
+  },
+  onMultiviewAction: (handler: (action: MultiviewAction) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, action: MultiviewAction) => handler(action);
+    ipcRenderer.on(IpcChannels.multiviewAction, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.multiviewAction, listener);
+  },
+  onUpdateStatus: (handler: (status: UpdateStatusPayload) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: UpdateStatusPayload) => handler(status);
+    ipcRenderer.on(IpcChannels.updateStatus, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.updateStatus, listener);
   },
   onRemoteOperatorAction: (handler: (action: RemoteOperatorAction) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, action: RemoteOperatorAction) => handler(action);
