@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useProgramStreamer } from "../hooks/useProgramStreamer";
+import { ProgramStreamerController } from "../hooks/useProgramStreamer";
 import { useAppStore } from "../store/useAppStore";
 import {
   StreamDestinationConfig,
@@ -10,7 +10,7 @@ import {
 } from "../../shared/types";
 
 type StreamingPanelProps = {
-  programCanvasRef: React.RefObject<HTMLCanvasElement>;
+  streamer: ProgramStreamerController;
 };
 
 const formatEndpoint = (rtmpUrl: string, streamKey: string) => {
@@ -21,7 +21,7 @@ const formatEndpoint = (rtmpUrl: string, streamKey: string) => {
   return streamKey ? `${trimmed}/${streamKey}` : trimmed;
 };
 
-const StreamingPanel: React.FC<StreamingPanelProps> = ({ programCanvasRef }) => {
+const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
   const {
     status,
     statusMessage,
@@ -31,7 +31,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ programCanvasRef }) => 
     destinationStatuses,
     startStream,
     stopStream
-  } = useProgramStreamer(programCanvasRef);
+  } = streamer;
   const { settings, updateSettings } = useAppStore();
   const [streamKeys, setStreamKeys] = useState<Record<string, string>>({});
   const [localMessage, setLocalMessage] = useState<string | null>(null);

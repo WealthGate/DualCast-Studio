@@ -269,3 +269,5 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     stopStream
   };
 };
+
+export type ProgramStreamerController = ReturnType<typeof useProgramStreamer>;

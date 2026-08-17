@@ -3,7 +3,6 @@ import { useAppStore } from "../store/useAppStore";
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
 import { Scene, Source, SourceRect } from "../../shared/types";
-import SceneSourcesPanel from "./SceneSourcesPanel";
 
 type PreviewProgramProps = {
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
@@ -38,10 +37,6 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     selectedSourceId,
     isCutToBlack,
     isFrozen,
-    takeToProgram,
-    cutToBlack,
-    clearCutToBlack,
-    toggleFreeze,
     settings,
     displays,
     updateSourceRect,
@@ -50,8 +45,6 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     setProgramAudioStream,
     transitionType,
     transitionDurationMs,
-    setTransitionType,
-    setTransitionDuration,
     updateSettings
   } = useAppStore();
 
@@ -928,41 +921,6 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
             </div>
           </div>
         </div>
-        <div className="pane-controls">
-          <button className="btn btn-primary" onClick={takeToProgram} disabled={!hasPreviewScene}>
-            TAKE
-          </button>
-          <button className="btn btn-outline" onClick={isCutToBlack ? clearCutToBlack : cutToBlack}>
-            CUT TO BLACK
-          </button>
-          <button className="btn btn-outline" onClick={toggleFreeze}>
-            {isFrozen ? "UNFREEZE" : "FREEZE"}
-          </button>
-          <div className="transition-controls">
-            <label htmlFor="transitionType">Transition</label>
-            <select
-              id="transitionType"
-              value={transitionType}
-              onChange={(event) => setTransitionType(event.target.value as "cut" | "fade" | "crossfade")}
-            >
-              <option value="cut">Cut</option>
-              <option value="fade">Fade</option>
-              <option value="crossfade">Crossfade</option>
-            </select>
-          </div>
-          <div className="transition-controls">
-            <label htmlFor="transitionDuration">Duration (ms)</label>
-            <input
-              id="transitionDuration"
-              type="number"
-              min={100}
-              max={3000}
-              value={transitionDurationMs}
-              onChange={(event) => setTransitionDuration(Number(event.target.value))}
-            />
-          </div>
-        </div>
-        <SceneSourcesPanel />
       </div>
       <div className="pane">
         <div className="pane-header program-header">

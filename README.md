@@ -17,6 +17,10 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 ### Live Production
 - Captures connected displays and builds layered scenes from display, camera, image, video, and text sources.
 - Provides Preview and Program buses with TAKE, CUT TO BLACK, and FREEZE controls.
+- Uses a compact OBS-inspired control-room layout that prioritizes Preview and Program space.
+- Lets operators drag docks to the top, bottom, left, or right of the workspace.
+- Merges panels dropped on another dock into persistent tabs and previews the target before docking.
+- Saves each operator's dock arrangement locally, with hide, restore, and Reset OBS Layout controls.
 - Supports live text changes so an operator can update projected words, notices, or lower thirds without rebuilding the scene.
 - Records the Program canvas with configurable quality, frame rate, and System/Mic/Both/None audio modes.
 - Saves MP4 through bundled FFmpeg, with WebM fallback when conversion fails.

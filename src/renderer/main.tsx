@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import Projection from "./Projection";
 import "./styles.css";
+import { installDevelopmentBridge } from "./devBridge";
+
+installDevelopmentBridge();
 
 const params = new URLSearchParams(window.location.search);
 const projectionMode = params.get("projection");

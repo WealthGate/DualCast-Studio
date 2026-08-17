@@ -1,16 +1,21 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import Header from "./components/Header";
 import SettingsPanel from "./components/SettingsPanel";
 import StreamingPanel from "./components/StreamingPanel";
 import PreviewProgram from "./components/PreviewProgram";
 import VenuePanel from "./components/VenuePanel";
 import EditorPanel from "./components/EditorPanel";
+import SceneSourcesPanel from "./components/SceneSourcesPanel";
+import AudioMixerPanel from "./components/AudioMixerPanel";
+import TransitionsPanel from "./components/TransitionsPanel";
+import ProductionControlsPanel from "./components/ProductionControlsPanel";
+import DockWorkspace, { DockPanelDefinition } from "./components/DockWorkspace";
 import { useAppStore } from "./store/useAppStore";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
+import { useProgramStreamer } from "./hooks/useProgramStreamer";
 
 const App: React.FC = () => {
   const programCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [sideTab, setSideTab] = useState<"system" | "streaming" | "venue" | "editor">("streaming");
 
   const {
     setSettings,
@@ -28,6 +33,7 @@ const App: React.FC = () => {
   } = useAppStore();
 
   const recorder = useProgramRecorder(programCanvasRef);
+  const streamer = useProgramStreamer(programCanvasRef);
 
   useEffect(() => {
     const init = async () => {
@@ -111,6 +117,31 @@ const App: React.FC = () => {
     toggleFreeze
   ]);
 
+  const dockPanels: DockPanelDefinition[] = [
+    { id: "scenes", title: "Scenes & Sources", content: <SceneSourcesPanel /> },
+    { id: "audio", title: "Audio Mixer", content: <AudioMixerPanel /> },
+    { id: "transitions", title: "Scene Transitions", content: <TransitionsPanel /> },
+    {
+      id: "controls",
+      title: "Controls",
+      content: (
+        <ProductionControlsPanel
+          onStartRecording={recorder.startRecording}
+          onStopRecording={recorder.stopRecording}
+          onOpenFolder={recorder.openRecordingFolder}
+        />
+      )
+    },
+    {
+      id: "streaming",
+      title: "Live Streaming",
+      content: <StreamingPanel streamer={streamer} />
+    },
+    { id: "venue", title: "Venue & Outputs", content: <VenuePanel /> },
+    { id: "system", title: "System Settings", content: <SettingsPanel /> },
+    { id: "editor", title: "Post Editor", content: <EditorPanel /> }
+  ];
+
   return (
     <div className="app-shell">
       <Header
@@ -118,29 +149,10 @@ const App: React.FC = () => {
         onStopRecording={recorder.stopRecording}
         onOpenFolder={recorder.openRecordingFolder}
       />
-      <main className="main-layout">
-        <PreviewProgram programCanvasRef={programCanvasRef} />
-        <aside className="side-panel">
-          <nav className="side-nav" aria-label="Control center">
-            <button className={sideTab === "system" ? "active" : ""} onClick={() => setSideTab("system")}>
-              System
-            </button>
-            <button className={sideTab === "streaming" ? "active" : ""} onClick={() => setSideTab("streaming")}>
-              Streaming
-            </button>
-            <button className={sideTab === "venue" ? "active" : ""} onClick={() => setSideTab("venue")}>
-              Venue
-            </button>
-            <button className={sideTab === "editor" ? "active" : ""} onClick={() => setSideTab("editor")}>
-              Editor
-            </button>
-          </nav>
-          {sideTab === "system" ? <SettingsPanel /> : null}
-          {sideTab === "streaming" ? <StreamingPanel programCanvasRef={programCanvasRef} /> : null}
-          {sideTab === "venue" ? <VenuePanel /> : null}
-          {sideTab === "editor" ? <EditorPanel /> : null}
-        </aside>
-      </main>
+      <DockWorkspace
+        panels={dockPanels}
+        center={<PreviewProgram programCanvasRef={programCanvasRef} />}
+      />
     </div>
   );
 };
