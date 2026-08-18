@@ -6,6 +6,8 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
+Current release: **v0.5.0**.
+
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
 - Linux: download the `.AppImage` or `.deb`.
@@ -22,9 +24,13 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 - Opens a separate Multiview from `View > Open Multiview Window` with every configured scene and camera source.
 - Sends a Multiview tile to Preview on single click and directly to Program on double-click.
 - Uses a compact OBS-inspired control-room layout that prioritizes Preview and Program space.
+- Keeps Preview and Program at matching dimensions for a balanced studio view.
+- Separates Scenes and Sources into independent docks; selecting a scene shows only its attached sources.
 - Lets operators drag docks to the top, bottom, left, or right of the workspace.
+- Resizes dock columns, rows, and adjacent panels by dragging their visible boundaries.
 - Merges panels dropped on another dock into persistent tabs and previews the target before docking.
-- Saves each operator's dock arrangement locally, with hide, restore, and Reset OBS Layout controls.
+- Reveals dock, scene, and source actions only from right-click context menus to preserve workspace space.
+- Saves each operator's dock arrangement and sizes locally, with hide, restore, and Reset Workspace Layout controls.
 - Supports live text changes so an operator can update projected words, notices, or lower thirds without rebuilding the scene.
 - Records the Program canvas with configurable quality, frame rate, and System/Mic/Both/None audio modes.
 - Saves MP4 through bundled FFmpeg, with WebM fallback when conversion fails.
@@ -33,6 +39,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 
 ### Large-Venue Outputs
 - Sends the same Program feed to multiple selected sanctuary projectors or displays.
+- Provides Sanctuary Displays as a movable, tab-capable dock.
 - Provides a separate lower-third output for confidence monitors, broadcast graphics, or dedicated screens.
 - Configures lower-third position, height, background, and target display.
 - Publishes Program to browser-capable displays and OBS Browser Sources over the local network.
@@ -62,7 +69,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 1. Build scenes and assign display, camera, media, and text sources.
 2. Open Multiview from the View menu for a wall of live scene and camera feeds.
 3. Mark text sources as Standard or Lower Third.
-4. Select one or more main projector targets in Program.
+4. Select one or more main projector targets in the Sanctuary Displays dock.
 5. Select a separate lower-third display if needed.
 6. Enable the Venue LAN hub for wireless browser displays or an OBS Browser Source.
 7. Add and enable every streaming destination in Streaming.

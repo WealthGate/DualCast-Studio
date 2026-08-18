@@ -1,11 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { Source, SourceRect, SourceType } from "../../shared/types";
+import ContextMenu from "./ContextMenu";
 
 type CameraDevice = {
   deviceId: string;
   label: string;
 };
+
+type SourceMenu = {
+  x: number;
+  y: number;
+  sourceId?: string;
+};
+
+type ToolOverlay = "properties" | "groups" | "add" | null;
 
 const hasAudioToggle = (type: SourceType) => ["display", "window", "video", "audio"].includes(type);
 
@@ -25,11 +34,6 @@ const SceneSourcesPanel: React.FC = () => {
     displays,
     settings,
     groups,
-    addScene,
-    renameScene,
-    removeScene,
-    toggleSceneLocked,
-    selectPreviewScene,
     addSourceToScene,
     removeSourceFromScene,
     moveSourceInScene,
@@ -56,6 +60,8 @@ const SceneSourcesPanel: React.FC = () => {
   const [cameraId, setCameraId] = useState("");
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [newGroupName, setNewGroupName] = useState("");
+  const [sourceMenu, setSourceMenu] = useState<SourceMenu | null>(null);
+  const [toolOverlay, setToolOverlay] = useState<ToolOverlay>(null);
 
   const activeScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? scenes[0], [previewSceneId, scenes]);
   const sceneSources = activeScene ? activeScene.sourceIds.map((id) => sources[id]).filter(Boolean) : [];
@@ -76,32 +82,6 @@ const SceneSourcesPanel: React.FC = () => {
     };
     refreshCameras();
   }, []);
-
-  const handleAddScene = async () => {
-    addScene();
-    await persistStudioState();
-  };
-
-  const handleRenameScene = async (value: string) => {
-    if (!activeScene || activeScene.locked) {
-      return;
-    }
-    renameScene(activeScene.id, value);
-    await persistStudioState();
-  };
-
-  const handleRemoveScene = async () => {
-    if (!activeScene || scenes.length <= 1 || activeScene.locked) {
-      return;
-    }
-    removeScene(activeScene.id);
-    await persistStudioState();
-  };
-
-  const handleSelectScene = async (sceneId: string) => {
-    selectPreviewScene(sceneId);
-    await persistStudioState();
-  };
 
   const handlePickFile = async () => {
     const kind = sourceType === "image" || sourceType === "video" || sourceType === "audio" ? sourceType : null;
@@ -267,14 +247,6 @@ const SceneSourcesPanel: React.FC = () => {
     await persistStudioState();
   };
 
-  const handleToggleSceneLock = async () => {
-    if (!activeScene) {
-      return;
-    }
-    toggleSceneLocked(activeScene.id);
-    await persistStudioState();
-  };
-
   const handleSourceNameChange = async (value: string) => {
     if (!selectedSource) {
       return;
@@ -408,57 +380,38 @@ const SceneSourcesPanel: React.FC = () => {
   };
 
   const displaysForType = displays.filter((display) => display.sourceType === (sourceType === "display" ? "screen" : "window"));
+  const menuSource = sourceMenu?.sourceId ? sources[sourceMenu.sourceId] ?? null : null;
+  const menuSourceIndex = menuSource ? sceneSources.findIndex((source) => source.id === menuSource.id) : -1;
+
+  const runMenuAction = (action: () => void | Promise<void>) => {
+    setSourceMenu(null);
+    void action();
+  };
 
   return (
-    <div className="scene-sources-panel">
-      <div className="scene-row">
-        <div className="scene-tabs">
-          {scenes.map((scene) => (
-            <button
-              key={scene.id}
-              className={`tab-btn ${scene.id === activeScene?.id ? "active" : ""}`}
-              onClick={() => handleSelectScene(scene.id)}
-            >
-              {scene.name}
-            </button>
-          ))}
-        </div>
-        <div className="scene-actions">
-          <button className="btn btn-outline btn-compact" onClick={handleAddScene}>
-            Add Scene
-          </button>
-          <button
-            className="btn btn-outline btn-compact"
-            onClick={handleRemoveScene}
-            disabled={scenes.length <= 1 || activeSceneLocked}
-          >
-            Delete Scene
-          </button>
-          <button className="btn btn-outline btn-compact" onClick={handleToggleSceneLock} disabled={!activeScene}>
-            {activeSceneLocked ? "Unlock Scene" : "Lock Scene"}
-          </button>
-        </div>
-      </div>
-
-      {activeScene ? (
-        <div className="scene-meta">
-          <label htmlFor="sceneName">Scene Name</label>
-          <input
-            id="sceneName"
-            value={activeScene.name}
-            onChange={(event) => handleRenameScene(event.target.value)}
-            disabled={activeSceneLocked}
-          />
-        </div>
-      ) : null}
-
+    <div
+      className="scene-sources-panel sources-panel"
+      onContextMenu={(event) => {
+        if ((event.target as HTMLElement).closest(".panel-tool-overlay")) {
+          return;
+        }
+        event.preventDefault();
+        setSourceMenu({ x: event.clientX, y: event.clientY });
+      }}
+    >
       <div className="sources-list">
-        {sceneSources.length === 0 ? <div className="empty-hint">No sources yet.</div> : null}
-        {sceneSources.map((source, index) => (
+        {sceneSources.length === 0 ? <div className="empty-hint">No sources in {activeScene?.name ?? "this scene"}.</div> : null}
+        {sceneSources.map((source) => (
           <div
             key={source.id}
             className={`source-row ${selectedSourceId === source.id ? "selected" : ""}`}
             onClick={() => setSelectedSourceId(source.id)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setSelectedSourceId(source.id);
+              setSourceMenu({ x: event.clientX, y: event.clientY, sourceId: source.id });
+            }}
           >
             <div className="source-labels">
               <strong>{source.name}</strong>
@@ -468,53 +421,19 @@ const SceneSourcesPanel: React.FC = () => {
               ) : null}
               {source.locked ? <span className="source-meta">Locked</span> : null}
             </div>
-            <div className="source-actions">
-              <button
-                className="btn btn-outline btn-compact"
-                onClick={() => handleMove(source.id, -1)}
-                disabled={index === 0 || activeSceneLocked || source.locked}
-              >
-                Up
-              </button>
-              <button
-                className="btn btn-outline btn-compact"
-                onClick={() => handleMove(source.id, 1)}
-                disabled={index === sceneSources.length - 1 || activeSceneLocked || source.locked}
-              >
-                Down
-              </button>
-              <button className="btn btn-outline btn-compact" onClick={() => handleToggleEnabled(source.id)} disabled={activeSceneLocked}>
-                {source.enabled ? "Hide" : "Show"}
-              </button>
-              {hasAudioToggle(source.type) ? (
-                <button className="btn btn-outline btn-compact" onClick={() => handleToggleAudio(source.id)} disabled={activeSceneLocked}>
-                  {source.audioEnabled ? "Mute" : "Audio"}
-                </button>
-              ) : null}
-              <button
-                className="btn btn-outline btn-compact"
-                onClick={() => handleToggleSourceLock(source.id)}
-                disabled={activeSceneLocked}
-              >
-                {source.locked ? "Unlock" : "Lock"}
-              </button>
-              <button
-                className="btn btn-danger btn-compact"
-                onClick={() => handleRemoveSource(source.id)}
-                disabled={activeSceneLocked || source.locked}
-              >
-                Remove
-              </button>
-            </div>
           </div>
         ))}
       </div>
+      <div className="panel-context-hint">Right-click a source or empty space for options.</div>
 
-      {selectedSource ? (
-        <div className="selected-source-panel">
+      {toolOverlay === "properties" && selectedSource ? (
+        <div className="selected-source-panel panel-tool-overlay">
           <div className="panel-header">
             <h3>Selected Source</h3>
-            <span className="tag">{selectedSource.type}</span>
+            <div className="panel-overlay-actions">
+              <span className="tag">{selectedSource.type}</span>
+              <button className="btn btn-outline btn-compact" onClick={() => setToolOverlay(null)}>Close</button>
+            </div>
           </div>
           <div className="field">
             <label htmlFor="selectedName">Name</label>
@@ -743,10 +662,14 @@ const SceneSourcesPanel: React.FC = () => {
         </div>
       ) : null}
 
-      <div className="groups-panel">
+      {toolOverlay === "groups" ? (
+      <div className="groups-panel panel-tool-overlay">
         <div className="panel-header">
           <h3>Groups</h3>
-          <span className="tag">{groups.length}</span>
+          <div className="panel-overlay-actions">
+            <span className="tag">{groups.length}</span>
+            <button className="btn btn-outline btn-compact" onClick={() => setToolOverlay(null)}>Close</button>
+          </div>
         </div>
         <div className="field">
           <label htmlFor="newGroup">New Group</label>
@@ -777,8 +700,14 @@ const SceneSourcesPanel: React.FC = () => {
           </div>
         ))}
       </div>
+      ) : null}
 
-      <div className="add-source">
+      {toolOverlay === "add" ? (
+      <div className="add-source panel-tool-overlay">
+        <div className="panel-header">
+          <h3>Add Source</h3>
+          <button className="btn btn-outline btn-compact" onClick={() => setToolOverlay(null)}>Close</button>
+        </div>
         <div className="field">
           <label htmlFor="sourceType">Source Type</label>
           <select id="sourceType" value={sourceType} onChange={(event) => setSourceType(event.target.value as SourceType)}>
@@ -858,6 +787,53 @@ const SceneSourcesPanel: React.FC = () => {
           Add Source
         </button>
       </div>
+      ) : null}
+
+      {sourceMenu ? (
+        <ContextMenu x={sourceMenu.x} y={sourceMenu.y} onClose={() => setSourceMenu(null)} ariaLabel="Source options">
+          <div className="context-menu-title">{menuSource?.name ?? activeScene?.name ?? "Sources"}</div>
+          {menuSource ? (
+            <>
+              <button
+                onClick={() => runMenuAction(() => handleMove(menuSource.id, -1))}
+                disabled={menuSourceIndex <= 0 || activeSceneLocked || menuSource.locked}
+              >
+                Move Up
+              </button>
+              <button
+                onClick={() => runMenuAction(() => handleMove(menuSource.id, 1))}
+                disabled={menuSourceIndex < 0 || menuSourceIndex === sceneSources.length - 1 || activeSceneLocked || menuSource.locked}
+              >
+                Move Down
+              </button>
+              <button onClick={() => runMenuAction(() => handleToggleEnabled(menuSource.id))} disabled={activeSceneLocked}>
+                {menuSource.enabled ? "Hide Source" : "Show Source"}
+              </button>
+              {hasAudioToggle(menuSource.type) ? (
+                <button onClick={() => runMenuAction(() => handleToggleAudio(menuSource.id))} disabled={activeSceneLocked}>
+                  {menuSource.audioEnabled ? "Mute Source" : "Enable Audio"}
+                </button>
+              ) : null}
+              <button onClick={() => runMenuAction(() => handleToggleSourceLock(menuSource.id))} disabled={activeSceneLocked}>
+                {menuSource.locked ? "Unlock Source" : "Lock Source"}
+              </button>
+              <button onClick={() => runMenuAction(() => setToolOverlay("properties"))}>Properties</button>
+              <button
+                className="context-menu-danger"
+                onClick={() => runMenuAction(() => handleRemoveSource(menuSource.id))}
+                disabled={activeSceneLocked || menuSource.locked}
+              >
+                Remove Source
+              </button>
+              <div className="context-menu-separator" />
+            </>
+          ) : null}
+          <button onClick={() => runMenuAction(() => setToolOverlay("add"))} disabled={!activeScene || activeSceneLocked}>
+            Add Source
+          </button>
+          <button onClick={() => runMenuAction(() => setToolOverlay("groups"))}>Manage Groups</button>
+        </ContextMenu>
+      ) : null}
     </div>
   );
 };

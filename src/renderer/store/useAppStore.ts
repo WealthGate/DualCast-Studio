@@ -79,6 +79,9 @@ type AppState = {
   programSceneId: string | null;
   selectedSourceId: string | null;
   programAudioStream: MediaStream | null;
+  isProjecting: boolean;
+  isLowerThirdProjecting: boolean;
+  projectionTargetIds: string[];
   isCutToBlack: boolean;
   isFrozen: boolean;
   transitionType: "cut" | "fade" | "crossfade";
@@ -117,6 +120,9 @@ type AppState = {
   restartSourceMedia: (sourceId: string) => void;
   setSelectedSourceId: (sourceId: string | null) => void;
   setProgramAudioStream: (stream: MediaStream | null) => void;
+  setIsProjecting: (value: boolean) => void;
+  setIsLowerThirdProjecting: (value: boolean) => void;
+  setProjectionTargetIds: (displayIds: string[]) => void;
   cutToBlack: () => void;
   clearCutToBlack: () => void;
   toggleFreeze: () => void;
@@ -164,6 +170,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   programSceneId: defaultStudioState.programSceneId,
   selectedSourceId: null,
   programAudioStream: null,
+  isProjecting: false,
+  isLowerThirdProjecting: false,
+  projectionTargetIds: [],
   isCutToBlack: false,
   isFrozen: false,
   transitionType: "cut",
@@ -417,6 +426,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   setSelectedSourceId: (sourceId) => set({ selectedSourceId: sourceId }),
   setProgramAudioStream: (stream) => set({ programAudioStream: stream }),
+  setIsProjecting: (isProjecting) => set({ isProjecting }),
+  setIsLowerThirdProjecting: (isLowerThirdProjecting) => set({ isLowerThirdProjecting }),
+  setProjectionTargetIds: (projectionTargetIds) => set({ projectionTargetIds }),
   cutToBlack: () => set({ isCutToBlack: true }),
   clearCutToBlack: () => set({ isCutToBlack: false }),
   toggleFreeze: () => set((state) => ({ isFrozen: !state.isFrozen })),

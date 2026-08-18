@@ -6,6 +6,8 @@ import PreviewProgram from "./components/PreviewProgram";
 import VenuePanel from "./components/VenuePanel";
 import EditorPanel from "./components/EditorPanel";
 import SceneSourcesPanel from "./components/SceneSourcesPanel";
+import ScenesPanel from "./components/ScenesPanel";
+import SanctuaryDisplaysPanel from "./components/SanctuaryDisplaysPanel";
 import AudioMixerPanel from "./components/AudioMixerPanel";
 import TransitionsPanel from "./components/TransitionsPanel";
 import ProductionControlsPanel from "./components/ProductionControlsPanel";
@@ -174,7 +176,8 @@ const App: React.FC = () => {
   };
 
   const dockPanels: DockPanelDefinition[] = [
-    { id: "scenes", title: "Scenes & Sources", content: <SceneSourcesPanel /> },
+    { id: "scenes", title: "Scenes", content: <ScenesPanel /> },
+    { id: "sources", title: "Sources", content: <SceneSourcesPanel /> },
     { id: "audio", title: "Audio Mixer", content: <AudioMixerPanel /> },
     { id: "transitions", title: "Scene Transitions", content: <TransitionsPanel /> },
     {
@@ -194,6 +197,7 @@ const App: React.FC = () => {
       content: <StreamingPanel streamer={streamer} />
     },
     { id: "venue", title: "Venue & Outputs", content: <VenuePanel /> },
+    { id: "displays", title: "Sanctuary Displays", content: <SanctuaryDisplaysPanel /> },
     { id: "system", title: "System Settings", content: <SettingsPanel /> },
     { id: "editor", title: "Post Editor", content: <EditorPanel /> }
   ];

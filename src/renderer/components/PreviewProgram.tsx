@@ -38,14 +38,16 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     isCutToBlack,
     isFrozen,
     settings,
-    displays,
+    isProjecting,
+    isLowerThirdProjecting,
     updateSourceRect,
     setSelectedSourceId,
     persistStudioState,
     setProgramAudioStream,
+    setIsProjecting,
+    setIsLowerThirdProjecting,
     transitionType,
-    transitionDurationMs,
-    updateSettings
+    transitionDurationMs
   } = useAppStore();
 
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -54,10 +56,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   const browserFramesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const browserSizeRef = useRef<Map<string, { width: number; height: number; url: string }>>(new Map());
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 });
-  const [isProjecting, setIsProjecting] = useState(false);
   const [isMultiviewOpen, setIsMultiviewOpen] = useState(false);
-  const [projectionTargetIds, setProjectionTargetIds] = useState<string[]>([]);
-  const [isLowerThirdProjecting, setIsLowerThirdProjecting] = useState(false);
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
   const transitionRef = useRef<{
     type: "fade" | "crossfade";
@@ -67,11 +66,6 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     toSceneId: string | null;
   } | null>(null);
   const prevProgramSceneIdRef = useRef<string | null>(null);
-
-  const screenTargets = useMemo(
-    () => displays.filter((display) => display.sourceType === "screen" && display.displayId),
-    [displays]
-  );
 
   const programScene = useMemo(() => scenes.find((scene) => scene.id === programSceneId) ?? null, [programSceneId, scenes]);
   const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
@@ -151,12 +145,6 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       unsubscribeBrowser();
     };
   }, []);
-
-  useEffect(() => {
-    if (projectionTargetIds.length === 0 && screenTargets.length > 0) {
-      setProjectionTargetIds([String(screenTargets[0].displayId)]);
-    }
-  }, [projectionTargetIds.length, screenTargets]);
 
   useEffect(() => {
     const mediaMap = sourceMediaRef.current;
@@ -776,51 +764,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     sources
   ]);
 
-  const handleProjectionToggle = async () => {
-    if (isProjecting) {
-      await window.dualcast.closeProjection();
-      setIsProjecting(false);
-      return;
-    }
-
-    await window.dualcast.openProjection(projectionTargetIds);
-    setIsProjecting(true);
-  };
-
-  const handleProjectionTargetToggle = (displayId: string, checked: boolean) => {
-    setProjectionTargetIds((current) =>
-      checked ? Array.from(new Set([...current, displayId])) : current.filter((id) => id !== displayId)
-    );
-  };
-
-  const handleLowerThirdToggle = async () => {
-    if (isLowerThirdProjecting) {
-      await window.dualcast.closeLowerThird();
-      setIsLowerThirdProjecting(false);
-      updateSettings({
-        lowerThird: {
-          ...settings.lowerThird,
-          enabled: false
-        }
-      });
-      return;
-    }
-    const displayId = settings.lowerThird.displayId;
-    if (!displayId) {
-      return;
-    }
-    await window.dualcast.openLowerThird(displayId);
-    setIsLowerThirdProjecting(true);
-    updateSettings({
-      lowerThird: {
-        ...settings.lowerThird,
-        enabled: true
-      }
-    });
-  };
-
   const hasPreviewScene = Boolean(previewScene && previewScene.sourceIds.length > 0);
-  const hasProgramScene = Boolean(programScene && programScene.sourceIds.length > 0);
 
   const handlePointerDrag = (
     event: React.PointerEvent<HTMLElement>,
@@ -1008,63 +952,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
           <h2>Program</h2>
           <span className={isCutToBlack ? "tag alert" : "tag"}>{isCutToBlack ? "BLACK" : "LIVE"}</span>
         </div>
-        <div className="pane-body">
+        <div className="pane-body program-body">
           <canvas ref={programCanvasRef} className="video-surface" />
-        </div>
-        <div className="projection-panel">
-          <div className="projection-title">Sanctuary Displays</div>
-          <div className="display-target-grid">
-            {screenTargets.map((display) => {
-              const displayId = String(display.displayId);
-              return (
-                <label key={display.displayId ?? display.id} className="display-target-option">
-                  <input
-                    type="checkbox"
-                    checked={projectionTargetIds.includes(displayId)}
-                    onChange={(event) => handleProjectionTargetToggle(displayId, event.target.checked)}
-                    disabled={isProjecting}
-                  />
-                  <span>
-                    {display.name} ({display.size.width} × {display.size.height})
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-          <button
-            className="btn btn-outline"
-            onClick={handleProjectionToggle}
-            disabled={!hasProgramScene || screenTargets.length === 0 || projectionTargetIds.length === 0}
-          >
-            {isProjecting ? "Stop Projection" : "Project Program"}
-          </button>
-          <div className="lower-third-output-row">
-            <label htmlFor="lowerThirdDisplay">Lower-third screen</label>
-            <select
-              id="lowerThirdDisplay"
-              value={settings.lowerThird.displayId ?? ""}
-              onChange={(event) =>
-                updateSettings({
-                  lowerThird: { ...settings.lowerThird, displayId: event.target.value || null }
-                })
-              }
-              disabled={isLowerThirdProjecting}
-            >
-              <option value="">Choose display...</option>
-              {screenTargets.map((display) => (
-                <option key={`lower-${display.displayId ?? display.id}`} value={String(display.displayId)}>
-                  {display.name}
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn btn-outline"
-              onClick={handleLowerThirdToggle}
-              disabled={!settings.lowerThird.displayId}
-            >
-              {isLowerThirdProjecting ? "Stop Lower Third" : "Start Lower Third"}
-            </button>
-          </div>
         </div>
       </div>
     </section>
