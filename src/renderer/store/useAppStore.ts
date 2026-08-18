@@ -38,12 +38,29 @@ const defaultSettings: Settings = {
   operatorStationName: "Main Director",
   operatorRole: "director",
   masterAudioGain: 1,
+  theme: "system",
   lowerThird: {
     enabled: false,
     displayId: null,
     heightPercent: 28,
     position: "bottom",
-    backgroundColor: "#000000"
+    backgroundColor: "#101722",
+    textColor: "#ffffff",
+    fontSize: 48,
+    fontFamily: "Segoe UI",
+    bold: true,
+    italic: false,
+    underline: false,
+    textAlign: "center",
+    imageUrl: "",
+    imagePosition: "left",
+    entranceAnimation: "fade",
+    exitAnimation: "fade",
+    animationDurationMs: 450,
+    showOnProgram: true,
+    maxLines: 0,
+    slides: [],
+    activeSlideId: null
   },
   networkOutput: {
     enabled: false,
@@ -57,6 +74,7 @@ const defaultSettings: Settings = {
     scriptureProvider: "api-bible",
     scriptureApiUrl: "https://api.scripture.api.bible/v1",
     scriptureApiKeyEnv: "OPENCHURCH_SCRIPTURE_API_KEY",
+    scriptureBibleId: "",
     aiProvider: "disabled",
     aiBaseUrl: "https://api.openai.com/v1",
     aiModel: "gpt-5.6-sol",
@@ -70,6 +88,39 @@ const defaultSettings: Settings = {
 
 const getId = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
+type ProgramSnapshot = {
+  scene: Scene | null;
+  sources: Record<string, Source>;
+};
+
+const createProgramSnapshot = (scene: Scene | null, sources: Record<string, Source>): ProgramSnapshot => {
+  if (!scene) {
+    return { scene: null, sources: {} };
+  }
+  const snapshotSources: Record<string, Source> = {};
+  const sourceIds = scene.sourceIds.flatMap((sourceId) => {
+    const source = sources[sourceId];
+    if (!source) {
+      return [];
+    }
+    const snapshotId = `program:${sourceId}`;
+    snapshotSources[snapshotId] = {
+      ...source,
+      id: snapshotId,
+      rect: { ...source.rect },
+      data: { ...source.data },
+      media: source.media ? { ...source.media } : undefined
+    } as Source;
+    return [snapshotId];
+  });
+  return {
+    scene: { ...scene, sourceIds },
+    sources: snapshotSources
+  };
+};
+
+const defaultProgramSnapshot = createProgramSnapshot(defaultStudioState.scenes[0], defaultStudioState.sources);
+
 type AppState = {
   displays: DisplaySource[];
   scenes: Scene[];
@@ -77,6 +128,9 @@ type AppState = {
   groups: SourceGroup[];
   previewSceneId: string | null;
   programSceneId: string | null;
+  programSceneSnapshot: Scene | null;
+  programSources: Record<string, Source>;
+  programRevision: number;
   selectedSourceId: string | null;
   programAudioStream: MediaStream | null;
   isProjecting: boolean;
@@ -168,6 +222,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   groups: defaultStudioState.groups,
   previewSceneId: defaultStudioState.previewSceneId,
   programSceneId: defaultStudioState.programSceneId,
+  programSceneSnapshot: defaultProgramSnapshot.scene,
+  programSources: defaultProgramSnapshot.sources,
+  programRevision: 0,
   selectedSourceId: null,
   programAudioStream: null,
   isProjecting: false,
@@ -189,7 +246,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setStudioState: (studioState) => {
     const normalized = normalizeStudioState(studioState);
-    set({ ...normalized });
+    const programScene = normalized.scenes.find((scene) => scene.id === normalized.programSceneId) ?? null;
+    const snapshot = createProgramSnapshot(programScene, normalized.sources);
+    set({ ...normalized, programSceneSnapshot: snapshot.scene, programSources: snapshot.sources, programRevision: 1 });
   },
   persistStudioState: async () => {
     const { scenes, sources, groups, previewSceneId, programSceneId } = get();
@@ -231,11 +290,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   setProgramScene: (sceneId) => {
-    if (get().scenes.some((scene) => scene.id === sceneId)) {
-      set({ programSceneId: sceneId });
+    const state = get();
+    const scene = state.scenes.find((candidate) => candidate.id === sceneId);
+    if (scene) {
+      const snapshot = createProgramSnapshot(scene, state.sources);
+      set({
+        programSceneId: sceneId,
+        programSceneSnapshot: snapshot.scene,
+        programSources: snapshot.sources,
+        programRevision: state.programRevision + 1
+      });
     }
   },
-  takeToProgram: () => set((state) => ({ programSceneId: state.previewSceneId })),
+  takeToProgram: () => set((state) => {
+    const scene = state.scenes.find((candidate) => candidate.id === state.previewSceneId) ?? null;
+    const snapshot = createProgramSnapshot(scene, state.sources);
+    return {
+      programSceneId: state.previewSceneId,
+      programSceneSnapshot: snapshot.scene,
+      programSources: snapshot.sources,
+      programRevision: state.programRevision + 1
+    };
+  }),
   addSourceToScene: (sceneId, source) => {
     const id = getId();
     const nextSource = {

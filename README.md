@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.5.0**.
+Current release: **v0.6.0**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -21,6 +21,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 ### Live Production
 - Captures connected displays and builds layered scenes from display, camera, image, video, and text sources.
 - Provides Preview and Program buses with TAKE, CUT TO BLACK, and FREEZE controls.
+- Keeps every scene/source edit isolated in Preview until TAKE snapshots it into Program.
 - Opens a separate Multiview from `View > Open Multiview Window` with every configured scene and camera source.
 - Sends a Multiview tile to Preview on single click and directly to Program on double-click.
 - Uses a compact OBS-inspired control-room layout that prioritizes Preview and Program space.
@@ -31,7 +32,8 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 - Merges panels dropped on another dock into persistent tabs and previews the target before docking.
 - Reveals dock, scene, and source actions only from right-click context menus to preserve workspace space.
 - Saves each operator's dock arrangement and sizes locally, with hide, restore, and Reset Workspace Layout controls.
-- Supports live text changes so an operator can update projected words, notices, or lower thirds without rebuilding the scene.
+- Provides a live Lower Third Studio for manually typed messages and pasted lyrics split into slides at blank lines.
+- Supports lower-third fonts, colors, alignment, emphasis, line limits, logos, arrow-key cueing, and entrance/exit animations.
 - Records the Program canvas with configurable quality, frame rate, and System/Mic/Both/None audio modes.
 - Saves MP4 through bundled FFmpeg, with WebM fallback when conversion fails.
 - Provides global record and cut hotkeys.
@@ -48,6 +50,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 
 ### Streaming and Audio
 - Streams to multiple enabled RTMP/RTMPS destinations at the same time.
+- Opens official YouTube or Facebook authorization in the system browser and loads available account/stream details when provider permissions allow it.
 - Stores stream keys per destination when the operator opts in.
 - Reports destination-level connecting, live, reconnecting, and error states.
 - Supports stream presets, encoder selection, audio bitrate controls, logs, and reconnect attempts.
@@ -56,6 +59,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 ### Church Content and Integrations
 - Configures a local worship-song folder or Planning Center/custom song provider.
 - Configures API.Bible, Bible API, or a custom Scripture provider.
+- Fetches complete selected passages with their Book/Chapter/Verse reference and cues them to the lower third.
 - Keeps provider credentials outside normal settings by referencing environment-variable names.
 - Configures OpenAI, Azure OpenAI, or a custom AI-compatible provider for future captions, summaries, and highlight suggestions.
 - Defaults new OpenAI-compatible setups to `gpt-5.6-sol`; the provider can be changed without rebuilding the app.
@@ -126,6 +130,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - Each recording is captured as WebM internally and converted to MP4 after stop.
 - Each stream session writes a log under the app user-data `logs` directory.
 - Stream keys are stored only when Remember Stream Key is enabled.
+- Download the complete PDF manual from `Menu > Download User Guide`.
 - Hardware encoders depend on the bundled FFmpeg build and machine drivers.
 - Use wired Ethernet for the production computer and critical outputs whenever possible.
 
@@ -133,7 +138,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 
 - Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
-- Song, Scripture, and AI panels configure providers; provider-specific browsing/import and paid API calls still require adapters and valid subscriptions.
+- Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
 - The post-production editor currently provides trim/export rather than a multitrack timeline.
 - Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
 - Recording chunks are retained in memory before saving, so very long recordings should be split until direct-to-disk recording is added.

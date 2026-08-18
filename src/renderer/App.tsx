@@ -13,6 +13,8 @@ import TransitionsPanel from "./components/TransitionsPanel";
 import ProductionControlsPanel from "./components/ProductionControlsPanel";
 import DockWorkspace, { DockPanelDefinition } from "./components/DockWorkspace";
 import UpdateBanner from "./components/UpdateBanner";
+import LowerThirdPanel from "./components/LowerThirdPanel";
+import ScripturePanel from "./components/ScripturePanel";
 import { useAppStore } from "./store/useAppStore";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
 import { useProgramStreamer } from "./hooks/useProgramStreamer";
@@ -42,6 +44,18 @@ const App: React.FC = () => {
 
   const recorder = useProgramRecorder(programCanvasRef);
   const streamer = useProgramStreamer(programCanvasRef);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
+    const applyTheme = () => {
+      const resolvedTheme = settings.theme === "system" ? (mediaQuery.matches ? "light" : "dark") : settings.theme;
+      document.documentElement.dataset.theme = resolvedTheme;
+      document.documentElement.style.colorScheme = resolvedTheme === "light" ? "light" : "dark";
+    };
+    applyTheme();
+    mediaQuery.addEventListener("change", applyTheme);
+    return () => mediaQuery.removeEventListener("change", applyTheme);
+  }, [settings.theme]);
 
   useEffect(() => {
     const init = async () => {
@@ -197,6 +211,8 @@ const App: React.FC = () => {
       content: <StreamingPanel streamer={streamer} />
     },
     { id: "venue", title: "Venue & Outputs", content: <VenuePanel /> },
+    { id: "lower-third", title: "Lower Third Studio", content: <LowerThirdPanel /> },
+    { id: "scripture", title: "Scripture", content: <ScripturePanel /> },
     { id: "displays", title: "Sanctuary Displays", content: <SanctuaryDisplaysPanel /> },
     { id: "system", title: "System Settings", content: <SettingsPanel /> },
     { id: "editor", title: "Post Editor", content: <EditorPanel /> }
@@ -210,6 +226,7 @@ const App: React.FC = () => {
         onOpenFolder={recorder.openRecordingFolder}
         onOpenMultiview={() => window.dualcast.openMultiview()}
         onCheckForUpdates={handleCheckForUpdates}
+        onDownloadUserGuide={() => window.dualcast.downloadUserGuide().catch(() => undefined)}
       />
       {showUpdateStatus && updateStatus && updateStatus.state !== "idle" ? (
         <UpdateBanner

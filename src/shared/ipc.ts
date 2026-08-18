@@ -49,7 +49,10 @@ export const IpcChannels = {
   selectMediaFile: "dualcast:select-media-file",
   createBrowserSource: "dualcast:create-browser-source",
   updateBrowserSource: "dualcast:update-browser-source",
-  destroyBrowserSource: "dualcast:destroy-browser-source"
+  destroyBrowserSource: "dualcast:destroy-browser-source",
+  fetchScripture: "dualcast:fetch-scripture",
+  authorizeStreaming: "dualcast:authorize-streaming",
+  downloadUserGuide: "dualcast:download-user-guide"
 } as const;
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];

@@ -32,6 +32,7 @@ const SceneSourcesPanel: React.FC = () => {
     previewSceneId,
     selectedSourceId,
     displays,
+    refreshDisplays,
     settings,
     groups,
     addSourceToScene,
@@ -60,6 +61,7 @@ const SceneSourcesPanel: React.FC = () => {
   const [cameraId, setCameraId] = useState("");
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [newGroupName, setNewGroupName] = useState("");
+  const [captureFilter, setCaptureFilter] = useState("");
   const [sourceMenu, setSourceMenu] = useState<SourceMenu | null>(null);
   const [toolOverlay, setToolOverlay] = useState<ToolOverlay>(null);
 
@@ -82,6 +84,12 @@ const SceneSourcesPanel: React.FC = () => {
     };
     refreshCameras();
   }, []);
+
+  useEffect(() => {
+    if (toolOverlay === "add" && (sourceType === "display" || sourceType === "window")) {
+      refreshDisplays().catch(() => undefined);
+    }
+  }, [refreshDisplays, sourceType, toolOverlay]);
 
   const handlePickFile = async () => {
     const kind = sourceType === "image" || sourceType === "video" || sourceType === "audio" ? sourceType : null;
@@ -379,7 +387,11 @@ const SceneSourcesPanel: React.FC = () => {
     await persistStudioState();
   };
 
-  const displaysForType = displays.filter((display) => display.sourceType === (sourceType === "display" ? "screen" : "window"));
+  const displaysForType = displays.filter((display) => {
+    const matchesType = display.sourceType === (sourceType === "display" ? "screen" : "window");
+    const matchesFilter = !captureFilter.trim() || display.name.toLowerCase().includes(captureFilter.trim().toLowerCase());
+    return matchesType && matchesFilter;
+  });
   const menuSource = sourceMenu?.sourceId ? sources[sourceMenu.sourceId] ?? null : null;
   const menuSourceIndex = menuSource ? sceneSources.findIndex((source) => source.id === menuSource.id) : -1;
 
@@ -732,15 +744,34 @@ const SceneSourcesPanel: React.FC = () => {
         </div>
         {(sourceType === "display" || sourceType === "window") ? (
           <div className="field">
-            <label htmlFor="captureId">Select {sourceType === "display" ? "Display" : "Window"}</label>
-            <select id="captureId" value={captureId} onChange={(event) => setCaptureId(event.target.value)}>
-              <option value="">Choose...</option>
+            <div className="panel-header">
+              <label htmlFor="captureFilter">Select {sourceType === "display" ? "Display" : "Open Window"}</label>
+              <button className="btn btn-outline btn-compact" onClick={() => refreshDisplays()}>Refresh</button>
+            </div>
+            <input
+              id="captureFilter"
+              value={captureFilter}
+              onChange={(event) => setCaptureFilter(event.target.value)}
+              placeholder="Search open windows"
+            />
+            <div className="capture-options-grid">
               {displaysForType.map((display) => (
-                <option key={display.id} value={display.id}>
-                  {display.name}
-                </option>
+                <label key={display.id} className={`capture-option ${captureId === display.id ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="captureSource"
+                    value={display.id}
+                    checked={captureId === display.id}
+                    onChange={() => setCaptureId(display.id)}
+                  />
+                  {display.thumbnailUrl ? <img src={display.thumbnailUrl} alt="" /> : <div className="capture-placeholder" />}
+                  <span>{display.name}</span>
+                </label>
               ))}
-            </select>
+            </div>
+            {displaysForType.length === 0 ? (
+              <div className="empty-hint">No matching windows. Open the app or browser video, then press Refresh.</div>
+            ) : null}
           </div>
         ) : null}
         {sourceType === "camera" ? (
@@ -770,6 +801,7 @@ const SceneSourcesPanel: React.FC = () => {
                 Pick File
               </button>
             ) : null}
+            {sourceType === "browser" ? <div className="field-help">Paste a YouTube, website, dashboard, or hosted media URL.</div> : null}
           </div>
         ) : null}
         {sourceType === "text" ? (

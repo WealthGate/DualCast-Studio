@@ -20,7 +20,11 @@ import {
   ExportClipPayload,
   ExportClipResult,
   NetworkOutputStatus,
-  RemoteOperatorAction
+  RemoteOperatorAction,
+  ScriptureFetchPayload,
+  ScriptureFetchResult,
+  StreamingAuthorizationPayload,
+  StreamingAuthorizationResult
 } from "../shared/types";
 
 declare global {
@@ -60,6 +64,9 @@ declare global {
       createBrowserSource: (payload: BrowserSourcePayload) => Promise<boolean>;
       updateBrowserSource: (payload: BrowserSourcePayload) => Promise<boolean>;
       destroyBrowserSource: (payload: { sourceId: string }) => Promise<boolean>;
+      fetchScripture: (payload: ScriptureFetchPayload) => Promise<ScriptureFetchResult>;
+      authorizeStreaming: (payload: StreamingAuthorizationPayload) => Promise<StreamingAuthorizationResult>;
+      downloadUserGuide: () => Promise<string | null>;
       onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => () => void;
       updateProgramState: (state: ProgramState) => void;
       sendProgramFrame: (dataUrl: string) => void;

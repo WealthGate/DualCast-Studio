@@ -6,7 +6,8 @@ import {
   StreamingAudioBitrate,
   StreamingEncoder,
   StreamingFps,
-  StreamingPreset
+  StreamingPreset,
+  StreamPlatform
 } from "../../shared/types";
 
 type StreamingPanelProps = {
@@ -40,6 +41,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
   const [logOpen, setLogOpen] = useState(false);
   const [logContent, setLogContent] = useState("");
   const [logLoading, setLogLoading] = useState(false);
+  const [authorizingId, setAuthorizingId] = useState<string | null>(null);
   const destinationIds = settings.streamDestinations.map((destination) => destination.id).join("|");
 
   useEffect(() => {
@@ -121,7 +123,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
     await updateSettings({
       streamDestinations: [
         ...settings.streamDestinations,
-        { id, name: `Destination ${settings.streamDestinations.length + 1}`, rtmpUrl: "", enabled: true }
+        { id, name: `Destination ${settings.streamDestinations.length + 1}`, rtmpUrl: "", enabled: true, platform: "custom" }
       ]
     });
   };
@@ -157,6 +159,29 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
 
   const handleEncoderChange = async (value: StreamingEncoder) => {
     await updateSettings({ streamEncoder: value });
+  };
+
+  const authorizeDestination = async (destination: StreamDestinationConfig) => {
+    if (destination.platform !== "youtube" && destination.platform !== "facebook") return;
+    setAuthorizingId(destination.id);
+    setLocalMessage("Opening secure authorization in your browser...");
+    try {
+      const result = await window.dualcast.authorizeStreaming({ provider: destination.platform, destinationId: destination.id });
+      setLocalMessage(result.message);
+      if (!result.ok) return;
+      await updateDestination(destination.id, {
+        authorizedAccount: result.account ?? destination.authorizedAccount,
+        rtmpUrl: result.rtmpUrl ?? destination.rtmpUrl
+      });
+      if (result.streamKey) {
+        setStreamKeys((current) => ({ ...current, [destination.id]: result.streamKey as string }));
+        if (settings.rememberStreamKey) await window.dualcast.setStoredStreamKey({ destinationId: destination.id, streamKey: result.streamKey });
+      }
+    } catch (error) {
+      setLocalMessage(error instanceof Error ? error.message : "Account authorization failed.");
+    } finally {
+      setAuthorizingId(null);
+    }
   };
 
   const handleOpenLogs = async () => {
@@ -229,6 +254,27 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
                 disabled={isActive}
               />
             </div>
+            <div className="field">
+              <label htmlFor={`destination-platform-${index}`}>Platform</label>
+              <select
+                id={`destination-platform-${index}`}
+                value={destination.platform ?? "custom"}
+                onChange={(event) => updateDestination(destination.id, { platform: event.target.value as StreamPlatform, authorizedAccount: null })}
+                disabled={isActive}
+              >
+                <option value="custom">Custom RTMP</option>
+                <option value="youtube">YouTube Live</option>
+                <option value="facebook">Facebook Live</option>
+              </select>
+            </div>
+            {destination.platform === "youtube" || destination.platform === "facebook" ? (
+              <div className="stream-authorization">
+                <button className="btn btn-outline" onClick={() => authorizeDestination(destination)} disabled={isActive || authorizingId === destination.id}>
+                  {authorizingId === destination.id ? "Connecting..." : `Connect ${destination.platform === "youtube" ? "YouTube" : "Facebook"} Account`}
+                </button>
+                <span className={destination.authorizedAccount ? "tag" : "field-help"}>{destination.authorizedAccount ? `Connected: ${destination.authorizedAccount}` : "Sign in with the account used by this streaming platform."}</span>
+              </div>
+            ) : null}
             <div className="field">
               <label htmlFor={`destination-url-${index}`}>RTMP URL</label>
               <input

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
-import { Scene, Source, SourceRect } from "../../shared/types";
+import { LowerThirdAnimation, LowerThirdSlide, Scene, Source, SourceRect } from "../../shared/types";
 
 type PreviewProgramProps = {
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
@@ -34,6 +34,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     sources,
     previewSceneId,
     programSceneId,
+    programSceneSnapshot,
+    programSources,
+    programRevision,
     selectedSourceId,
     isCutToBlack,
     isFrozen,
@@ -62,13 +65,18 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     type: "fade" | "crossfade";
     startAt: number;
     duration: number;
-    fromSceneId: string | null;
-    toSceneId: string | null;
+    fromScene: Scene | null;
+    fromSources: Record<string, Source>;
+    toScene: Scene | null;
+    toSources: Record<string, Source>;
   } | null>(null);
-  const prevProgramSceneIdRef = useRef<string | null>(null);
+  const previousProgramRef = useRef<{ scene: Scene | null; sources: Record<string, Source> } | null>(null);
+  const lowerThirdImageRef = useRef<HTMLImageElement | null>(null);
+  const lowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
 
-  const programScene = useMemo(() => scenes.find((scene) => scene.id === programSceneId) ?? null, [programSceneId, scenes]);
+  const programScene = programSceneSnapshot;
   const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
+  const allSources = useMemo(() => ({ ...sources, ...programSources }), [programSources, sources]);
   const previewSceneLocked = Boolean(previewScene?.locked);
   const activeSourceIds = useMemo(() => {
     const ids = new Set<string>();
@@ -90,18 +98,40 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   const previewCanvasSize = fitToBounds(programSize.width, programSize.height, previewSize.width, previewSize.height);
 
   useEffect(() => {
-    const prev = prevProgramSceneIdRef.current;
-    if (prev && prev !== programSceneId && transitionType !== "cut") {
+    const previous = previousProgramRef.current;
+    if (previous?.scene && programScene && transitionType !== "cut") {
       transitionRef.current = {
         type: transitionType === "fade" ? "fade" : "crossfade",
         startAt: performance.now(),
         duration: transitionDurationMs,
-        fromSceneId: prev,
-        toSceneId: programSceneId
+        fromScene: previous.scene,
+        fromSources: previous.sources,
+        toScene: programScene,
+        toSources: programSources
       };
     }
-    prevProgramSceneIdRef.current = programSceneId;
-  }, [programSceneId, transitionType, transitionDurationMs]);
+    previousProgramRef.current = { scene: programScene, sources: programSources };
+  }, [programRevision, programScene, programSources, transitionType, transitionDurationMs]);
+
+  useEffect(() => {
+    const next = settings.lowerThird.slides.find((slide) => slide.id === settings.lowerThird.activeSlideId) ?? null;
+    const cue = lowerThirdCueRef.current;
+    if (cue.current?.id !== next?.id) {
+      lowerThirdCueRef.current = { previous: cue.current, current: next, changedAt: performance.now() };
+    } else {
+      cue.current = next;
+    }
+  }, [settings.lowerThird.activeSlideId, settings.lowerThird.slides]);
+
+  useEffect(() => {
+    if (!settings.lowerThird.imageUrl) {
+      lowerThirdImageRef.current = null;
+      return;
+    }
+    const image = new Image();
+    image.onload = () => { lowerThirdImageRef.current = image; };
+    image.src = settings.lowerThird.imageUrl;
+  }, [settings.lowerThird.imageUrl]);
 
   useEffect(() => {
     const element = previewContainerRef.current;
@@ -248,7 +278,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     };
 
     activeSourceIds.forEach((id) => {
-      const source = sources[id];
+      const source = allSources[id];
       if (!source) {
         return;
       }
@@ -271,11 +301,11 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         browserSizeRef.current.delete(id);
       }
     });
-  }, [activeSourceIds, sources, programSize.height, programSize.width]);
+  }, [activeSourceIds, allSources, programSize.height, programSize.width]);
 
   useEffect(() => {
     activeSourceIds.forEach((id) => {
-      const source = sources[id];
+      const source = allSources[id];
       if (!source) {
         return;
       }
@@ -309,7 +339,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         }
       }
     });
-  }, [activeSourceIds, sources]);
+  }, [activeSourceIds, allSources]);
 
   useEffect(() => {
     const scene = programScene;
@@ -319,7 +349,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     }
 
     const hasAudioSources = scene.sourceIds.some((id) => {
-      const source = sources[id];
+      const source = programSources[id];
       if (!source || !source.enabled || !source.audioEnabled) {
         return false;
       }
@@ -338,7 +368,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     masterGain.connect(destination);
 
     scene.sourceIds.forEach((id) => {
-      const source = sources[id];
+      const source = programSources[id];
       if (!source || !source.enabled || !source.audioEnabled) {
         return;
       }
@@ -365,7 +395,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       setProgramAudioStream(null);
       audioContext.close().catch(() => undefined);
     };
-  }, [programScene, settings.masterAudioGain, sources, setProgramAudioStream]);
+  }, [programScene, programSources, settings.masterAudioGain, setProgramAudioStream]);
 
   const drawSource = (
     ctx: CanvasRenderingContext2D,
@@ -461,12 +491,18 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     ctx.restore();
   };
 
-  const drawScene = (ctx: CanvasRenderingContext2D, scene: Scene | null, canvasWidth: number, canvasHeight: number) => {
+  const drawScene = (
+    ctx: CanvasRenderingContext2D,
+    scene: Scene | null,
+    sourceMap: Record<string, Source>,
+    canvasWidth: number,
+    canvasHeight: number
+  ) => {
     if (!scene) {
       return;
     }
     scene.sourceIds.forEach((id) => {
-      const source = sources[id];
+      const source = sourceMap[id];
       if (!source) {
         return;
       }
@@ -474,12 +510,125 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     });
   };
 
-  const syncBrowserSources = (scene: Scene | null, canvasWidth: number, canvasHeight: number) => {
+  const drawConfiguredLowerThird = (ctx: CanvasRenderingContext2D, canvasWidth: number, canvasHeight: number, now: number) => {
+    const config = settings.lowerThird;
+    const cue = lowerThirdCueRef.current;
+    if (!cue.current && !cue.previous) return;
+    const duration = Math.max(100, config.animationDurationMs);
+    const progress = Math.min(1, Math.max(0, (now - cue.changedAt) / duration));
+    const areaHeight = canvasHeight * (config.heightPercent / 100);
+    const areaY = config.position === "top" ? 0 : canvasHeight - areaHeight;
+
+    const drawSlide = (slide: LowerThirdSlide, animation: LowerThirdAnimation, phase: "enter" | "exit", amount: number) => {
+      const visible = phase === "enter" ? amount : 1 - amount;
+      ctx.save();
+      if (animation === "fade") ctx.globalAlpha = visible;
+      if (animation === "slide-left") ctx.translate((phase === "enter" ? 1 - amount : -amount) * canvasWidth, 0);
+      if (animation === "slide-right") ctx.translate((phase === "enter" ? amount - 1 : amount) * canvasWidth, 0);
+      if (animation === "slide-up") ctx.translate(0, (phase === "enter" ? 1 - amount : -amount) * areaHeight);
+      if (animation === "zoom") {
+        const scale = phase === "enter" ? 0.72 + amount * 0.28 : 1 - amount * 0.28;
+        ctx.translate(canvasWidth / 2, areaY + areaHeight / 2);
+        ctx.scale(scale, scale);
+        ctx.translate(-canvasWidth / 2, -(areaY + areaHeight / 2));
+        ctx.globalAlpha = visible;
+      }
+      if (animation === "wipe") {
+        const width = canvasWidth * visible;
+        ctx.beginPath();
+        ctx.rect(phase === "enter" ? 0 : canvasWidth - width, areaY, width, areaHeight);
+        ctx.clip();
+      }
+
+      ctx.fillStyle = config.backgroundColor;
+      ctx.fillRect(0, areaY, canvasWidth, areaHeight);
+      const image = lowerThirdImageRef.current;
+      let textLeft = canvasWidth * 0.055;
+      let textRight = canvasWidth * 0.945;
+      if (image) {
+        if (config.imagePosition === "background") {
+          ctx.save();
+          ctx.globalAlpha *= 0.25;
+          ctx.drawImage(image, 0, areaY, canvasWidth, areaHeight);
+          ctx.restore();
+        } else {
+          const imageSize = Math.min(areaHeight * 0.72, canvasWidth * 0.16);
+          const imageX = config.imagePosition === "left" ? canvasWidth * 0.035 : canvasWidth * 0.965 - imageSize;
+          ctx.drawImage(image, imageX, areaY + (areaHeight - imageSize) / 2, imageSize, imageSize);
+          if (config.imagePosition === "left") textLeft = imageX + imageSize + canvasWidth * 0.025;
+          else textRight = imageX - canvasWidth * 0.025;
+        }
+      }
+
+      const availableWidth = Math.max(100, textRight - textLeft);
+      const wordsToLines = (fontSize: number) => {
+        const fontStyle = `${config.italic ? "italic " : ""}${config.bold ? "700 " : "400 "}${fontSize}px ${config.fontFamily}`;
+        ctx.font = fontStyle;
+        const lines: string[] = [];
+        slide.text.split(/\r?\n/).forEach((paragraph) => {
+          let current = "";
+          paragraph.split(/\s+/).filter(Boolean).forEach((word) => {
+            const candidate = current ? `${current} ${word}` : word;
+            if (current && ctx.measureText(candidate).width > availableWidth) {
+              lines.push(current);
+              current = word;
+            } else current = candidate;
+          });
+          if (current) lines.push(current);
+        });
+        return lines;
+      };
+      let fontSize = config.fontSize;
+      let lines = wordsToLines(fontSize);
+      const referenceLines = slide.reference ? 1 : 0;
+      while (config.maxLines === 0 && fontSize > 16 && (lines.length + referenceLines) * fontSize * 1.18 > areaHeight * 0.78) {
+        fontSize -= 2;
+        lines = wordsToLines(fontSize);
+      }
+      if (config.maxLines > 0 && lines.length > config.maxLines) {
+        lines = lines.slice(0, config.maxLines);
+        lines[lines.length - 1] = `${lines[lines.length - 1].replace(/[.…]+$/, "")}...`;
+      }
+      const lineHeight = fontSize * 1.18;
+      const referenceHeight = slide.reference ? fontSize * 0.72 : 0;
+      const totalHeight = lines.length * lineHeight + referenceHeight;
+      const startY = areaY + Math.max(fontSize * 0.22, (areaHeight - totalHeight) / 2);
+      ctx.fillStyle = config.textColor;
+      ctx.textBaseline = "top";
+      ctx.textAlign = config.textAlign;
+      const textX = config.textAlign === "left" ? textLeft : config.textAlign === "right" ? textRight : (textLeft + textRight) / 2;
+      ctx.font = `${config.italic ? "italic " : ""}${config.bold ? "700 " : "400 "}${fontSize}px ${config.fontFamily}`;
+      lines.forEach((line, index) => {
+        ctx.fillText(line, textX, startY + index * lineHeight, availableWidth);
+        if (config.underline) {
+          const metrics = ctx.measureText(line);
+          const underlineX = config.textAlign === "center" ? textX - metrics.width / 2 : config.textAlign === "right" ? textX - metrics.width : textX;
+          ctx.fillRect(underlineX, startY + index * lineHeight + fontSize * 1.04, metrics.width, Math.max(2, fontSize / 24));
+        }
+      });
+      if (slide.reference) {
+        ctx.font = `600 ${Math.max(14, fontSize * 0.62)}px ${config.fontFamily}`;
+        ctx.fillText(slide.reference, textX, startY + lines.length * lineHeight + fontSize * 0.08, availableWidth);
+      }
+      ctx.restore();
+    };
+
+    if (cue.previous && progress < 1) drawSlide(cue.previous, config.exitAnimation, "exit", progress);
+    if (cue.current) drawSlide(cue.current, config.entranceAnimation, "enter", progress);
+    if (progress >= 1) cue.previous = null;
+  };
+
+  const syncBrowserSources = (
+    scene: Scene | null,
+    sourceMap: Record<string, Source>,
+    canvasWidth: number,
+    canvasHeight: number
+  ) => {
     if (!scene) {
       return;
     }
     scene.sourceIds.forEach((id) => {
-      const source = sources[id];
+      const source = sourceMap[id];
       if (!source || source.type !== "browser") {
         return;
       }
@@ -531,7 +680,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       const sceneTiles = scenes.map((scene) => {
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        drawScene(ctx, scene, canvas.width, canvas.height);
+        drawScene(ctx, scene, sources, canvas.width, canvas.height);
         return {
           id: `scene:${scene.id}`,
           kind: "scene" as const,
@@ -598,7 +747,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      drawScene(ctx, previewScene, canvas.width, canvas.height);
+      drawScene(ctx, previewScene, sources, canvas.width, canvas.height);
 
       rafId = requestAnimationFrame(render);
     };
@@ -634,44 +783,47 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         const transition = transitionRef.current;
         if (
           transition &&
-          transition.fromSceneId &&
-          transition.toSceneId &&
+          transition.fromScene &&
+          transition.toScene &&
           performance.now() - transition.startAt < transition.duration
         ) {
           const elapsed = performance.now() - transition.startAt;
           const progress = Math.min(1, elapsed / transition.duration);
-          const fromScene = scenes.find((scene) => scene.id === transition.fromSceneId) ?? null;
-          const toScene = scenes.find((scene) => scene.id === transition.toSceneId) ?? null;
+          const fromScene = transition.fromScene;
+          const toScene = transition.toScene;
 
           if (transition.type === "crossfade") {
             ctx.save();
             ctx.globalAlpha = 1 - progress;
-            drawScene(ctx, fromScene, canvas.width, canvas.height);
+            drawScene(ctx, fromScene, transition.fromSources, canvas.width, canvas.height);
             ctx.globalAlpha = progress;
-            drawScene(ctx, toScene, canvas.width, canvas.height);
+            drawScene(ctx, toScene, transition.toSources, canvas.width, canvas.height);
             ctx.restore();
           } else {
             if (progress < 0.5) {
               ctx.save();
               ctx.globalAlpha = 1 - progress * 2;
-              drawScene(ctx, fromScene, canvas.width, canvas.height);
+              drawScene(ctx, fromScene, transition.fromSources, canvas.width, canvas.height);
               ctx.restore();
             } else {
               ctx.save();
               ctx.globalAlpha = (progress - 0.5) * 2;
-              drawScene(ctx, toScene, canvas.width, canvas.height);
+              drawScene(ctx, toScene, transition.toSources, canvas.width, canvas.height);
               ctx.restore();
             }
           }
 
-          syncBrowserSources(toScene ?? fromScene, canvas.width, canvas.height);
+          syncBrowserSources(toScene, transition.toSources, canvas.width, canvas.height);
         } else {
           if (transition) {
             transitionRef.current = null;
           }
-          drawScene(ctx, programScene, canvas.width, canvas.height);
-          syncBrowserSources(programScene, canvas.width, canvas.height);
+          drawScene(ctx, programScene, programSources, canvas.width, canvas.height);
+          syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
         }
+      }
+      if (!isCutToBlack && settings.lowerThird.showOnProgram) {
+        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now());
       }
 
       if (!isFrozen) {
@@ -688,13 +840,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     };
   }, [
     programScene,
-    scenes,
-    sources,
+    programSources,
     isCutToBlack,
     isFrozen,
     programCanvasRef,
     programSize.height,
-    programSize.width
+    programSize.width,
+    settings.lowerThird
   ]);
 
   useEffect(() => {
@@ -738,16 +890,16 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     }
 
     const sendLowerThirdFrame = () => {
-      ctx.fillStyle = settings.lowerThird.backgroundColor || "#000000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (!isCutToBlack && programScene) {
         programScene.sourceIds.forEach((id) => {
-          const source = sources[id];
+          const source = programSources[id];
           if (source?.type === "text" && source.data.role === "lower-third") {
             drawSource(ctx, source, canvas.width, canvas.height);
           }
         });
       }
+      drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now());
       window.dualcast.sendLowerThirdFrame(canvas.toDataURL("image/webp", 0.9));
     };
 
@@ -760,8 +912,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     programScene,
     programSize.height,
     programSize.width,
-    settings.lowerThird.backgroundColor,
-    sources
+    settings.lowerThird,
+    programSources
   ]);
 
   const hasPreviewScene = Boolean(previewScene && previewScene.sourceIds.length > 0);

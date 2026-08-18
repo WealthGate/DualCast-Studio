@@ -11,7 +11,8 @@ import {
   StreamingEncoder,
   StreamingFps,
   StreamingPreset,
-  StudioState
+  StudioState,
+  ThemePreference
 } from "../../src/shared/types";
 
 let store: Store<Settings> | null = null;
@@ -24,6 +25,7 @@ const allowedStreamingFps: StreamingFps[] = [30, 60];
 const allowedStreamingAudio: StreamingAudioBitrate[] = [128, 192];
 const allowedStreamingEncoders: StreamingEncoder[] = ["auto", "x264", "nvenc", "qsv", "amf"];
 const allowedOperatorRoles = ["director", "graphics", "audio", "stream"];
+const allowedThemes: ThemePreference[] = ["system", "dark", "light", "high-contrast", "midnight", "warm"];
 
 export const getDefaultSaveDirectory = () => path.join(app.getPath("videos"), "OpenChurch Broadcast Studio");
 
@@ -40,7 +42,23 @@ const defaultLowerThird = {
   displayId: null,
   heightPercent: 28,
   position: "bottom" as const,
-  backgroundColor: "#000000"
+  backgroundColor: "#101722",
+  textColor: "#ffffff",
+  fontSize: 48,
+  fontFamily: "Segoe UI",
+  bold: true,
+  italic: false,
+  underline: false,
+  textAlign: "center" as const,
+  imageUrl: "",
+  imagePosition: "left" as const,
+  entranceAnimation: "fade" as const,
+  exitAnimation: "fade" as const,
+  animationDurationMs: 450,
+  showOnProgram: true,
+  maxLines: 0,
+  slides: [],
+  activeSlideId: null
 };
 
 const defaultNetworkOutput = {
@@ -56,6 +74,7 @@ const defaultIntegrations = {
   scriptureProvider: "api-bible" as const,
   scriptureApiUrl: "https://api.scripture.api.bible/v1",
   scriptureApiKeyEnv: "OPENCHURCH_SCRIPTURE_API_KEY",
+  scriptureBibleId: "",
   aiProvider: "disabled" as const,
   aiBaseUrl: "https://api.openai.com/v1",
   aiModel: "gpt-5.6-sol",
@@ -83,6 +102,7 @@ const createStore = () => {
       operatorStationName: "Main Director",
       operatorRole: "director",
       masterAudioGain: 1,
+      theme: "system",
       lowerThird: defaultLowerThird,
       networkOutput: defaultNetworkOutput,
       integrations: defaultIntegrations,
@@ -104,6 +124,7 @@ const createStore = () => {
       operatorStationName: { type: "string" },
       operatorRole: { type: "string" },
       masterAudioGain: { type: "number" },
+      theme: { type: "string" },
       lowerThird: { type: "object" },
       networkOutput: { type: "object" },
       integrations: { type: "object" },
@@ -131,6 +152,7 @@ export const getSettings = (): Settings => {
     operatorStationName: stored.operatorStationName || "Main Director",
     operatorRole: stored.operatorRole || "director",
     masterAudioGain: Number.isFinite(stored.masterAudioGain) ? stored.masterAudioGain : 1,
+    theme: allowedThemes.includes(stored.theme) ? stored.theme : "system",
     lowerThird: { ...defaultLowerThird, ...(stored.lowerThird ?? {}) },
     networkOutput: { ...defaultNetworkOutput, ...(stored.networkOutput ?? {}) },
     integrations: { ...defaultIntegrations, ...(stored.integrations ?? {}) }
@@ -191,7 +213,9 @@ export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate =
         id: destination.id,
         name: typeof destination.name === "string" ? destination.name : "Stream",
         rtmpUrl: typeof destination.rtmpUrl === "string" ? destination.rtmpUrl : "",
-        enabled: destination.enabled !== false
+        enabled: destination.enabled !== false,
+        platform: ["custom", "youtube", "facebook"].includes(destination.platform ?? "") ? destination.platform : "custom",
+        authorizedAccount: typeof destination.authorizedAccount === "string" ? destination.authorizedAccount.slice(0, 160) : null
       }));
   }
 
@@ -207,11 +231,19 @@ export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate =
     sanitized.masterAudioGain = Math.max(0, Math.min(2, update.masterAudioGain));
   }
 
+  if (allowedThemes.includes(update.theme as ThemePreference)) {
+    sanitized.theme = update.theme;
+  }
+
   if (update.lowerThird && typeof update.lowerThird === "object") {
     sanitized.lowerThird = {
       ...defaultLowerThird,
       ...update.lowerThird,
-      heightPercent: Math.max(10, Math.min(50, update.lowerThird.heightPercent ?? defaultLowerThird.heightPercent))
+      heightPercent: Math.max(10, Math.min(50, update.lowerThird.heightPercent ?? defaultLowerThird.heightPercent)),
+      fontSize: Math.max(16, Math.min(160, update.lowerThird.fontSize ?? defaultLowerThird.fontSize)),
+      animationDurationMs: Math.max(100, Math.min(3000, update.lowerThird.animationDurationMs ?? defaultLowerThird.animationDurationMs)),
+      maxLines: Math.max(0, Math.min(20, update.lowerThird.maxLines ?? defaultLowerThird.maxLines)),
+      slides: Array.isArray(update.lowerThird.slides) ? update.lowerThird.slides.slice(0, 500) : defaultLowerThird.slides
     };
   }
 

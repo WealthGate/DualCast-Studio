@@ -6,7 +6,7 @@ import { registerHotkeys, unregisterHotkeys } from "./services/hotkeyService";
 import { initializeUpdater, stopUpdater } from "./services/updateService";
 
 
-const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
 if (isDev) {
   const devUserData = path.join(app.getPath("appData"), "OpenChurch Broadcast Studio Dev");
   app.setPath("userData", devUserData);
@@ -34,7 +34,7 @@ const createMainWindow = () => {
     }
   });
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  const devServerUrl = isDev ? process.env.VITE_DEV_SERVER_URL : null;
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools({ mode: "detach" });

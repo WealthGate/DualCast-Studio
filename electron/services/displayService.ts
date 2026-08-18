@@ -9,15 +9,15 @@ export const listDisplays = async (): Promise<DisplaySource[]> => {
     fetchWindowIcons: true
   });
 
-  return sources.map((source) => {
-    const sourceType = source.id.startsWith("window:") ? "window" : "screen";
+  return sources.map((source, index) => {
+    const sourceType: DisplaySource["sourceType"] = source.id.startsWith("window:") ? "window" : "screen";
     const displayId = source.display_id || null;
     const display = displays.find((item) => String(item.id) === String(displayId));
     const size = display?.size ?? source.thumbnail.getSize();
 
     return {
       id: source.id,
-      name: source.name,
+      name: source.name?.trim() || `${sourceType === "window" ? "Open Window" : "Display"} ${index + 1}`,
       sourceType,
       displayId,
       size: {
@@ -27,5 +27,10 @@ export const listDisplays = async (): Promise<DisplaySource[]> => {
       thumbnailUrl: source.thumbnail.toDataURL(),
       appIconUrl: source.appIcon?.toDataURL() ?? null
     };
+  }).sort((left, right) => {
+    if (left.sourceType !== right.sourceType) {
+      return left.sourceType === "screen" ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name);
   });
 };

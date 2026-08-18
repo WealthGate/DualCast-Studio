@@ -15,9 +15,10 @@ type HeaderProps = {
   onOpenFolder: () => void;
   onOpenMultiview: () => void;
   onCheckForUpdates: () => void;
+  onDownloadUserGuide: () => void;
 };
 
-const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOpenFolder, onOpenMultiview, onCheckForUpdates }) => {
+const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOpenFolder, onOpenMultiview, onCheckForUpdates, onDownloadUserGuide }) => {
   const {
     isRecording,
     recordingSeconds,
@@ -76,6 +77,10 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
                 >
                   Check for Updates
                   <span>Installed v{packageJson.version}</span>
+                </button>
+                <button className="menu-command" onClick={() => { setOpenMenu(null); onDownloadUserGuide(); }}>
+                  Download User Guide
+                  <span>Complete PDF manual</span>
                 </button>
               </div>
             ) : null}

@@ -1,4 +1,6 @@
-import { ipcMain, dialog, shell, BrowserWindow } from "electron";
+import { ipcMain, dialog, shell, BrowserWindow, app } from "electron";
+import fs from "fs/promises";
+import path from "path";
 import { pathToFileURL } from "url";
 import { IpcChannels } from "../../src/shared/ipc";
 import { listDisplays } from "./displayService";
@@ -48,6 +50,8 @@ import {
   forwardMultiviewData,
   openMultiviewWindow
 } from "./multiviewService";
+import { fetchScripture } from "./scriptureService";
+import { authorizeStreaming } from "./streamingAuthService";
 
 export const registerIpcHandlers = () => {
   setStreamStatusPublisher((payload) => {
@@ -148,6 +152,20 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IpcChannels.createBrowserSource, async (_event, payload) => createBrowserSource(payload));
   ipcMain.handle(IpcChannels.updateBrowserSource, async (_event, payload) => updateBrowserSource(payload));
   ipcMain.handle(IpcChannels.destroyBrowserSource, async (_event, payload) => destroyBrowserSource(payload));
+  ipcMain.handle(IpcChannels.fetchScripture, async (_event, payload) => fetchScripture(payload));
+  ipcMain.handle(IpcChannels.authorizeStreaming, async (_event, payload) => authorizeStreaming(payload));
+  ipcMain.handle(IpcChannels.downloadUserGuide, async () => {
+    const owner = BrowserWindow.getFocusedWindow();
+    const options: Electron.SaveDialogOptions = {
+      defaultPath: "OpenChurch-Broadcast-Studio-User-Guide.pdf",
+      filters: [{ name: "PDF", extensions: ["pdf"] }]
+    };
+    const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    const source = path.join(app.getAppPath(), "assets", "OpenChurch-Broadcast-Studio-User-Guide.pdf");
+    await fs.copyFile(source, result.filePath);
+    return result.filePath;
+  });
 
   ipcMain.handle(IpcChannels.startStream, async (_event, payload: StreamStartPayload) => startStreaming(payload));
 

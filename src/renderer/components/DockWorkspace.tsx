@@ -43,7 +43,7 @@ const defaultLayout: DockLayout = {
   right: [
     {
       id: "dock-live",
-      panelIds: ["streaming", "venue", "displays"],
+      panelIds: ["streaming", "venue", "displays", "lower-third", "scripture"],
       activePanelId: "streaming"
     },
     {

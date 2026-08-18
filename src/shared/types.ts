@@ -7,6 +7,9 @@ export type StreamingAudioBitrate = 128 | 192;
 export type StreamingEncoder = "auto" | "x264" | "nvenc" | "qsv" | "amf";
 export type OperatorRole = "director" | "graphics" | "audio" | "stream";
 export type TextSourceRole = "standard" | "lower-third";
+export type ThemePreference = "system" | "dark" | "light" | "high-contrast" | "midnight" | "warm";
+export type LowerThirdAnimation = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "zoom" | "wipe";
+export type StreamPlatform = "custom" | "youtube" | "facebook";
 
 export type CaptureSourceType = "screen" | "window";
 
@@ -94,10 +97,19 @@ export type StreamDestinationConfig = {
   name: string;
   rtmpUrl: string;
   enabled: boolean;
+  platform?: StreamPlatform;
+  authorizedAccount?: string | null;
 };
 
 export type StreamDestinationInput = StreamDestinationConfig & {
   streamKey: string;
+};
+
+export type LowerThirdSlide = {
+  id: string;
+  text: string;
+  reference?: string;
+  kind?: "text" | "song" | "scripture";
 };
 
 export type LowerThirdSettings = {
@@ -106,6 +118,22 @@ export type LowerThirdSettings = {
   heightPercent: number;
   position: "top" | "bottom";
   backgroundColor: string;
+  textColor: string;
+  fontSize: number;
+  fontFamily: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  textAlign: "left" | "center" | "right";
+  imageUrl: string;
+  imagePosition: "left" | "right" | "background";
+  entranceAnimation: LowerThirdAnimation;
+  exitAnimation: LowerThirdAnimation;
+  animationDurationMs: number;
+  showOnProgram: boolean;
+  maxLines: number;
+  slides: LowerThirdSlide[];
+  activeSlideId: string | null;
 };
 
 export type NetworkOutputSettings = {
@@ -121,6 +149,7 @@ export type ChurchIntegrationSettings = {
   scriptureProvider: "api-bible" | "bible-api" | "custom";
   scriptureApiUrl: string;
   scriptureApiKeyEnv: string;
+  scriptureBibleId: string;
   aiProvider: "disabled" | "openai" | "azure-openai" | "custom";
   aiBaseUrl: string;
   aiModel: string;
@@ -146,6 +175,7 @@ export type Settings = {
   operatorStationName: string;
   operatorRole: OperatorRole;
   masterAudioGain: number;
+  theme: ThemePreference;
   lowerThird: LowerThirdSettings;
   networkOutput: NetworkOutputSettings;
   integrations: ChurchIntegrationSettings;
@@ -285,4 +315,27 @@ export type UpdateStatusPayload = {
   latestVersion?: string | null;
   progressPercent?: number | null;
   message?: string | null;
+};
+
+export type ScriptureFetchPayload = {
+  reference: string;
+};
+
+export type ScriptureFetchResult = {
+  reference: string;
+  text: string;
+  translation?: string;
+};
+
+export type StreamingAuthorizationPayload = {
+  provider: "youtube" | "facebook";
+  destinationId: string;
+};
+
+export type StreamingAuthorizationResult = {
+  ok: boolean;
+  message: string;
+  account?: string;
+  rtmpUrl?: string;
+  streamKey?: string;
 };

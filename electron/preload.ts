@@ -22,7 +22,11 @@ import {
   ExportClipPayload,
   ExportClipResult,
   NetworkOutputStatus,
-  RemoteOperatorAction
+  RemoteOperatorAction,
+  ScriptureFetchPayload,
+  ScriptureFetchResult,
+  StreamingAuthorizationPayload,
+  StreamingAuthorizationResult
 } from "../src/shared/types";
 
 const api = {
@@ -72,6 +76,11 @@ const api = {
     ipcRenderer.invoke(IpcChannels.updateBrowserSource, payload),
   destroyBrowserSource: (payload: { sourceId: string }): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.destroyBrowserSource, payload),
+  fetchScripture: (payload: ScriptureFetchPayload): Promise<ScriptureFetchResult> =>
+    ipcRenderer.invoke(IpcChannels.fetchScripture, payload),
+  authorizeStreaming: (payload: StreamingAuthorizationPayload): Promise<StreamingAuthorizationResult> =>
+    ipcRenderer.invoke(IpcChannels.authorizeStreaming, payload),
+  downloadUserGuide: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.downloadUserGuide),
   updateProgramState: (state: ProgramState) => ipcRenderer.send(IpcChannels.updateProgramState, state),
   sendProgramFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.programFrame, dataUrl),
   sendLowerThirdFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.lowerThirdFrame, dataUrl),

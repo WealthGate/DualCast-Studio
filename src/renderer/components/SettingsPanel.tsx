@@ -1,6 +1,6 @@
 import React from "react";
 import { useAppStore } from "../store/useAppStore";
-import { FrameRatePreset, QualityPreset } from "../../shared/types";
+import { FrameRatePreset, QualityPreset, ThemePreference } from "../../shared/types";
 
 const SettingsPanel: React.FC = () => {
   const { settings, updateSettings } = useAppStore();
@@ -15,6 +15,21 @@ const SettingsPanel: React.FC = () => {
   return (
     <section className="panel settings-panel">
       <h2>Settings</h2>
+      <div className="field">
+        <label htmlFor="theme">Interface Theme</label>
+        <select
+          id="theme"
+          value={settings.theme}
+          onChange={(event) => updateSettings({ theme: event.target.value as ThemePreference })}
+        >
+          <option value="system">System</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="high-contrast">High Contrast</option>
+          <option value="midnight">Midnight Blue</option>
+          <option value="warm">Warm Sanctuary</option>
+        </select>
+      </div>
       <div className="field">
         <label>Save directory</label>
         <div className="field-row">

@@ -292,6 +292,17 @@ const VenuePanel: React.FC = () => {
             }
           />
         </div>
+        {settings.integrations.scriptureProvider === "api-bible" ? (
+          <div className="field">
+            <label htmlFor="scriptureBibleId">API.Bible Bible ID</label>
+            <input
+              id="scriptureBibleId"
+              value={settings.integrations.scriptureBibleId}
+              onChange={(event) => updateSettings({ integrations: { ...settings.integrations, scriptureBibleId: event.target.value } })}
+              placeholder="Translation Bible identifier"
+            />
+          </div>
+        ) : null}
       </section>
 
       <section className="panel">
