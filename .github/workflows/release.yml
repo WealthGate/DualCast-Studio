@@ -34,10 +34,10 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -57,7 +57,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       - name: Upload installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: OpenChurch-Broadcast-Studio-${{ matrix.platform }}
           if-no-files-found: error
@@ -67,7 +67,7 @@ jobs:
             release/*.dmg
             release/*.AppImage
             release/*.deb
-            release/*.yml
+            release/latest*.yml
             release/*.blockmap
 
   release:
@@ -77,12 +77,12 @@ jobs:
 
     steps:
       - name: Download installers
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           name: OpenChurch Broadcast Studio ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
