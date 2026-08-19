@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { pickRecorderMimeType, stopMediaStream } from "../utils/media";
 import { AudioMode } from "../../shared/types";
@@ -10,7 +10,7 @@ const shouldIncludeMic = (mode: AudioMode) => mode === "microphone" || mode === 
 export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const {
     programSceneId,
-    scenes,
+    programSceneSnapshot,
     settings,
     programAudioStream,
     setRecordingState,
@@ -25,8 +25,7 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
   const timerRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
-  const programScene = useMemo(() => scenes.find((scene) => scene.id === programSceneId) ?? null, [programSceneId, scenes]);
-  const hasProgramSources = Boolean(programScene && programScene.sourceIds.length > 0);
+  const hasProgramSources = Boolean(programSceneSnapshot?.sourceIds.length);
 
   const clearTimer = () => {
     if (timerRef.current) {
@@ -94,10 +93,21 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
     const mimeType = pickRecorderMimeType();
     const { videoBitsPerSecond } = getQualityProfile(settings.qualityPreset);
 
-    const recorder = new MediaRecorder(outputStream, {
-      mimeType: mimeType || undefined,
-      videoBitsPerSecond
-    });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(outputStream, {
+        mimeType: mimeType || undefined,
+        videoBitsPerSecond
+      });
+    } catch {
+      stopMediaStream(canvasStream);
+      stopMediaStream(micStreamRef.current);
+      micStreamRef.current = null;
+      audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      setRecordingError("Unable to start the recording encoder.");
+      return;
+    }
 
     recorderRef.current = recorder;
     chunksRef.current = [];
@@ -125,11 +135,24 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
 
       stopMediaStream(canvasStream);
       stopMediaStream(micStreamRef.current);
-      audioContextRef.current?.close();
+      micStreamRef.current = null;
+      audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
       recorderRef.current = null;
     };
 
-    recorder.start(1000);
+    try {
+      recorder.start(1000);
+    } catch {
+      recorderRef.current = null;
+      stopMediaStream(canvasStream);
+      stopMediaStream(micStreamRef.current);
+      micStreamRef.current = null;
+      audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      setRecordingError("Unable to start the recording encoder.");
+      return;
+    }
     setRecordingState(true);
 
     timerRef.current = window.setInterval(() => {

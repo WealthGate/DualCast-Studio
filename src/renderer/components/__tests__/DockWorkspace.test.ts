@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeDockPanel, DockLayout, moveDockPanel } from "../DockWorkspace";
+import { closeDockPanel, DockLayout, migrateDockLayout, moveDockPanel } from "../DockWorkspace";
 
 const layout = (): DockLayout => ({
   top: [],
@@ -29,5 +29,13 @@ describe("dock layout", () => {
     const next = closeDockPanel(layout(), "scenes");
 
     expect(next.left).toEqual([]);
+  });
+
+  it("adds new production docks once when upgrading an older layout", () => {
+    const panelIds = new Set(["scenes", "streaming", "venue", "controls", "lower-third", "scripture"]);
+    const migrated = migrateDockLayout(layout(), panelIds, 2);
+
+    expect(migrated.right[0].panelIds).toEqual(["streaming", "venue", "lower-third", "scripture"]);
+    expect(migrateDockLayout(layout(), panelIds, 3).right[0].panelIds).toEqual(["streaming", "venue"]);
   });
 });

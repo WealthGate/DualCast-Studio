@@ -76,6 +76,38 @@
   --border: rgba(242, 196, 132, 0.34);
 }
 
+.fatal-error {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 32px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.fatal-error-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.fatal-error-card h1 {
+  margin: 16px 0 8px;
+}
+
+.fatal-error-card pre {
+  overflow: auto;
+  margin: 18px 0;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
 :root[data-theme="light"] .dock-workspace,
 :root[data-theme="light"] .dock-zone,
 :root[data-theme="light"] .studio-center,

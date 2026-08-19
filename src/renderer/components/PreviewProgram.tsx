@@ -28,6 +28,31 @@ const getSignature = (source: Source) =>
     audioEnabled: source.audioEnabled
   });
 
+export const collectActiveSourceIds = (
+  isMultiviewOpen: boolean,
+  scenes: Scene[],
+  programScene: Scene | null,
+  previewScene: Scene | null
+) => {
+  const ids = new Set<string>();
+  if (isMultiviewOpen) {
+    scenes.forEach((scene) => scene.sourceIds.forEach((id) => ids.add(id)));
+  }
+  programScene?.sourceIds.forEach((id) => ids.add(id));
+  previewScene?.sourceIds.forEach((id) => ids.add(id));
+  return ids;
+};
+
+const cleanupSourceMedia = (sourceId: string, entry: SourceMedia) => {
+  stopMediaStream(entry.stream ?? null);
+  stopMediaStream(entry.captureStream ?? null);
+  entry.videoEl?.pause();
+  entry.audioEl?.pause();
+  if (entry.type === "browser") {
+    window.dualcast.destroyBrowserSource({ sourceId }).catch(() => undefined);
+  }
+};
+
 const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => {
   const {
     scenes,
@@ -60,6 +85,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   const browserSizeRef = useRef<Map<string, { width: number; height: number; url: string }>>(new Map());
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 });
   const [isMultiviewOpen, setIsMultiviewOpen] = useState(false);
+  const [mediaRevision, setMediaRevision] = useState(0);
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
   const transitionRef = useRef<{
     type: "fade" | "crossfade";
@@ -78,20 +104,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
   const allSources = useMemo(() => ({ ...sources, ...programSources }), [programSources, sources]);
   const previewSceneLocked = Boolean(previewScene?.locked);
-  const activeSourceIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (isMultiviewOpen) {
-      scenes.forEach((scene) => scene.sourceIds.forEach((id) => ids.add(id)));
-      return ids;
-    }
-    if (programScene) {
-      programScene.sourceIds.forEach((id) => ids.add(id));
-    }
-    if (previewScene) {
-      previewScene.sourceIds.forEach((id) => ids.add(id));
-    }
-    return ids;
-  }, [isMultiviewOpen, programScene, previewScene, scenes]);
+  const activeSourceIds = useMemo(
+    () => collectActiveSourceIds(isMultiviewOpen, scenes, programScene, previewScene),
+    [isMultiviewOpen, programScene, previewScene, scenes]
+  );
 
   const profile = getQualityProfile(settings.qualityPreset);
   const programSize = { width: profile.maxWidth, height: profile.maxHeight };
@@ -139,9 +155,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       return;
     }
     const resizeObserver = new ResizeObserver(() => {
+      const style = window.getComputedStyle(element);
+      const horizontalPadding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+      const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
       setPreviewSize({
-        width: element.clientWidth || 1,
-        height: element.clientHeight || 1
+        width: Math.max(1, element.clientWidth - horizontalPadding),
+        height: Math.max(1, element.clientHeight - verticalPadding)
       });
     });
     resizeObserver.observe(element);
@@ -179,19 +198,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   useEffect(() => {
     const mediaMap = sourceMediaRef.current;
 
-    const cleanup = (sourceId: string, entry: SourceMedia) => {
-      stopMediaStream(entry.stream ?? null);
-      stopMediaStream(entry.captureStream ?? null);
-      entry.videoEl?.pause();
-      entry.audioEl?.pause();
-      if (entry.type === "browser") {
-        window.dualcast.destroyBrowserSource({ sourceId }).catch(() => undefined);
-      }
-    };
-
     const createMedia = async (source: Source) => {
       const signature = getSignature(source);
       const entry: SourceMedia = { signature, type: source.type };
+      mediaMap.set(source.id, entry);
 
       if (source.type === "display" || source.type === "window") {
         const video = document.createElement("video");
@@ -199,7 +209,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         video.muted = true;
         video.autoplay = true;
         try {
-          const stream = await getDisplayStream(source.data.captureId, source.audioEnabled);
+          let stream: MediaStream;
+          try {
+            stream = await getDisplayStream(source.data.captureId, source.audioEnabled);
+          } catch (error) {
+            if (!source.audioEnabled) {
+              throw error;
+            }
+            stream = await getDisplayStream(source.data.captureId, false);
+          }
           entry.stream = stream;
           video.srcObject = stream;
           await video.play();
@@ -274,7 +292,11 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
           .catch(() => undefined);
       }
 
-      mediaMap.set(source.id, entry);
+      if (mediaMap.get(source.id) !== entry) {
+        cleanupSourceMedia(source.id, entry);
+        return;
+      }
+      setMediaRevision((revision) => revision + 1);
     };
 
     activeSourceIds.forEach((id) => {
@@ -288,20 +310,26 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         return;
       }
       if (entry) {
-        cleanup(id, entry);
+        cleanupSourceMedia(id, entry);
+        mediaMap.delete(id);
       }
       createMedia(source).catch(() => undefined);
     });
 
     Array.from(mediaMap.entries()).forEach(([id, entry]) => {
       if (!activeSourceIds.has(id)) {
-        cleanup(id, entry);
+        cleanupSourceMedia(id, entry);
         mediaMap.delete(id);
         browserFramesRef.current.delete(id);
         browserSizeRef.current.delete(id);
       }
     });
   }, [activeSourceIds, allSources, programSize.height, programSize.width]);
+
+  useEffect(() => () => {
+    sourceMediaRef.current.forEach((entry, sourceId) => cleanupSourceMedia(sourceId, entry));
+    sourceMediaRef.current.clear();
+  }, []);
 
   useEffect(() => {
     activeSourceIds.forEach((id) => {
@@ -395,7 +423,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       setProgramAudioStream(null);
       audioContext.close().catch(() => undefined);
     };
-  }, [programScene, programSources, settings.masterAudioGain, setProgramAudioStream]);
+  }, [mediaRevision, programScene, programSources, settings.masterAudioGain, setProgramAudioStream]);
 
   const drawSource = (
     ctx: CanvasRenderingContext2D,
@@ -1105,7 +1133,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
           <span className={isCutToBlack ? "tag alert" : "tag"}>{isCutToBlack ? "BLACK" : "LIVE"}</span>
         </div>
         <div className="pane-body program-body">
-          <canvas ref={programCanvasRef} className="video-surface" />
+          <div className="canvas-stage" style={{ width: previewCanvasSize.width, height: previewCanvasSize.height }}>
+            <canvas ref={programCanvasRef} className="video-surface" />
+          </div>
         </div>
       </div>
     </section>

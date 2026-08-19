@@ -120,19 +120,28 @@ const operatorPage = `<!doctype html>
 const readJsonBody = (request: http.IncomingMessage) =>
   new Promise<Record<string, unknown>>((resolve) => {
     let body = "";
+    let settled = false;
+    const finish = (value: Record<string, unknown>) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
     request.on("data", (chunk) => {
       body += String(chunk);
       if (body.length > 16_384) {
+        finish({});
         request.destroy();
       }
     });
     request.on("end", () => {
       try {
-        resolve(JSON.parse(body) as Record<string, unknown>);
+        finish(JSON.parse(body) as Record<string, unknown>);
       } catch {
-        resolve({});
+        finish({});
       }
     });
+    request.on("error", () => finish({}));
   });
 
 const isRemoteAction = (value: unknown): value is RemoteOperatorAction =>
@@ -162,7 +171,7 @@ export const startNetworkOutput = async (payload?: { port?: number; operatorPin?
   currentPort = requestedPort;
   operatorPin = requestedPin;
 
-  server = http.createServer(async (request, response) => {
+  const candidate = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
     if (url.pathname === "/" || url.pathname === "/program") {
@@ -213,8 +222,18 @@ export const startNetworkOutput = async (payload?: { port?: number; operatorPin?
   });
 
   await new Promise<void>((resolve, reject) => {
-    server?.once("error", reject);
-    server?.listen(currentPort, "0.0.0.0", () => resolve());
+    const handleError = (error: Error) => reject(error);
+    candidate.once("error", handleError);
+    candidate.listen(currentPort, "0.0.0.0", () => {
+      candidate.off("error", handleError);
+      resolve();
+    });
+  });
+  server = candidate;
+  candidate.on("error", () => {
+    if (server === candidate) {
+      server = null;
+    }
   });
 
   return getStatus();

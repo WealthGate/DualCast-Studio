@@ -387,7 +387,7 @@ const VenuePanel: React.FC = () => {
           ))}
         </div>
         <p className="panel-note">
-          API keys remain outside normal settings. Set the named environment variable after purchasing access.
+          Adapter settings only in this release: API keys remain outside normal settings, and the caption, summary, and highlight workflows are not active yet.
         </p>
       </section>
     </div>

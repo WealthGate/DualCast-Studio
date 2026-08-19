@@ -28,7 +28,7 @@ const isValidRtmpUrl = (rtmpUrl: string) => {
 };
 
 export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
-  const { programSceneId, scenes, settings, programAudioStream } = useAppStore();
+  const { programSceneId, programSceneSnapshot, settings, programAudioStream } = useAppStore();
   const [status, setStatus] = useState<StreamingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -46,6 +46,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const canvasStreamRef = useRef<MediaStream | null>(null);
   const stopRequestedRef = useRef(false);
   const startInFlightRef = useRef(false);
+  const chunkQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const clearTimer = () => {
     if (timerRef.current) {
@@ -100,6 +101,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
   useEffect(() => {
     if ((status === "idle" || status === "error") && recorderRef.current && recorderRef.current.state !== "inactive") {
+      stopRequestedRef.current = true;
       recorderRef.current.stop();
     }
   }, [status]);
@@ -112,8 +114,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       if (!canvasRef.current) {
         return { ok: false, message: "Program output is not ready." };
       }
-      const programScene = scenes.find((scene) => scene.id === programSceneId) ?? null;
-      if (!programSceneId || !programScene || programScene.sourceIds.length === 0) {
+      if (!programSceneId || !programSceneSnapshot?.sourceIds.length) {
         return { ok: false, message: "Select a scene and TAKE it to Program before streaming." };
       }
       if (recorderRef.current) {
@@ -177,14 +178,23 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       const outputStream = new MediaStream(tracks);
       const hasAudio = outputStream.getAudioTracks().length > 0;
 
-      const startResult = await window.dualcast.startStream({
-        destinations: enabledDestinations,
-        hasAudio,
-        preset: settings.streamPreset,
-        fps: settings.streamFps,
-        audioBitrate: settings.streamAudioBitrate,
-        encoder: settings.streamEncoder
-      });
+      let startResult;
+      try {
+        startResult = await window.dualcast.startStream({
+          destinations: enabledDestinations,
+          hasAudio,
+          preset: settings.streamPreset,
+          fps: settings.streamFps,
+          audioBitrate: settings.streamAudioBitrate,
+          encoder: settings.streamEncoder
+        });
+      } catch (error) {
+        cleanupCapture();
+        startInFlightRef.current = false;
+        const message = error instanceof Error ? error.message : "Failed to start stream.";
+        setStatusMessage(message);
+        return { ok: false, message };
+      }
 
       if (!startResult.ok) {
         cleanupCapture();
@@ -203,23 +213,25 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
         recorderRef.current = recorder;
         stopRequestedRef.current = false;
+        chunkQueueRef.current = Promise.resolve();
 
         recorder.ondataavailable = (event) => {
           if (!event.data || event.data.size === 0) {
             return;
           }
-          event.data
-            .arrayBuffer()
+          chunkQueueRef.current = chunkQueueRef.current
+            .then(() => event.data.arrayBuffer())
             .then((buffer) => window.dualcast.sendStreamChunk(new Uint8Array(buffer)))
             .catch(() => undefined);
         };
 
-        recorder.onstop = () => {
+        recorder.onstop = async () => {
           cleanupCapture();
           recorderRef.current = null;
           startInFlightRef.current = false;
+          await chunkQueueRef.current;
           if (stopRequestedRef.current) {
-            window.dualcast.stopStream().catch(() => undefined);
+            await window.dualcast.stopStream().catch(() => undefined);
           }
           stopRequestedRef.current = false;
         };
@@ -229,7 +241,9 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         return { ok: true };
       } catch {
         cleanupCapture();
+        recorderRef.current = null;
         startInFlightRef.current = false;
+        await window.dualcast.stopStream().catch(() => undefined);
         setStatusMessage("Unable to start streaming capture.");
         return { ok: false, message: "Unable to start streaming capture." };
       }
@@ -237,7 +251,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     [
       canvasRef,
       programSceneId,
-      scenes,
+      programSceneSnapshot,
       programAudioStream,
       settings.audioMode,
       settings.streamFps,

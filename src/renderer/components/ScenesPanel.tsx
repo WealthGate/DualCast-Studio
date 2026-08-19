@@ -12,6 +12,7 @@ const ScenesPanel: React.FC = () => {
   const {
     scenes,
     previewSceneId,
+    programSceneId,
     addScene,
     renameScene,
     removeScene,
@@ -56,7 +57,7 @@ const ScenesPanel: React.FC = () => {
   };
 
   const handleDelete = () => {
-    if (!selectedScene || selectedScene.locked || scenes.length <= 1) {
+    if (!selectedScene || selectedScene.locked || selectedScene.id === programSceneId || scenes.length <= 1) {
       return;
     }
     removeScene(selectedScene.id);
@@ -114,9 +115,10 @@ const ScenesPanel: React.FC = () => {
                 <button onClick={handleRename} disabled={selectedScene.locked || !renameValue.trim()}>Rename</button>
               </div>
               <button onClick={handleToggleLock}>{selectedScene.locked ? "Unlock Scene" : "Lock Scene"}</button>
-              <button className="context-menu-danger" onClick={handleDelete} disabled={selectedScene.locked || scenes.length <= 1}>
+              <button className="context-menu-danger" onClick={handleDelete} disabled={selectedScene.locked || selectedScene.id === programSceneId || scenes.length <= 1}>
                 Delete Scene
               </button>
+              {selectedScene.id === programSceneId ? <div className="context-menu-note">TAKE another scene before deleting the live Program scene.</div> : null}
               <div className="context-menu-separator" />
             </>
           ) : null}

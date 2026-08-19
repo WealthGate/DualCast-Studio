@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.0**.
+Current release: **v0.6.1**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -22,6 +22,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 - Captures connected displays and builds layered scenes from display, camera, image, video, and text sources.
 - Provides Preview and Program buses with TAKE, CUT TO BLACK, and FREEZE controls.
 - Keeps every scene/source edit isolated in Preview until TAKE snapshots it into Program.
+- Preserves the live Program media and audio graph while Multiview is open or Preview sources are edited.
 - Opens a separate Multiview from `View > Open Multiview Window` with every configured scene and camera source.
 - Sends a Multiview tile to Preview on single click and directly to Program on double-click.
 - Uses a compact OBS-inspired control-room layout that prioritizes Preview and Program space.
@@ -55,6 +56,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 - Reports destination-level connecting, live, reconnecting, and error states.
 - Supports stream presets, encoder selection, audio bitrate controls, logs, and reconnect attempts.
 - Mixes source-level volume controls into a master Program audio gain.
+- Falls back to video-only capture when an otherwise valid desktop source does not expose an audio track.
 
 ### Church Content and Integrations
 - Configures a local worship-song folder or Planning Center/custom song provider.
@@ -99,6 +101,8 @@ npm install
 npm run dev
 ```
 
+Development and release packaging require Node.js 22.12 or newer.
+
 Build and package:
 
 ```bash
@@ -139,6 +143,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
+- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.1; the current controls only prepare provider settings for a future implementation.
 - The post-production editor currently provides trim/export rather than a multitrack timeline.
 - Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
 - Recording chunks are retained in memory before saving, so very long recordings should be split until direct-to-disk recording is added.

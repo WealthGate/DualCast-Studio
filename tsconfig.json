@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["src", "electron", "vite.config.ts", "tsup.config.ts", "vitest.config.ts"]
+  "include": ["src", "electron", "vite.config.mts", "tsup.config.ts", "vitest.config.mts"]
 }

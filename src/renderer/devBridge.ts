@@ -1,4 +1,5 @@
 import { useAppStore } from "./store/useAppStore";
+import packageJson from "../../package.json";
 
 const noopUnsubscribe = () => undefined;
 const emptyNetworkStatus = {
@@ -31,8 +32,8 @@ export const installDevelopmentBridge = () => {
     closeLowerThird: async () => false,
     openMultiview: async () => false,
     closeMultiview: async () => false,
-    getUpdateStatus: async () => ({ state: "idle", currentVersion: "0.6.0" }),
-    checkForUpdates: async () => ({ state: "idle", currentVersion: "0.6.0", message: "Update checks run in the installed desktop app." }),
+    getUpdateStatus: async () => ({ state: "idle", currentVersion: packageJson.version }),
+    checkForUpdates: async () => ({ state: "idle", currentVersion: packageJson.version, message: "Update checks run in the installed desktop app." }),
     downloadUpdate: async () => false,
     installUpdate: async () => false,
     openReleasePage: async () => false,

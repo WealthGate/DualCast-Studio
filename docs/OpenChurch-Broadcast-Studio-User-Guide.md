@@ -1,8 +1,8 @@
-# OpenChurch Broadcast Studio v0.6.0 - User Guide
+# OpenChurch Broadcast Studio v0.6.1 - User Guide
 
 ## 1. Purpose
 
-OpenChurch Broadcast Studio is an open church-production application for preparing presentations, switching cameras and scenes, recording services, streaming to several destinations, driving sanctuary displays, and operating lower thirds. Version 0.6.0 is designed around a Preview/Program workflow so edits can be prepared safely before the congregation sees them.
+OpenChurch Broadcast Studio is an open church-production application for preparing presentations, switching cameras and scenes, recording services, streaming to several destinations, driving sanctuary displays, and operating lower thirds. Version 0.6.1 is designed around a Preview/Program workflow so edits can be prepared safely before the congregation sees them.
 
 ## 2. Installation and Updates
 
@@ -71,7 +71,7 @@ Translation availability and public display rights depend on the selected provid
 
 Use Sanctuary Displays to select one or more connected projectors/displays and open Program output. A separate lower-third display can feed a graphics key/fill workflow. Venue & Outputs also provides network output for displays and additional operators on the local network. Protect operator access with a PIN and use trusted church networks.
 
-Wireless displays may be connected through Windows wireless display, AirPlay-compatible receivers, Miracast, Chromecast/browser receivers, NDI/virtual-camera workflows, or the built-in local-network Program URL, depending on hardware and streaming software. Test latency and resolution before the service.
+The app's built-in wireless output is the local-network Program URL, which works with browser-capable displays, receiver devices, and OBS Browser Sources. Native Miracast, AirPlay, Chromecast discovery, NDI, SDI, and virtual-camera output are not built in; those workflows require separate operating-system features, receiver hardware, or streaming software. Test latency and resolution before the service.
 
 ## 8. Multiview and Multiple Operators
 
@@ -104,7 +104,7 @@ System Settings includes System, Dark, Light, High Contrast, Midnight, and Warm 
 
 ## 13. Song Library and Integrations
 
-Venue & Outputs contains adapters for a local song-library folder, Planning Center, or a custom API. Paste-and-split in Lower Third Studio works without a subscription. Verify copyright and reporting obligations for lyrics. AI settings reserve provider, endpoint, model, API-key environment variable, live captions, sermon summaries, and highlight detection. Features requiring paid APIs remain disabled until credentials and an appropriate provider subscription are configured.
+Venue & Outputs contains adapter settings for a local song-library folder, Planning Center, or a custom API. Paste-and-split in Lower Third Studio works without a subscription. Verify copyright and reporting obligations for lyrics. AI settings reserve provider, endpoint, model, API-key environment variable, live captions, sermon summaries, and highlight detection. Version 0.6.1 does not yet execute those AI workflows, even after credentials are configured.
 
 ## 14. Recommended Service Workflow
 

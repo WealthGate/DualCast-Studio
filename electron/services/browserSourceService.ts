@@ -7,6 +7,7 @@ type BrowserSourceEntry = {
   window: BrowserWindow;
   timer: NodeJS.Timeout | null;
   url: string;
+  capturing: boolean;
 };
 
 const sources = new Map<string, BrowserSourceEntry>();
@@ -23,14 +24,17 @@ const startCapture = (sourceId: string, entry: BrowserSourceEntry) => {
     return;
   }
   entry.timer = setInterval(async () => {
-    if (entry.window.isDestroyed()) {
+    if (entry.window.isDestroyed() || entry.capturing) {
       return;
     }
+    entry.capturing = true;
     try {
       const image = await entry.window.webContents.capturePage();
       broadcastFrame({ sourceId, dataUrl: image.toDataURL() });
     } catch (error) {
       log.warn("Browser source capture failed.", error);
+    } finally {
+      entry.capturing = false;
     }
   }, 1000 / captureFps);
 };
@@ -83,7 +87,7 @@ export const createBrowserSource = async (payload: BrowserSourcePayload) => {
   }
 
   const window = createWindow(payload);
-  const entry: BrowserSourceEntry = { window, timer: null, url: payload.url };
+  const entry: BrowserSourceEntry = { window, timer: null, url: payload.url, capturing: false };
   sources.set(payload.sourceId, entry);
   startCapture(payload.sourceId, entry);
 

@@ -272,10 +272,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   removeScene: (sceneId) => {
     set((state) => {
+      if (sceneId === state.programSceneId) {
+        return state;
+      }
       const scenes = state.scenes.filter((scene) => scene.id !== sceneId);
       const previewSceneId = state.previewSceneId === sceneId ? scenes[0]?.id ?? null : state.previewSceneId;
-      const programSceneId = state.programSceneId === sceneId ? scenes[0]?.id ?? null : state.programSceneId;
-      return { scenes, previewSceneId, programSceneId };
+      return { scenes, previewSceneId };
     });
   },
   toggleSceneLocked: (sceneId) =>

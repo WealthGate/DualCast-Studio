@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 import path from "path";
 import { IpcChannels } from "../../src/shared/ipc";
 import { MultiviewAction, MultiviewPayload } from "../../src/shared/types";
@@ -50,13 +50,18 @@ export const openMultiviewWindow = async () => {
     notifyStudioWindows(IpcChannels.multiviewClosed);
   });
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  const devServerUrl = app.isPackaged ? null : process.env.VITE_DEV_SERVER_URL;
+  const loadFile = () => multiviewWindow?.loadFile(path.join(__dirname, "../dist/renderer/index.html"), {
+    query: { multiview: "1" }
+  });
   if (devServerUrl) {
-    await multiviewWindow.loadURL(`${devServerUrl}?multiview=1`);
+    try {
+      await multiviewWindow.loadURL(`${devServerUrl}?multiview=1`);
+    } catch {
+      await loadFile();
+    }
   } else {
-    await multiviewWindow.loadFile(path.join(__dirname, "../dist/renderer/index.html"), {
-      query: { multiview: "1" }
-    });
+    await loadFile();
   }
 
   return true;

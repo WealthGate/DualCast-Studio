@@ -35,4 +35,11 @@ describe("Preview and Program isolation", () => {
     const takenProgramSource = Object.values(useAppStore.getState().programSources)[0];
     expect(takenProgramSource.type === "text" && takenProgramSource.data.text).toBe("Preview edit");
   });
+
+  it("keeps the live Program scene when Preview tries to delete it", () => {
+    useAppStore.getState().removeScene("scene-a");
+
+    expect(useAppStore.getState().scenes.map((scene) => scene.id)).toContain("scene-a");
+    expect(useAppStore.getState().programSceneSnapshot?.sourceIds).toHaveLength(1);
+  });
 });

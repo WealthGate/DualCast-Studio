@@ -33,6 +33,8 @@ type DockContextMenu = {
 
 const STORAGE_KEY = "openchurch:dock-layout:v2";
 const SIZE_STORAGE_KEY = "openchurch:dock-sizes:v1";
+const SCHEMA_STORAGE_KEY = "openchurch:dock-layout-schema";
+const CURRENT_LAYOUT_SCHEMA = 3;
 
 const defaultLayout: DockLayout = {
   top: [],
@@ -76,7 +78,7 @@ const cloneLayout = (layout: DockLayout): DockLayout => ({
   bottom: layout.bottom.map((group) => ({ ...group, panelIds: [...group.panelIds] }))
 });
 
-const normalizeLayout = (layout: DockLayout, panelIds: Set<string>): DockLayout => {
+export const normalizeLayout = (layout: DockLayout, panelIds: Set<string>): DockLayout => {
   const seen = new Set<string>();
   const normalized = cloneLayout(layout);
 
@@ -104,15 +106,47 @@ const normalizeLayout = (layout: DockLayout, panelIds: Set<string>): DockLayout 
   return normalized;
 };
 
+export const migrateDockLayout = (layout: DockLayout, panelIds: Set<string>, schemaVersion: number) => {
+  const normalized = normalizeLayout(layout, panelIds);
+  if (schemaVersion >= CURRENT_LAYOUT_SCHEMA) {
+    return normalized;
+  }
+
+  const visibleIds = new Set(zoneIds.flatMap((zoneId) => normalized[zoneId].flatMap((group) => group.panelIds)));
+  const newPanelIds = ["lower-third", "scripture"].filter(
+    (panelId) => panelIds.has(panelId) && !visibleIds.has(panelId)
+  );
+  if (newPanelIds.length === 0) {
+    return normalized;
+  }
+
+  const liveGroup = normalized.right.find((group) => group.id === "dock-live") ?? normalized.right[0];
+  if (liveGroup) {
+    liveGroup.panelIds.push(...newPanelIds);
+  } else {
+    normalized.right.push({
+      id: "dock-live",
+      panelIds: newPanelIds,
+      activePanelId: newPanelIds[0]
+    });
+  }
+  return normalized;
+};
+
 const loadLayout = (panelIds: Set<string>) => {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
+    const schemaVersion = Number(window.localStorage.getItem(SCHEMA_STORAGE_KEY)) || 2;
     if (stored) {
-      return normalizeLayout(JSON.parse(stored) as DockLayout, panelIds);
+      const migrated = migrateDockLayout(JSON.parse(stored) as DockLayout, panelIds, schemaVersion);
+      window.localStorage.setItem(SCHEMA_STORAGE_KEY, String(CURRENT_LAYOUT_SCHEMA));
+      return migrated;
     }
   } catch {
+    window.localStorage.setItem(SCHEMA_STORAGE_KEY, String(CURRENT_LAYOUT_SCHEMA));
     return normalizeLayout(defaultLayout, panelIds);
   }
+  window.localStorage.setItem(SCHEMA_STORAGE_KEY, String(CURRENT_LAYOUT_SCHEMA));
   return normalizeLayout(defaultLayout, panelIds);
 };
 
@@ -179,6 +213,7 @@ type DockWorkspaceProps = {
 
 const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center }) => {
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const contentRefs = useRef(new Map<string, HTMLDivElement>());
   const panelMap = useMemo(() => new Map(panels.map((panel) => [panel.id, panel])), [panels]);
   const panelIds = useMemo(() => new Set(panelMap.keys()), [panelMap]);
   const [layout, setLayout] = useState<DockLayout>(() => loadLayout(panelIds));
@@ -223,11 +258,31 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center }) => {
       }
       return next;
     });
+    window.requestAnimationFrame(() => {
+      const content = contentRefs.current.get(groupId);
+      if (content) {
+        content.scrollTop = 0;
+        content.scrollLeft = 0;
+        const activePanel = Array.from(content.querySelectorAll<HTMLElement>(".dock-panel-instance"))
+          .find((element) => element.dataset.dockPanelId === panelId);
+        if (activePanel) {
+          [activePanel, ...Array.from(activePanel.querySelectorAll<HTMLElement>("*"))].forEach((element) => {
+            if (element.scrollTop > 0) {
+              element.scrollTop = 0;
+            }
+            if (element.scrollLeft > 0) {
+              element.scrollLeft = 0;
+            }
+          });
+        }
+      }
+    });
   };
 
   const resetLayout = () => {
     setLayout(normalizeLayout(defaultLayout, panelIds));
     setSizes(defaultSizes);
+    window.localStorage.setItem(SCHEMA_STORAGE_KEY, String(CURRENT_LAYOUT_SCHEMA));
     setContextMenu(null);
   };
 
@@ -378,7 +433,16 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center }) => {
                     })}
                   </div>
                 </div>
-                <div className="dock-panel-content">
+                <div
+                  className="dock-panel-content"
+                  ref={(element) => {
+                    if (element) {
+                      contentRefs.current.set(group.id, element);
+                    } else {
+                      contentRefs.current.delete(group.id);
+                    }
+                  }}
+                >
                   {group.panelIds.map((panelId) => {
                     const panel = panelMap.get(panelId);
                     if (!panel) {
@@ -387,6 +451,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center }) => {
                     return (
                       <div
                         key={panelId}
+                        data-dock-panel-id={panelId}
                         className={`dock-panel-instance ${group.activePanelId === panelId ? "active" : "inactive"}`}
                       >
                         {panel.content}

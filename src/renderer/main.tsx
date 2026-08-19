@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import Projection from "./Projection";
 import Multiview from "./Multiview";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./styles.css";
 import { installDevelopmentBridge } from "./devBridge";
 
@@ -15,12 +16,14 @@ const isMultiview = params.get("multiview") === "1";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {isMultiview ? (
-      <Multiview />
-    ) : isProjection ? (
-      <Projection mode={projectionMode === "lower-third" ? "lower-third" : "program"} />
-    ) : (
-      <App />
-    )}
+    <ErrorBoundary>
+      {isMultiview ? (
+        <Multiview />
+      ) : isProjection ? (
+        <Projection mode={projectionMode === "lower-third" ? "lower-third" : "program"} />
+      ) : (
+        <App />
+      )}
+    </ErrorBoundary>
   </React.StrictMode>
 );

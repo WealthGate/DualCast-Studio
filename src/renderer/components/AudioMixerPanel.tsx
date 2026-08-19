@@ -53,11 +53,16 @@ const AudioMixerPanel: React.FC = () => {
               value={source.volume ?? 1}
               onChange={(event) => updateSource(source.id, { volume: Number(event.target.value) })}
               onPointerUp={() => persistStudioState().catch(() => undefined)}
+              onKeyUp={() => persistStudioState().catch(() => undefined)}
+              onBlur={() => persistStudioState().catch(() => undefined)}
             />
             <span className="mixer-value">{Math.round((source.volume ?? 1) * 100)}%</span>
             <button
               className={`mixer-mute ${source.audioEnabled ? "" : "active"}`}
-              onClick={() => toggleSourceAudio(source.id)}
+              onClick={() => {
+                toggleSourceAudio(source.id);
+                persistStudioState().catch(() => undefined);
+              }}
             >
               {source.audioEnabled ? "Mute" : "Unmute"}
             </button>

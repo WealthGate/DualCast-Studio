@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 import path from "path";
 import { ProgramState } from "../../src/shared/types";
 import { IpcChannels } from "../../src/shared/ipc";
@@ -18,7 +18,7 @@ const getDisplayBounds = (displayId?: string | null) => {
 };
 
 const buildProjectionUrl = (mode: "program" | "lower-third") => {
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  const devServerUrl = app.isPackaged ? null : process.env.VITE_DEV_SERVER_URL;
   if (devServerUrl) {
     return `${devServerUrl}?projection=${mode}`;
   }

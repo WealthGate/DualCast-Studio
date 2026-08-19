@@ -64,10 +64,17 @@ const App: React.FC = () => {
       setStudioState(settings.studioState);
       await refreshDisplays();
       if (settings.networkOutput.enabled) {
-        await window.dualcast.startNetworkOutput({
-          port: settings.networkOutput.port,
-          operatorPin: settings.networkOutput.operatorPin
-        });
+        try {
+          await window.dualcast.startNetworkOutput({
+            port: settings.networkOutput.port,
+            operatorPin: settings.networkOutput.operatorPin
+          });
+        } catch {
+          const updated = await window.dualcast.updateSettings({
+            networkOutput: { ...settings.networkOutput, enabled: false }
+          });
+          setSettings(updated);
+        }
       }
     };
     init();

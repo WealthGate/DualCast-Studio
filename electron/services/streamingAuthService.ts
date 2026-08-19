@@ -77,16 +77,17 @@ const authorizeYouTube = async (): Promise<StreamingAuthorizationResult> => {
 const authorizeFacebook = async (): Promise<StreamingAuthorizationResult> => {
   const appId = process.env.OPENCHURCH_FACEBOOK_APP_ID;
   const appSecret = process.env.OPENCHURCH_FACEBOOK_APP_SECRET;
+  const graphVersion = process.env.OPENCHURCH_FACEBOOK_GRAPH_VERSION || "v25.0";
   if (!appId || !appSecret) return { ok: false, message: "Set OPENCHURCH_FACEBOOK_APP_ID and OPENCHURCH_FACEBOOK_APP_SECRET, then restart the app." };
   const { code, redirectUri } = await waitForCode((callback, state) => {
-    const url = new URL("https://www.facebook.com/v20.0/dialog/oauth");
+    const url = new URL(`https://www.facebook.com/${graphVersion}/dialog/oauth`);
     url.search = new URLSearchParams({ client_id: appId, redirect_uri: callback, response_type: "code", scope: "public_profile,email,pages_show_list,pages_read_engagement,publish_video", state }).toString();
     return url.toString();
   });
   const tokenResponse = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({ client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code })}`);
   if (!tokenResponse.ok) throw new Error("Facebook token exchange failed.");
   const token = await tokenResponse.json() as { access_token: string };
-  const profileResponse = await fetch(`https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(token.access_token)}`);
+  const profileResponse = await fetch(`https://graph.facebook.com/${graphVersion}/me?fields=id,name,email&access_token=${encodeURIComponent(token.access_token)}`);
   const profile = await profileResponse.json() as { name?: string; email?: string };
   return { ok: true, account: profile.email || profile.name || "Facebook account", message: "Facebook connected. Choose or create the Live event in Facebook, then paste its Server URL and Stream Key if Facebook does not provide them through your app permissions." };
 };
