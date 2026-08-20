@@ -1,4 +1,8 @@
-export const getDisplayStream = async (sourceId: string, includeAudio: boolean) => {
+export const getDisplayStream = async (
+  sourceId: string,
+  includeAudio: boolean,
+  captureCursor: "never" | "motion" | "always" = "never"
+) => {
   const constraints = {
     audio: includeAudio
       ? {
@@ -12,7 +16,8 @@ export const getDisplayStream = async (sourceId: string, includeAudio: boolean) 
       mandatory: {
         chromeMediaSource: "desktop",
         chromeMediaSourceId: sourceId
-      }
+      },
+      cursor: captureCursor
     }
   } as MediaStreamConstraints;
 
@@ -42,7 +47,7 @@ export const getMediaStream = async (sourceId: string, includeAudio: boolean) =>
   if (cameraId) {
     return getCameraStream(cameraId);
   }
-  return getDisplayStream(sourceId, includeAudio);
+  return getDisplayStream(sourceId, includeAudio, "never");
 };
 
 export const stopMediaStream = (stream: MediaStream | null) => {

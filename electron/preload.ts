@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from "electron";
 import { IpcChannels } from "../src/shared/ipc";
 import {
   SaveRecordingPayload,
+  RecordingChunkPayload,
+  RecordingSessionPayload,
   DisplaySource,
   Settings,
   SaveRecordingResult,
@@ -25,6 +27,10 @@ import {
   RemoteOperatorAction,
   ScriptureFetchPayload,
   ScriptureFetchResult,
+  ScriptureLibraryDownloadPayload,
+  ScriptureLibraryLookupPayload,
+  ScriptureLibraryRemovePayload,
+  ScriptureLibrarySummary,
   StreamingAuthorizationPayload,
   StreamingAuthorizationResult
 } from "../src/shared/types";
@@ -35,6 +41,10 @@ const api = {
   updateSettings: (update: SettingsUpdate): Promise<Settings> => ipcRenderer.invoke(IpcChannels.updateSettings, update),
   selectSaveDirectory: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.selectSaveDirectory),
   saveRecording: (payload: SaveRecordingPayload): Promise<SaveRecordingResult> => ipcRenderer.invoke(IpcChannels.saveRecording, payload),
+  beginRecording: (): Promise<{ sessionId: string }> => ipcRenderer.invoke(IpcChannels.beginRecording),
+  appendRecordingChunk: (payload: RecordingChunkPayload): Promise<boolean> => ipcRenderer.invoke(IpcChannels.appendRecordingChunk, payload),
+  finishRecording: (payload: RecordingSessionPayload): Promise<SaveRecordingResult> => ipcRenderer.invoke(IpcChannels.finishRecording, payload),
+  cancelRecording: (payload: RecordingSessionPayload): Promise<boolean> => ipcRenderer.invoke(IpcChannels.cancelRecording, payload),
   openFolder: (filePath: string): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openFolder, filePath),
   openProjection: (displayIds: string[]): Promise<boolean> => ipcRenderer.invoke(IpcChannels.openProjection, displayIds),
   closeProjection: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.closeProjection),
@@ -50,11 +60,11 @@ const api = {
   startStream: (payload: StreamStartPayload): Promise<StreamStartResult> =>
     ipcRenderer.invoke(IpcChannels.startStream, payload),
   stopStream: (): Promise<StreamStopResult> => ipcRenderer.invoke(IpcChannels.stopStream),
-  sendStreamChunk: (payload: Uint8Array) => ipcRenderer.send(IpcChannels.streamChunk, payload),
+  sendStreamChunk: (payload: Uint8Array): Promise<boolean> => ipcRenderer.invoke(IpcChannels.streamChunk, payload),
   getStreamLogPath: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.getStreamLogPath),
   getStreamLogContent: (payload: { maxLines?: number }): Promise<string> =>
     ipcRenderer.invoke(IpcChannels.getStreamLogContent, payload),
-  getStreamingCapabilities: (): Promise<{ encoders: StreamingEncoder[] }> =>
+  getStreamingCapabilities: (): Promise<{ encoders: StreamingEncoder[]; secureStorageAvailable: boolean }> =>
     ipcRenderer.invoke(IpcChannels.getStreamingCapabilities),
   getStoredStreamKey: (payload?: { destinationId?: string }): Promise<string | null> =>
     ipcRenderer.invoke(IpcChannels.getStoredStreamKey, payload),
@@ -78,6 +88,18 @@ const api = {
     ipcRenderer.invoke(IpcChannels.destroyBrowserSource, payload),
   fetchScripture: (payload: ScriptureFetchPayload): Promise<ScriptureFetchResult> =>
     ipcRenderer.invoke(IpcChannels.fetchScripture, payload),
+  listScriptureLibraries: (): Promise<ScriptureLibrarySummary[]> =>
+    ipcRenderer.invoke(IpcChannels.listScriptureLibraries),
+  lookupScriptureLibrary: (payload: ScriptureLibraryLookupPayload): Promise<ScriptureFetchResult> =>
+    ipcRenderer.invoke(IpcChannels.lookupScriptureLibrary, payload),
+  importScriptureLibrary: (): Promise<ScriptureLibrarySummary | null> =>
+    ipcRenderer.invoke(IpcChannels.importScriptureLibrary),
+  downloadScriptureLibrary: (payload: ScriptureLibraryDownloadPayload): Promise<ScriptureLibrarySummary> =>
+    ipcRenderer.invoke(IpcChannels.downloadScriptureLibrary, payload),
+  saveScripturePassage: (payload: ScriptureFetchResult): Promise<ScriptureLibrarySummary> =>
+    ipcRenderer.invoke(IpcChannels.saveScripturePassage, payload),
+  removeScriptureLibrary: (payload: ScriptureLibraryRemovePayload): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.removeScriptureLibrary, payload),
   authorizeStreaming: (payload: StreamingAuthorizationPayload): Promise<StreamingAuthorizationResult> =>
     ipcRenderer.invoke(IpcChannels.authorizeStreaming, payload),
   downloadUserGuide: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.downloadUserGuide),

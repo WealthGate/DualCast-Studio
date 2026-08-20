@@ -13,6 +13,7 @@ import {
   SourceRect,
   StudioState
 } from "../../shared/types";
+import { normalizeStudioState } from "../../shared/settings";
 
 const defaultStudioState: StudioState = {
   scenes: [{ id: "scene-1", name: "Scene 1", sourceIds: [] }],
@@ -27,6 +28,8 @@ const defaultSettings: Settings = {
   qualityPreset: "medium",
   frameRate: 30,
   audioMode: "system",
+  microphoneDeviceId: null,
+  microphoneGain: 1,
   lastDisplayId: null,
   streamRtmpUrl: "",
   streamPreset: "medium",
@@ -45,6 +48,9 @@ const defaultSettings: Settings = {
     heightPercent: 28,
     position: "bottom",
     backgroundColor: "#101722",
+    backgroundOpacity: 1,
+    backgroundImageUrl: "",
+    backgroundImageOpacity: 0.45,
     textColor: "#ffffff",
     fontSize: 48,
     fontFamily: "Segoe UI",
@@ -54,6 +60,8 @@ const defaultSettings: Settings = {
     textAlign: "center",
     imageUrl: "",
     imagePosition: "left",
+    bibleImageUrl: "",
+    bibleImagePosition: "left",
     entranceAnimation: "fade",
     exitAnimation: "fade",
     animationDurationMs: 450,
@@ -108,6 +116,7 @@ const createProgramSnapshot = (scene: Scene | null, sources: Record<string, Sour
       ...source,
       id: snapshotId,
       rect: { ...source.rect },
+      crop: source.crop ? { ...source.crop } : undefined,
       data: { ...source.data },
       media: source.media ? { ...source.media } : undefined
     } as Source;
@@ -140,6 +149,8 @@ type AppState = {
   isFrozen: boolean;
   transitionType: "cut" | "fade" | "crossfade";
   transitionDurationMs: number;
+  manualBlend: number;
+  programTransitionMode: "configured" | "none";
   isRecording: boolean;
   recordingSeconds: number;
   recordingResult: SaveRecordingResult | null;
@@ -170,6 +181,8 @@ type AppState = {
   removeGroup: (groupId: string) => void;
   setTransitionType: (value: "cut" | "fade" | "crossfade") => void;
   setTransitionDuration: (value: number) => void;
+  setManualBlend: (value: number) => void;
+  completeManualBlend: () => void;
   setSourceMediaPaused: (sourceId: string, paused: boolean) => void;
   restartSourceMedia: (sourceId: string) => void;
   setSelectedSourceId: (sourceId: string | null) => void;
@@ -186,33 +199,6 @@ type AppState = {
   setRecordingError: (message: string | null) => void;
   setSettings: (settings: Settings) => void;
   updateSettings: (update: SettingsUpdate) => Promise<void>;
-};
-
-const normalizeStudioState = (studioState: StudioState) => {
-  const scenes = studioState.scenes?.length ? studioState.scenes : defaultStudioState.scenes;
-  const previewSceneId = studioState.previewSceneId ?? scenes[0]?.id ?? null;
-  const programSceneId = studioState.programSceneId ?? previewSceneId;
-  const groups = studioState.groups ?? [];
-  const sources = Object.fromEntries(
-    Object.entries(studioState.sources ?? {}).map(([id, source]) => [
-      id,
-      {
-        rotation: 0,
-        locked: false,
-        groupId: null,
-        volume: 1,
-        media: { paused: false, restartToken: 0 },
-        ...source
-      }
-    ])
-  ) as Record<string, Source>;
-  return {
-    scenes,
-    sources,
-    groups,
-    previewSceneId,
-    programSceneId
-  };
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -234,6 +220,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   isFrozen: false,
   transitionType: "cut",
   transitionDurationMs: 400,
+  manualBlend: 0,
+  programTransitionMode: "configured",
   isRecording: false,
   recordingSeconds: 0,
   recordingResult: null,
@@ -300,7 +288,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         programSceneId: sceneId,
         programSceneSnapshot: snapshot.scene,
         programSources: snapshot.sources,
-        programRevision: state.programRevision + 1
+        programRevision: state.programRevision + 1,
+        programTransitionMode: "configured",
+        manualBlend: 0
       });
     }
   },
@@ -311,7 +301,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       programSceneId: state.previewSceneId,
       programSceneSnapshot: snapshot.scene,
       programSources: snapshot.sources,
-      programRevision: state.programRevision + 1
+      programRevision: state.programRevision + 1,
+      programTransitionMode: "configured",
+      manualBlend: 0
     };
   }),
   addSourceToScene: (sceneId, source) => {
@@ -321,6 +313,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       locked: false,
       groupId: null,
       volume: 1,
+      audioScope: "scene",
+      captureCursor: "never",
+      crop: { top: 0, right: 0, bottom: 0, left: 0 },
       media: { paused: false, restartToken: 0 },
       ...source,
       id
@@ -468,7 +463,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { groups, sources };
     }),
   setTransitionType: (value) => set({ transitionType: value }),
-  setTransitionDuration: (value) => set({ transitionDurationMs: Math.max(100, Math.min(3000, value)) }),
+  setTransitionDuration: (value) => set({ transitionDurationMs: Math.max(100, Math.min(15000, value)) }),
+  setManualBlend: (value) => set({ manualBlend: Math.max(0, Math.min(1, value)) }),
+  completeManualBlend: () => set((state) => {
+    const scene = state.scenes.find((candidate) => candidate.id === state.previewSceneId) ?? null;
+    if (!scene || state.manualBlend <= 0) return { manualBlend: 0 };
+    const snapshot = createProgramSnapshot(scene, state.sources);
+    return {
+      programSceneId: state.previewSceneId,
+      programSceneSnapshot: snapshot.scene,
+      programSources: snapshot.sources,
+      programRevision: state.programRevision + 1,
+      programTransitionMode: "none",
+      manualBlend: 0
+    };
+  }),
   setSourceMediaPaused: (sourceId, paused) =>
     set((state) => {
       const current = state.sources[sourceId];

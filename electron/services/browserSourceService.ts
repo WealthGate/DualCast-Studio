@@ -15,8 +15,35 @@ const captureFps = 10;
 
 const broadcastFrame = (payload: BrowserFramePayload) => {
   BrowserWindow.getAllWindows().forEach((window) => {
-    window.webContents.send(IpcChannels.browserFrame, payload);
+    if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+      window.webContents.send(IpcChannels.browserFrame, payload);
+    }
   });
+};
+
+const normalizePayload = (payload: BrowserSourcePayload): BrowserSourcePayload | null => {
+  if (!payload || typeof payload.sourceId !== "string" || !/^[a-z0-9:._-]{1,200}$/i.test(payload.sourceId)) {
+    return null;
+  }
+  try {
+    const url = new URL(payload.url);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return null;
+    }
+    const width = Number(payload.width);
+    const height = Number(payload.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) {
+      return null;
+    }
+    return {
+      sourceId: payload.sourceId,
+      url: url.toString(),
+      width: Math.max(1, Math.min(4096, Math.round(width))),
+      height: Math.max(1, Math.min(4096, Math.round(height)))
+    };
+  } catch {
+    return null;
+  }
 };
 
 const startCapture = (sourceId: string, entry: BrowserSourceEntry) => {
@@ -71,9 +98,11 @@ const createWindow = (payload: BrowserSourcePayload) => {
 };
 
 export const createBrowserSource = async (payload: BrowserSourcePayload) => {
-  if (!payload?.sourceId || !payload.url) {
+  const normalized = normalizePayload(payload);
+  if (!normalized) {
     return false;
   }
+  payload = normalized;
 
   const existing = sources.get(payload.sourceId);
   if (existing && !existing.window.isDestroyed()) {
@@ -100,9 +129,11 @@ export const createBrowserSource = async (payload: BrowserSourcePayload) => {
 };
 
 export const updateBrowserSource = async (payload: BrowserSourcePayload) => {
-  if (!payload?.sourceId) {
+  const normalized = normalizePayload(payload);
+  if (!normalized) {
     return false;
   }
+  payload = normalized;
   const entry = sources.get(payload.sourceId);
   if (!entry || entry.window.isDestroyed()) {
     return createBrowserSource(payload);

@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.1**.
+Current release: **v0.6.3**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -14,7 +14,21 @@ Current release: **v0.6.1**.
 
 The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper may therefore ask users to confirm that they trust the download.
 
-Starting with v0.4.0, the installed app checks GitHub Releases automatically. When a newer version is available, it shows the exact version number and lets the operator download it, then restart and install. `Menu > Check for Updates` runs a manual check, and the alert includes a GitHub download fallback.
+Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.3 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
+
+### What's new in v0.6.3
+
+- Adds lyric-editor controls to insert a new slide directly after the current slide or turn every non-empty edited line into its own ordered slide.
+- Adds Program Focus mode: Program fills the combined Preview/Program workspace while operating docks remain visible, and one scene click sends that scene directly live.
+- Keeps the existing Full Program Only mode for an uncluttered live view with all docks hidden.
+- Adds a manual live blend fader that can hold any Preview/Program mixture, reset to Program, or complete Preview into Program; timed transitions now support up to 15 seconds.
+- Routes a persistent microphone or persistent source audio across every scene, while retaining per-scene audio choices.
+- Replaces static audio indicators with live mono/stereo meters, master metering, warning range, and clipping alerts.
+- Adds lower-third transparency, background images, separate Bible branding, editable lyric slides, and transparent dedicated output.
+- Adds online/downloaded/offline Scripture libraries plus lower-third, full-screen, half-screen, 3/4-screen, and custom scene layouts.
+- Adds Studio, dock-preserving Program Focus, and Full Program Only views, plus lower frame-rate choices, source crop controls, and hidden-cursor capture.
+- Writes recordings to disk incrementally instead of retaining an entire long service in memory.
+- Hardens settings recovery, source cleanup, crossfades, updater scheduling, streaming backpressure, browser-source validation, provider authorization, and release-tag consistency.
 
 ## Current Capabilities
 
@@ -33,9 +47,10 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 - Merges panels dropped on another dock into persistent tabs and previews the target before docking.
 - Reveals dock, scene, and source actions only from right-click context menus to preserve workspace space.
 - Saves each operator's dock arrangement and sizes locally, with hide, restore, and Reset Workspace Layout controls.
-- Provides a live Lower Third Studio for manually typed messages and pasted lyrics split into slides at blank lines.
+- Provides a live Lower Third Studio for manually typed messages and pasted lyrics, with blank-line bulk splitting plus add-after and per-line slide creation inside the editor.
 - Supports lower-third fonts, colors, alignment, emphasis, line limits, logos, arrow-key cueing, and entrance/exit animations.
 - Records the Program canvas with configurable quality, frame rate, and System/Mic/Both/None audio modes.
+- Writes recording chunks directly to a temporary disk session to keep memory stable during long services.
 - Saves MP4 through bundled FFmpeg, with WebM fallback when conversion fails.
 - Provides global record and cut hotkeys.
 - Checks GitHub Releases automatically and provides one-click download plus restart-to-install update controls.
@@ -56,12 +71,14 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Wh
 - Reports destination-level connecting, live, reconnecting, and error states.
 - Supports stream presets, encoder selection, audio bitrate controls, logs, and reconnect attempts.
 - Mixes source-level volume controls into a master Program audio gain.
+- Routes microphones and audio sources per scene or persistently across all scenes, with dynamic mono/stereo meters and clipping warnings.
 - Falls back to video-only capture when an otherwise valid desktop source does not expose an audio track.
 
 ### Church Content and Integrations
 - Configures a local worship-song folder or Planning Center/custom song provider.
 - Configures API.Bible, Bible API, or a custom Scripture provider.
 - Fetches complete selected passages with their Book/Chapter/Verse reference and cues them to the lower third.
+- Imports or securely downloads compatible licensed Scripture JSON libraries for offline lookup and display at lower-third, full, half, 3/4, or custom scene sizes.
 - Keeps provider credentials outside normal settings by referencing environment-variable names.
 - Configures OpenAI, Azure OpenAI, or a custom AI-compatible provider for future captions, summaries, and highlight suggestions.
 - Defaults new OpenAI-compatible setups to `gpt-5.6-sol`; the provider can be changed without rebuilding the app.
@@ -143,10 +160,10 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
-- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.1; the current controls only prepare provider settings for a future implementation.
+- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.3; the current controls only prepare provider settings for a future implementation.
 - The post-production editor currently provides trim/export rather than a multitrack timeline.
 - Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
-- Recording chunks are retained in memory before saving, so very long recordings should be split until direct-to-disk recording is added.
+- Final MP4 conversion runs after recording stops; allow time and free disk space for FFmpeg to finish long services.
 
 ## Project Structure
 

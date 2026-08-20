@@ -1,6 +1,8 @@
 import {
   DisplaySource,
   SaveRecordingPayload,
+  RecordingChunkPayload,
+  RecordingSessionPayload,
   SaveRecordingResult,
   MediaFileResult,
   MultiviewAction,
@@ -23,6 +25,10 @@ import {
   RemoteOperatorAction,
   ScriptureFetchPayload,
   ScriptureFetchResult,
+  ScriptureLibraryDownloadPayload,
+  ScriptureLibraryLookupPayload,
+  ScriptureLibraryRemovePayload,
+  ScriptureLibrarySummary,
   StreamingAuthorizationPayload,
   StreamingAuthorizationResult
 } from "../shared/types";
@@ -35,6 +41,10 @@ declare global {
       updateSettings: (update: SettingsUpdate) => Promise<Settings>;
       selectSaveDirectory: () => Promise<string | null>;
       saveRecording: (payload: SaveRecordingPayload) => Promise<SaveRecordingResult>;
+      beginRecording: () => Promise<{ sessionId: string }>;
+      appendRecordingChunk: (payload: RecordingChunkPayload) => Promise<boolean>;
+      finishRecording: (payload: RecordingSessionPayload) => Promise<SaveRecordingResult>;
+      cancelRecording: (payload: RecordingSessionPayload) => Promise<boolean>;
       openFolder: (filePath: string) => Promise<boolean>;
       openProjection: (displayIds: string[]) => Promise<boolean>;
       closeProjection: () => Promise<boolean>;
@@ -49,10 +59,10 @@ declare global {
       openReleasePage: () => Promise<boolean>;
       startStream: (payload: StreamStartPayload) => Promise<StreamStartResult>;
       stopStream: () => Promise<StreamStopResult>;
-      sendStreamChunk: (payload: Uint8Array) => void;
+      sendStreamChunk: (payload: Uint8Array) => Promise<boolean>;
       getStreamLogPath: () => Promise<string | null>;
       getStreamLogContent: (payload: { maxLines?: number }) => Promise<string>;
-      getStreamingCapabilities: () => Promise<{ encoders: StreamingEncoder[] }>;
+      getStreamingCapabilities: () => Promise<{ encoders: StreamingEncoder[]; secureStorageAvailable: boolean }>;
       getStoredStreamKey: (payload?: { destinationId?: string }) => Promise<string | null>;
       setStoredStreamKey: (payload: { destinationId?: string; streamKey: string }) => Promise<boolean>;
       clearStoredStreamKey: (payload?: { destinationId?: string }) => Promise<boolean>;
@@ -65,6 +75,12 @@ declare global {
       updateBrowserSource: (payload: BrowserSourcePayload) => Promise<boolean>;
       destroyBrowserSource: (payload: { sourceId: string }) => Promise<boolean>;
       fetchScripture: (payload: ScriptureFetchPayload) => Promise<ScriptureFetchResult>;
+      listScriptureLibraries: () => Promise<ScriptureLibrarySummary[]>;
+      lookupScriptureLibrary: (payload: ScriptureLibraryLookupPayload) => Promise<ScriptureFetchResult>;
+      importScriptureLibrary: () => Promise<ScriptureLibrarySummary | null>;
+      downloadScriptureLibrary: (payload: ScriptureLibraryDownloadPayload) => Promise<ScriptureLibrarySummary>;
+      saveScripturePassage: (payload: ScriptureFetchResult) => Promise<ScriptureLibrarySummary>;
+      removeScriptureLibrary: (payload: ScriptureLibraryRemovePayload) => Promise<boolean>;
       authorizeStreaming: (payload: StreamingAuthorizationPayload) => Promise<StreamingAuthorizationResult>;
       downloadUserGuide: () => Promise<string | null>;
       onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => () => void;

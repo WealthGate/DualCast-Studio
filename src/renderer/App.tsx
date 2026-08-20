@@ -18,12 +18,19 @@ import ScripturePanel from "./components/ScripturePanel";
 import { useAppStore } from "./store/useAppStore";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
 import { useProgramStreamer } from "./hooks/useProgramStreamer";
-import { UpdateStatusPayload } from "../shared/types";
+import { UpdateStatusPayload, WorkspaceViewMode } from "../shared/types";
 
 const App: React.FC = () => {
   const programCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [viewMode, setViewMode] = useState<WorkspaceViewMode>(() => {
+    const saved = localStorage.getItem("openchurch:view-mode");
+    if (saved === "program" || saved === "program-only") return "program-only";
+    if (saved === "program-focus") return "program-focus";
+    return "studio";
+  });
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null);
   const [showUpdateStatus, setShowUpdateStatus] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
 
   const {
     setSettings,
@@ -35,6 +42,7 @@ const App: React.FC = () => {
     cutToBlack,
     clearCutToBlack,
     toggleFreeze,
+    setManualBlend,
     isRecording,
     programSceneId,
     isCutToBlack,
@@ -58,22 +66,39 @@ const App: React.FC = () => {
   }, [settings.theme]);
 
   useEffect(() => {
+    localStorage.setItem("openchurch:view-mode", viewMode);
+    if (viewMode !== "studio") setManualBlend(0);
+  }, [setManualBlend, viewMode]);
+
+  useEffect(() => {
     const init = async () => {
-      const settings = await window.dualcast.getSettings();
-      setSettings(settings);
-      setStudioState(settings.studioState);
-      await refreshDisplays();
-      if (settings.networkOutput.enabled) {
+      try {
+        const settings = await window.dualcast.getSettings();
+        setSettings(settings);
+        setStudioState(settings.studioState);
         try {
+          await refreshDisplays();
+        } catch {
+          setStartupError("Display and window sources could not be listed. Check screen-recording permission, then restart the studio.");
+        }
+        if (settings.networkOutput.enabled) {
           await window.dualcast.startNetworkOutput({
             port: settings.networkOutput.port,
             operatorPin: settings.networkOutput.operatorPin
           });
+        }
+      } catch (error) {
+        setStartupError(error instanceof Error ? error.message : "The studio settings could not be loaded.");
+        try {
+          const settings = await window.dualcast.getSettings();
+          if (settings.networkOutput.enabled) {
+            const updated = await window.dualcast.updateSettings({
+              networkOutput: { ...settings.networkOutput, enabled: false }
+            });
+            setSettings(updated);
+          }
         } catch {
-          const updated = await window.dualcast.updateSettings({
-            networkOutput: { ...settings.networkOutput, enabled: false }
-          });
-          setSettings(updated);
+          // The visible startup error provides the recovery path.
         }
       }
     };
@@ -197,10 +222,10 @@ const App: React.FC = () => {
   };
 
   const dockPanels: DockPanelDefinition[] = [
-    { id: "scenes", title: "Scenes", content: <ScenesPanel /> },
+    { id: "scenes", title: "Scenes", content: <ScenesPanel directToProgram={viewMode === "program-focus"} /> },
     { id: "sources", title: "Sources", content: <SceneSourcesPanel /> },
     { id: "audio", title: "Audio Mixer", content: <AudioMixerPanel /> },
-    { id: "transitions", title: "Scene Transitions", content: <TransitionsPanel /> },
+    { id: "transitions", title: "Scene Transitions", content: <TransitionsPanel canBlend={viewMode === "studio"} /> },
     {
       id: "controls",
       title: "Controls",
@@ -226,14 +251,19 @@ const App: React.FC = () => {
   ];
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${viewMode}-mode`}>
       <Header
         onStartRecording={recorder.startRecording}
         onStopRecording={recorder.stopRecording}
         onOpenFolder={recorder.openRecordingFolder}
         onOpenMultiview={() => window.dualcast.openMultiview()}
         onCheckForUpdates={handleCheckForUpdates}
+        onDownloadUpdate={handleDownloadUpdate}
+        onInstallUpdate={handleInstallUpdate}
         onDownloadUserGuide={() => window.dualcast.downloadUserGuide().catch(() => undefined)}
+        updateStatus={updateStatus}
+        viewMode={viewMode}
+        onChangeViewMode={setViewMode}
       />
       {showUpdateStatus && updateStatus && updateStatus.state !== "idle" ? (
         <UpdateBanner
@@ -245,9 +275,15 @@ const App: React.FC = () => {
           onDismiss={() => setShowUpdateStatus(false)}
         />
       ) : null}
+      {startupError ? (
+        <section className="update-banner state-error" role="alert">
+          <div className="update-copy"><strong>Studio startup warning</strong><span>{startupError}</span></div>
+          <div className="update-actions"><button className="btn btn-outline" onClick={() => setStartupError(null)}>Dismiss</button></div>
+        </section>
+      ) : null}
       <DockWorkspace
         panels={dockPanels}
-        center={<PreviewProgram programCanvasRef={programCanvasRef} />}
+        center={<PreviewProgram programCanvasRef={programCanvasRef} viewMode={viewMode} />}
       />
     </div>
   );

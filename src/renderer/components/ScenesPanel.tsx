@@ -2,13 +2,17 @@ import React, { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import ContextMenu from "./ContextMenu";
 
+type ScenesPanelProps = {
+  directToProgram?: boolean;
+};
+
 type SceneMenu = {
   x: number;
   y: number;
   sceneId?: string;
 };
 
-const ScenesPanel: React.FC = () => {
+const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) => {
   const {
     scenes,
     previewSceneId,
@@ -18,6 +22,7 @@ const ScenesPanel: React.FC = () => {
     removeScene,
     toggleSceneLocked,
     selectPreviewScene,
+    setProgramScene,
     persistStudioState
   } = useAppStore();
   const [menu, setMenu] = useState<SceneMenu | null>(null);
@@ -28,9 +33,15 @@ const ScenesPanel: React.FC = () => {
   const persist = () => persistStudioState().catch(() => undefined);
 
   const handleSelect = (sceneId: string) => {
-    selectPreviewScene(sceneId);
+    if (directToProgram) {
+      setProgramScene(sceneId);
+    } else {
+      selectPreviewScene(sceneId);
+    }
     persist();
   };
+
+  const selectedSceneId = directToProgram ? programSceneId : previewSceneId;
 
   const handleAdd = () => {
     addScene();
@@ -77,24 +88,25 @@ const ScenesPanel: React.FC = () => {
         {scenes.map((scene) => (
           <button
             key={scene.id}
-            className={`scene-list-item ${scene.id === previewSceneId ? "active" : ""}`}
+            className={`scene-list-item ${scene.id === selectedSceneId ? "active" : ""} ${directToProgram && scene.id === programSceneId ? "program-live" : ""}`}
             role="option"
-            aria-selected={scene.id === previewSceneId}
+            aria-selected={scene.id === selectedSceneId}
             onClick={() => handleSelect(scene.id)}
             onContextMenu={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              handleSelect(scene.id);
+              if (!directToProgram) selectPreviewScene(scene.id);
               setRenameValue(scene.name);
               setMenu({ x: event.clientX, y: event.clientY, sceneId: scene.id });
             }}
           >
             <span>{scene.name}</span>
+            {directToProgram && scene.id === programSceneId ? <span className="scene-live-label">LIVE</span> : null}
             {scene.locked ? <span className="scene-lock" aria-label="Locked">◆</span> : null}
           </button>
         ))}
       </div>
-      <div className="panel-context-hint">Right-click a scene or empty space for options.</div>
+      <div className="panel-context-hint">{directToProgram ? "Program Focus: one click sends a scene directly live. Right-click for options." : "Right-click a scene or empty space for options."}</div>
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} ariaLabel="Scene options">
           <div className="context-menu-title">{selectedScene?.name ?? "Scenes"}</div>

@@ -58,17 +58,11 @@ const decryptLocal = (payload: { iv: string; tag: string; data: string }) => {
 export const isEncryptionAvailable = () => safeStorage.isEncryptionAvailable();
 
 export const setStreamKey = (streamKey: string, destinationId = "primary") => {
-  if (!streamKey) {
+  if (!streamKey || !safeStorage.isEncryptionAvailable()) {
     return false;
   }
-  let record: StreamKeyRecord;
-
-  if (safeStorage.isEncryptionAvailable()) {
-    const encrypted = safeStorage.encryptString(streamKey).toString("base64");
-    record = { mode: "safe", payload: encrypted };
-  } else {
-    record = { mode: "local", payload: encryptLocal(streamKey) };
-  }
+  const encrypted = safeStorage.encryptString(streamKey).toString("base64");
+  const record: StreamKeyRecord = { mode: "safe", payload: encrypted };
 
   const storeInstance = getStore();
   const streamKeys = storeInstance.get("streamKeys") ?? {};
@@ -107,6 +101,7 @@ export const clearStreamKey = (destinationId?: string) => {
   if (!destinationId) {
     storeInstance.delete("streamKey");
     storeInstance.delete("streamKeys");
+    storeInstance.delete("localKey");
     return true;
   }
   const streamKeys = storeInstance.get("streamKeys") ?? {};

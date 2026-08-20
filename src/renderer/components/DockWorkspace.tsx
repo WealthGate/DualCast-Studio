@@ -155,7 +155,20 @@ const loadSizes = () => {
     const stored = window.localStorage.getItem(SIZE_STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<DockSizes>;
-      return { ...defaultSizes, ...parsed, groups: parsed.groups ?? {} };
+      const safeSize = (value: unknown, fallback: number) => {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.max(100, Math.min(2_000, number)) : fallback;
+      };
+      const groups = Object.fromEntries(
+        Object.entries(parsed.groups ?? {}).map(([id, value]) => [id, safeSize(value, 200)])
+      );
+      return {
+        left: safeSize(parsed.left, defaultSizes.left),
+        right: safeSize(parsed.right, defaultSizes.right),
+        top: safeSize(parsed.top, defaultSizes.top),
+        bottom: safeSize(parsed.bottom, defaultSizes.bottom),
+        groups
+      };
     }
   } catch {
     return defaultSizes;

@@ -16,14 +16,16 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   const [programState, setProgramState] = useState<ProgramState>(defaultState);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const latestFrameRef = useRef<HTMLImageElement | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const drawFrameRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     document.body.classList.add("projection-mode");
+    document.body.classList.toggle("projection-lower-third-mode", mode === "lower-third");
     return () => {
       document.body.classList.remove("projection-mode");
+      document.body.classList.remove("projection-lower-third-mode");
     };
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onProgramState((state) => setProgramState(state));
@@ -38,6 +40,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
       const img = new Image();
       img.onload = () => {
         latestFrameRef.current = img;
+        drawFrameRef.current();
       };
       img.src = dataUrl;
     });
@@ -56,6 +59,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      drawFrameRef.current();
     };
 
     resize();
@@ -69,27 +73,27 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
     }
 
     const render = () => {
-      if (programState.isCutToBlack || !programState.programSceneId) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (mode === "lower-third") {
+        if (!programState.isCutToBlack && latestFrameRef.current) {
+          ctx.drawImage(latestFrameRef.current, 0, 0, canvas.width, canvas.height);
+        }
+      } else if (programState.isCutToBlack || !programState.programSceneId) {
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       } else if (latestFrameRef.current) {
         ctx.drawImage(latestFrameRef.current, 0, 0, canvas.width, canvas.height);
       }
-
-      if (!programState.isFrozen) {
-        rafRef.current = requestAnimationFrame(render);
-      }
     };
 
+    drawFrameRef.current = render;
     render();
 
     return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
+      drawFrameRef.current = () => undefined;
       window.removeEventListener("resize", resize);
     };
-  }, [programState.isCutToBlack, programState.isFrozen, programState.programSceneId]);
+  }, [mode, programState.isCutToBlack, programState.programSceneId]);
 
   return (
     <div className="projection-root">

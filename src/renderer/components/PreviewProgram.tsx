@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
-import { LowerThirdAnimation, LowerThirdSlide, Scene, Source, SourceRect } from "../../shared/types";
+import { LowerThirdAnimation, LowerThirdSlide, Scene, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
+import { AudioMeterSnapshot, publishAudioMeters } from "../audioMeterBus";
 
 type PreviewProgramProps = {
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
+  viewMode?: WorkspaceViewMode;
 };
 
 type SourceMedia = {
@@ -25,14 +27,16 @@ const getSignature = (source: Source) =>
   JSON.stringify({
     type: source.type,
     data: source.data,
-    audioEnabled: source.audioEnabled
+    audioEnabled: source.audioEnabled,
+    captureCursor: source.captureCursor ?? "never"
   });
 
 export const collectActiveSourceIds = (
   isMultiviewOpen: boolean,
   scenes: Scene[],
   programScene: Scene | null,
-  previewScene: Scene | null
+  previewScene: Scene | null,
+  sources?: Record<string, Source>
 ) => {
   const ids = new Set<string>();
   if (isMultiviewOpen) {
@@ -40,7 +44,40 @@ export const collectActiveSourceIds = (
   }
   programScene?.sourceIds.forEach((id) => ids.add(id));
   previewScene?.sourceIds.forEach((id) => ids.add(id));
+  Object.values(sources ?? {}).forEach((source) => {
+    if (source.audioScope === "persistent" && source.audioEnabled && source.enabled) {
+      ids.add(source.id);
+    }
+  });
+  if (sources) {
+    Array.from(ids).forEach((id) => {
+      if (sources[id] && !sources[id].enabled) {
+        ids.delete(id);
+      }
+    });
+  }
   return ids;
+};
+
+const supportsProgramAudio = (source: Source) =>
+  source.type === "display" ||
+  source.type === "window" ||
+  source.type === "video" ||
+  source.type === "audio";
+
+const sourceMeterId = (sourceId: string) => sourceId.replace(/^program:/, "");
+
+const levelFromAnalyser = (analyser: AnalyserNode, buffer: Uint8Array<ArrayBuffer>) => {
+  analyser.getByteTimeDomainData(buffer);
+  let peak = 0;
+  for (let index = 0; index < buffer.length; index += 1) {
+    peak = Math.max(peak, Math.abs((buffer[index] - 128) / 128));
+  }
+  const db = peak > 0 ? 20 * Math.log10(peak) : -60;
+  return {
+    normalized: clamp((db + 60) / 60, 0, 1),
+    clipping: peak >= 0.985
+  };
 };
 
 const cleanupSourceMedia = (sourceId: string, entry: SourceMedia) => {
@@ -53,7 +90,7 @@ const cleanupSourceMedia = (sourceId: string, entry: SourceMedia) => {
   }
 };
 
-const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => {
+const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewMode = "studio" }) => {
   const {
     scenes,
     sources,
@@ -75,17 +112,23 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     setIsProjecting,
     setIsLowerThirdProjecting,
     transitionType,
-    transitionDurationMs
+    transitionDurationMs,
+    manualBlend,
+    programTransitionMode
   } = useAppStore();
+  const showPreview = viewMode === "studio";
 
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
+  const programContainerRef = useRef<HTMLDivElement>(null);
   const sourceMediaRef = useRef<Map<string, SourceMedia>>(new Map());
   const browserFramesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const browserSizeRef = useRef<Map<string, { width: number; height: number; url: string }>>(new Map());
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 });
   const [isMultiviewOpen, setIsMultiviewOpen] = useState(false);
   const [mediaRevision, setMediaRevision] = useState(0);
+  const [microphoneRevision, setMicrophoneRevision] = useState(0);
+  const [transitionSources, setTransitionSources] = useState<Record<string, Source>>({});
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
   const transitionRef = useRef<{
     type: "fade" | "crossfade";
@@ -98,15 +141,34 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   } | null>(null);
   const previousProgramRef = useRef<{ scene: Scene | null; sources: Record<string, Source> } | null>(null);
   const lowerThirdImageRef = useRef<HTMLImageElement | null>(null);
+  const bibleImageRef = useRef<HTMLImageElement | null>(null);
+  const lowerThirdBackgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
   const lowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
 
   const programScene = programSceneSnapshot;
   const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
-  const allSources = useMemo(() => ({ ...sources, ...programSources }), [programSources, sources]);
+  const allSources = useMemo(
+    () => ({ ...sources, ...transitionSources, ...programSources }),
+    [programSources, sources, transitionSources]
+  );
   const previewSceneLocked = Boolean(previewScene?.locked);
   const activeSourceIds = useMemo(
-    () => collectActiveSourceIds(isMultiviewOpen, scenes, programScene, previewScene),
-    [isMultiviewOpen, programScene, previewScene, scenes]
+    () => {
+      const ids = collectActiveSourceIds(isMultiviewOpen, scenes, programScene, showPreview || manualBlend > 0 ? previewScene : null, allSources);
+      Object.values(transitionSources).forEach((source) => {
+        if (source.enabled) {
+          ids.add(source.id);
+        }
+      });
+      Object.values(programSources).forEach((source) => {
+        if (source.type === "audio" && source.audioScope === "persistent") {
+          ids.delete(source.id);
+        }
+      });
+      return ids;
+    },
+    [allSources, isMultiviewOpen, manualBlend, programScene, previewScene, programSources, scenes, showPreview, transitionSources]
   );
 
   const profile = getQualityProfile(settings.qualityPreset);
@@ -115,7 +177,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
 
   useEffect(() => {
     const previous = previousProgramRef.current;
-    if (previous?.scene && programScene && transitionType !== "cut") {
+    let cleanupTimer: number | null = null;
+    if (previous?.scene && programScene && transitionType !== "cut" && programTransitionMode === "configured") {
       transitionRef.current = {
         type: transitionType === "fade" ? "fade" : "crossfade",
         startAt: performance.now(),
@@ -125,9 +188,28 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         toScene: programScene,
         toSources: programSources
       };
+      setTransitionSources(previous.sources);
+      cleanupTimer = window.setTimeout(
+        () => setTransitionSources({}),
+        Math.max(100, transitionDurationMs) + 100
+      );
+    } else {
+      transitionRef.current = null;
+      setTransitionSources({});
     }
     previousProgramRef.current = { scene: programScene, sources: programSources };
-  }, [programRevision, programScene, programSources, transitionType, transitionDurationMs]);
+    return () => {
+      if (cleanupTimer !== null) {
+        window.clearTimeout(cleanupTimer);
+      }
+    };
+  }, [programRevision]);
+
+  useEffect(() => {
+    if (manualBlend > 0) {
+      transitionRef.current = null;
+    }
+  }, [manualBlend]);
 
   useEffect(() => {
     const next = settings.lowerThird.slides.find((slide) => slide.id === settings.lowerThird.activeSlideId) ?? null;
@@ -150,11 +232,74 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   }, [settings.lowerThird.imageUrl]);
 
   useEffect(() => {
-    const element = previewContainerRef.current;
-    if (!element) {
+    if (!settings.lowerThird.bibleImageUrl) {
+      bibleImageRef.current = null;
+      return;
+    }
+    const image = new Image();
+    image.onload = () => { bibleImageRef.current = image; };
+    image.src = settings.lowerThird.bibleImageUrl;
+  }, [settings.lowerThird.bibleImageUrl]);
+
+  useEffect(() => {
+    if (!settings.lowerThird.backgroundImageUrl) {
+      lowerThirdBackgroundImageRef.current = null;
+      return;
+    }
+    const image = new Image();
+    image.onload = () => { lowerThirdBackgroundImageRef.current = image; };
+    image.src = settings.lowerThird.backgroundImageUrl;
+  }, [settings.lowerThird.backgroundImageUrl]);
+
+  useEffect(() => {
+    const includeMicrophone = settings.audioMode === "microphone" || settings.audioMode === "both";
+    if (!includeMicrophone) {
+      stopMediaStream(microphoneStreamRef.current);
+      microphoneStreamRef.current = null;
+      setMicrophoneRevision((revision) => revision + 1);
+      return;
+    }
+
+    let cancelled = false;
+    const openMicrophone = async () => {
+      try {
+        const audio = settings.microphoneDeviceId
+          ? { deviceId: { exact: settings.microphoneDeviceId } }
+          : true;
+        const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+        if (cancelled) {
+          stopMediaStream(stream);
+          return;
+        }
+        stopMediaStream(microphoneStreamRef.current);
+        microphoneStreamRef.current = stream;
+        setMicrophoneRevision((revision) => revision + 1);
+      } catch {
+        if (!cancelled) {
+          microphoneStreamRef.current = null;
+          setMicrophoneRevision((revision) => revision + 1);
+        }
+      }
+    };
+    void openMicrophone();
+
+    return () => {
+      cancelled = true;
+      stopMediaStream(microphoneStreamRef.current);
+      microphoneStreamRef.current = null;
+    };
+  }, [settings.audioMode, settings.microphoneDeviceId]);
+
+  useEffect(() => {
+    const elements = [previewContainerRef.current, programContainerRef.current].filter((element): element is HTMLDivElement => Boolean(element));
+    if (elements.length === 0) {
       return;
     }
     const resizeObserver = new ResizeObserver(() => {
+      const element = elements
+        .filter((candidate) => candidate.clientWidth > 0 && candidate.clientHeight > 0)
+        .sort((a, b) => (b.clientWidth * b.clientHeight) - (a.clientWidth * a.clientHeight))[0];
+      if (!element) return;
       const style = window.getComputedStyle(element);
       const horizontalPadding = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
       const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
@@ -163,7 +308,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         height: Math.max(1, element.clientHeight - verticalPadding)
       });
     });
-    resizeObserver.observe(element);
+    elements.forEach((element) => resizeObserver.observe(element));
     return () => {
       resizeObserver.disconnect();
     };
@@ -211,12 +356,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         try {
           let stream: MediaStream;
           try {
-            stream = await getDisplayStream(source.data.captureId, source.audioEnabled);
+            stream = await getDisplayStream(source.data.captureId, source.audioEnabled, source.captureCursor ?? "never");
           } catch (error) {
             if (!source.audioEnabled) {
               throw error;
             }
-            stream = await getDisplayStream(source.data.captureId, false);
+            stream = await getDisplayStream(source.data.captureId, false, source.captureCursor ?? "never");
           }
           entry.stream = stream;
           video.srcObject = stream;
@@ -255,6 +400,14 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
           if (video.paused) {
             video.play().catch(() => undefined);
           }
+          try {
+            entry.captureStream = (
+              video as HTMLVideoElement & { captureStream?: () => MediaStream }
+            ).captureStream?.();
+            setMediaRevision((revision) => revision + 1);
+          } catch {
+            // captureStream is optional.
+          }
         });
         video.play().catch(() => undefined);
         entry.videoEl = video;
@@ -272,6 +425,16 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         audio.muted = true;
         audio.autoplay = true;
         audio.crossOrigin = "anonymous";
+        audio.addEventListener("loadedmetadata", () => {
+          try {
+            entry.captureStream = (
+              audio as HTMLAudioElement & { captureStream?: () => MediaStream }
+            ).captureStream?.();
+            setMediaRevision((revision) => revision + 1);
+          } catch {
+            // captureStream is optional.
+          }
+        });
         audio.play().catch(() => undefined);
         entry.audioEl = audio;
         try {
@@ -370,60 +533,159 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   }, [activeSourceIds, allSources]);
 
   useEffect(() => {
-    const scene = programScene;
-    if (!scene || scene.sourceIds.length === 0) {
+    const includeSceneAudio = settings.audioMode === "system" || settings.audioMode === "both";
+    const includeMicrophone = settings.audioMode === "microphone" || settings.audioMode === "both";
+    const sceneAudioSources = includeSceneAudio
+      ? (programScene?.sourceIds ?? [])
+          .map((id) => programSources[id])
+          .filter((source): source is Source => Boolean(
+            source &&
+            source.audioScope !== "persistent" &&
+            source.enabled &&
+            source.audioEnabled &&
+            supportsProgramAudio(source)
+          ))
+      : [];
+    const persistentAudioSources = includeSceneAudio
+      ? Object.values(sources).filter((source) =>
+          source.audioScope === "persistent" &&
+          source.enabled &&
+          source.audioEnabled &&
+          supportsProgramAudio(source)
+        )
+      : [];
+
+    if (sceneAudioSources.length === 0 && persistentAudioSources.length === 0 && (!includeMicrophone || !microphoneStreamRef.current)) {
+      publishAudioMeters({});
       setProgramAudioStream(null);
       return;
     }
 
-    const hasAudioSources = scene.sourceIds.some((id) => {
-      const source = programSources[id];
-      if (!source || !source.enabled || !source.audioEnabled) {
-        return false;
-      }
-      return source.type === "display" || source.type === "window" || source.type === "video" || source.type === "audio";
-    });
-
-    if (!hasAudioSources) {
-      setProgramAudioStream(null);
-      return;
-    }
-
-    const audioContext = new AudioContext();
+    const audioContext = new AudioContext({ latencyHint: "interactive" });
     const destination = audioContext.createMediaStreamDestination();
     const masterGain = audioContext.createGain();
-    masterGain.gain.value = Math.max(0, Math.min(2, settings.masterAudioGain ?? 1));
+    masterGain.gain.value = clamp(settings.masterAudioGain ?? 1, 0, 2);
     masterGain.connect(destination);
+    let connectedSources = 0;
 
-    scene.sourceIds.forEach((id) => {
-      const source = programSources[id];
-      if (!source || !source.enabled || !source.audioEnabled) {
-        return;
-      }
-      const media = sourceMediaRef.current.get(id);
-      const sourceGain = audioContext.createGain();
-      sourceGain.gain.value = Math.max(0, Math.min(2, source.volume ?? 1));
-      sourceGain.connect(masterGain);
-      if (source.type === "display" || source.type === "window") {
-        if (media?.stream && media.stream.getAudioTracks().length > 0) {
-          const streamSource = audioContext.createMediaStreamSource(media.stream);
-          streamSource.connect(sourceGain);
-        }
-      } else if (source.type === "video" || source.type === "audio") {
-        if (media?.captureStream && media.captureStream.getAudioTracks().length > 0) {
-          const streamSource = audioContext.createMediaStreamSource(media.captureStream);
-          streamSource.connect(sourceGain);
-        }
-      }
+    type MeterTap = {
+      id: string;
+      channels: 1 | 2;
+      analysers: AnalyserNode[];
+      buffers: Uint8Array<ArrayBuffer>[];
+    };
+    const meterTaps: MeterTap[] = [];
+    const masterSplitter = audioContext.createChannelSplitter(2);
+    const masterAnalysers = [audioContext.createAnalyser(), audioContext.createAnalyser()];
+    masterAnalysers.forEach((analyser, channel) => {
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.55;
+      masterSplitter.connect(analyser, channel);
+    });
+    masterGain.connect(masterSplitter);
+    meterTaps.push({
+      id: "master",
+      channels: 2,
+      analysers: masterAnalysers,
+      buffers: masterAnalysers.map((analyser) => new Uint8Array(analyser.fftSize))
     });
 
+    const connectStream = (stream: MediaStream | null | undefined, id: string, gainValue: number) => {
+      if (!stream || stream.getAudioTracks().length === 0) {
+        return;
+      }
+      try {
+        const streamSource = audioContext.createMediaStreamSource(stream);
+        const sourceGain = audioContext.createGain();
+        sourceGain.gain.value = clamp(gainValue, 0, 2);
+        streamSource.connect(sourceGain);
+        sourceGain.connect(masterGain);
+
+        const reportedChannels = stream.getAudioTracks()[0]?.getSettings().channelCount;
+        const channels: 1 | 2 = reportedChannels === 1 || streamSource.channelCount === 1 ? 1 : 2;
+        const analysers = Array.from({ length: channels }, () => {
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.55;
+          return analyser;
+        });
+        if (channels === 1) {
+          sourceGain.connect(analysers[0]);
+        } else {
+          const splitter = audioContext.createChannelSplitter(2);
+          sourceGain.connect(splitter);
+          splitter.connect(analysers[0], 0);
+          splitter.connect(analysers[1], 1);
+        }
+        meterTaps.push({
+          id,
+          channels,
+          analysers,
+          buffers: analysers.map((analyser) => new Uint8Array(analyser.fftSize))
+        });
+        connectedSources += 1;
+      } catch {
+        // A stopped or restricted track must not break the remaining Program mix.
+      }
+    };
+
+    [...sceneAudioSources, ...persistentAudioSources].forEach((source) => {
+      const media = sourceMediaRef.current.get(source.id);
+      const stream = source.type === "display" || source.type === "window"
+        ? media?.stream
+        : media?.captureStream;
+      connectStream(stream, sourceMeterId(source.id), source.volume ?? 1);
+    });
+
+    if (includeMicrophone) {
+      connectStream(microphoneStreamRef.current, "microphone", settings.microphoneGain ?? 1);
+    }
+
+    if (connectedSources === 0) {
+      publishAudioMeters({});
+      setProgramAudioStream(null);
+      void audioContext.close();
+      return;
+    }
+
+    void audioContext.resume();
     setProgramAudioStream(destination.stream);
 
+    const publishLevels = () => {
+      const next: AudioMeterSnapshot = {};
+      meterTaps.forEach((tap) => {
+        const readings = tap.analysers.map((analyser, index) => levelFromAnalyser(analyser, tap.buffers[index]));
+        const left = readings[0]?.normalized ?? 0;
+        const right = tap.channels === 2 ? readings[1]?.normalized ?? 0 : left;
+        next[tap.id] = {
+          left,
+          right,
+          channels: tap.channels,
+          clipping: readings.some((reading) => reading.clipping)
+        };
+      });
+      publishAudioMeters(next);
+    };
+    publishLevels();
+    const meterTimer = window.setInterval(publishLevels, 80);
+
     return () => {
+      window.clearInterval(meterTimer);
+      publishAudioMeters({});
       setProgramAudioStream(null);
       audioContext.close().catch(() => undefined);
     };
-  }, [mediaRevision, programScene, programSources, settings.masterAudioGain, setProgramAudioStream]);
+  }, [
+    mediaRevision,
+    microphoneRevision,
+    programScene,
+    programSources,
+    settings.audioMode,
+    settings.masterAudioGain,
+    settings.microphoneGain,
+    setProgramAudioStream,
+    sources
+  ]);
 
   const drawSource = (
     ctx: CanvasRenderingContext2D,
@@ -515,7 +777,30 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     if (rotation) {
       ctx.rotate(rotation);
     }
-    ctx.drawImage(drawable, -width / 2, -height / 2, width, height);
+    const crop = source.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const intrinsicWidth = drawable instanceof HTMLVideoElement
+      ? drawable.videoWidth
+      : drawable instanceof HTMLImageElement
+        ? drawable.naturalWidth
+        : 0;
+    const intrinsicHeight = drawable instanceof HTMLVideoElement
+      ? drawable.videoHeight
+      : drawable instanceof HTMLImageElement
+        ? drawable.naturalHeight
+        : 0;
+    if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+      const left = clamp(crop.left, 0, 95);
+      const right = clamp(crop.right, 0, 95 - left);
+      const top = clamp(crop.top, 0, 95);
+      const bottom = clamp(crop.bottom, 0, 95 - top);
+      const sourceX = intrinsicWidth * (left / 100);
+      const sourceY = intrinsicHeight * (top / 100);
+      const sourceWidth = intrinsicWidth * ((100 - left - right) / 100);
+      const sourceHeight = intrinsicHeight * ((100 - top - bottom) / 100);
+      ctx.drawImage(drawable, sourceX, sourceY, sourceWidth, sourceHeight, -width / 2, -height / 2, width, height);
+    } else {
+      ctx.drawImage(drawable, -width / 2, -height / 2, width, height);
+    }
     ctx.restore();
   };
 
@@ -568,22 +853,34 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
         ctx.clip();
       }
 
+      ctx.save();
+      ctx.globalAlpha *= clamp(config.backgroundOpacity, 0, 1);
       ctx.fillStyle = config.backgroundColor;
       ctx.fillRect(0, areaY, canvasWidth, areaHeight);
-      const image = lowerThirdImageRef.current;
+      ctx.restore();
+      const backgroundImage = lowerThirdBackgroundImageRef.current;
+      if (backgroundImage) {
+        ctx.save();
+        ctx.globalAlpha *= clamp(config.backgroundImageOpacity, 0, 1);
+        ctx.drawImage(backgroundImage, 0, areaY, canvasWidth, areaHeight);
+        ctx.restore();
+      }
+      const useBibleBranding = slide.kind === "scripture" && Boolean(config.bibleImageUrl);
+      const image = useBibleBranding ? bibleImageRef.current : lowerThirdImageRef.current;
+      const imagePosition = useBibleBranding ? config.bibleImagePosition : config.imagePosition;
       let textLeft = canvasWidth * 0.055;
       let textRight = canvasWidth * 0.945;
       if (image) {
-        if (config.imagePosition === "background") {
+        if (imagePosition === "background") {
           ctx.save();
           ctx.globalAlpha *= 0.25;
           ctx.drawImage(image, 0, areaY, canvasWidth, areaHeight);
           ctx.restore();
         } else {
           const imageSize = Math.min(areaHeight * 0.72, canvasWidth * 0.16);
-          const imageX = config.imagePosition === "left" ? canvasWidth * 0.035 : canvasWidth * 0.965 - imageSize;
+          const imageX = imagePosition === "left" ? canvasWidth * 0.035 : canvasWidth * 0.965 - imageSize;
           ctx.drawImage(image, imageX, areaY + (areaHeight - imageSize) / 2, imageSize, imageSize);
-          if (config.imagePosition === "left") textLeft = imageX + imageSize + canvasWidth * 0.025;
+          if (imagePosition === "left") textLeft = imageX + imageSize + canvasWidth * 0.025;
           else textRight = imageX - canvasWidth * 0.025;
         }
       }
@@ -756,6 +1053,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
   }, [isMultiviewOpen, previewSceneId, programSceneId, scenes, sources]);
 
   useEffect(() => {
+    if (!showPreview) {
+      return;
+    }
     const canvas = previewCanvasRef.current;
     if (!canvas) {
       return;
@@ -769,24 +1069,29 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     }
 
     let rafId: number | null = null;
+    let lastRenderedAt = 0;
+    const frameInterval = 1000 / Math.min(30, settings.frameRate);
 
-    const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const render = (now: number) => {
+      if (now - lastRenderedAt >= frameInterval) {
+        lastRenderedAt = now;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      drawScene(ctx, previewScene, sources, canvas.width, canvas.height);
+        drawScene(ctx, previewScene, sources, canvas.width, canvas.height);
+      }
 
       rafId = requestAnimationFrame(render);
     };
 
-    render();
+    rafId = requestAnimationFrame(render);
     return () => {
       if (rafId) {
         cancelAnimationFrame(rafId);
       }
     };
-  }, [previewScene, sources, programSize.height, programSize.width]);
+  }, [previewScene, programSize.height, programSize.width, settings.frameRate, showPreview, sources]);
 
   useEffect(() => {
     const canvas = programCanvasRef.current;
@@ -802,14 +1107,32 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     }
 
     let rafId: number | null = null;
+    let lastRenderedAt = 0;
+    const frameInterval = 1000 / settings.frameRate;
 
-    const render = () => {
+    const render = (now: number) => {
+      if (now - lastRenderedAt < frameInterval) {
+        if (!isFrozen) {
+          rafId = requestAnimationFrame(render);
+        }
+        return;
+      }
+      lastRenderedAt = now;
       ctx.fillStyle = "#000";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       if (!isCutToBlack) {
         const transition = transitionRef.current;
-        if (
+        if (manualBlend > 0 && previewScene) {
+          ctx.save();
+          ctx.globalAlpha = 1 - manualBlend;
+          drawScene(ctx, programScene, programSources, canvas.width, canvas.height);
+          ctx.globalAlpha = manualBlend;
+          drawScene(ctx, previewScene, sources, canvas.width, canvas.height);
+          ctx.restore();
+          syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
+          syncBrowserSources(previewScene, sources, canvas.width, canvas.height);
+        } else if (
           transition &&
           transition.fromScene &&
           transition.toScene &&
@@ -859,7 +1182,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
       }
     };
 
-    render();
+    rafId = requestAnimationFrame(render);
 
     return () => {
       if (rafId) {
@@ -871,10 +1194,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     programSources,
     isCutToBlack,
     isFrozen,
+    manualBlend,
+    previewScene,
     programCanvasRef,
+    programTransitionMode,
     programSize.height,
     programSize.width,
-    settings.lowerThird
+    settings.frameRate,
+    settings.lowerThird,
+    sources
   ]);
 
   useEffect(() => {
@@ -897,12 +1225,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
     };
 
     sendFrame();
-    const interval = window.setInterval(sendFrame, 1000 / 15);
+    if (isFrozen) {
+      return;
+    }
+    const interval = window.setInterval(sendFrame, 1000 / Math.min(30, settings.frameRate));
 
     return () => {
       window.clearInterval(interval);
     };
-  }, [isProjecting, programCanvasRef, settings.networkOutput.enabled]);
+  }, [isFrozen, isProjecting, programCanvasRef, settings.frameRate, settings.networkOutput.enabled]);
 
   useEffect(() => {
     if (!isLowerThirdProjecting) {
@@ -927,13 +1258,22 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
           }
         });
       }
-      drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now());
+      if (!isCutToBlack) {
+        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now());
+      }
       window.dualcast.sendLowerThirdFrame(canvas.toDataURL("image/webp", 0.9));
     };
 
     sendLowerThirdFrame();
     const interval = window.setInterval(sendLowerThirdFrame, 1000 / 15);
-    return () => window.clearInterval(interval);
+    const stopAnimation = window.setTimeout(
+      () => window.clearInterval(interval),
+      Math.max(100, settings.lowerThird.animationDurationMs) + 100
+    );
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(stopAnimation);
+    };
   }, [
     isCutToBlack,
     isLowerThirdProjecting,
@@ -1073,7 +1413,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
 
   return (
     <section className="preview-program">
-      <div className="pane">
+      <div className="pane preview-pane">
         <div className="pane-header">
           <h2>Preview</h2>
           <span className="tag">{hasPreviewScene ? "Staged" : "No Scene"}</span>
@@ -1127,12 +1467,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef }) => 
           </div>
         </div>
       </div>
-      <div className="pane">
+      <div className="pane program-pane">
         <div className="pane-header program-header">
           <h2>Program</h2>
           <span className={isCutToBlack ? "tag alert" : "tag"}>{isCutToBlack ? "BLACK" : "LIVE"}</span>
         </div>
-        <div className="pane-body program-body">
+        <div className="pane-body program-body" ref={programContainerRef}>
           <div className="canvas-stage" style={{ width: previewCanvasSize.width, height: previewCanvasSize.height }}>
             <canvas ref={programCanvasRef} className="video-surface" />
           </div>

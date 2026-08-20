@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { Source, SourceRect, SourceType } from "../../shared/types";
+import { Source, SourceCrop, SourceRect, SourceType } from "../../shared/types";
 import ContextMenu from "./ContextMenu";
 
 type CameraDevice = {
@@ -17,6 +17,7 @@ type SourceMenu = {
 type ToolOverlay = "properties" | "groups" | "add" | null;
 
 const hasAudioToggle = (type: SourceType) => ["display", "window", "video", "audio"].includes(type);
+const isVisualSource = (source: Source) => source.type !== "audio" && source.type !== "text";
 
 const defaultRect = { x: 10, y: 10, width: 50, height: 50 };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -121,6 +122,7 @@ const SceneSourcesPanel: React.FC = () => {
         rect: defaultRect,
         enabled: true,
         audioEnabled: false,
+        captureCursor: "never",
         volume: 1,
         data: { captureId }
       };
@@ -314,6 +316,65 @@ const SceneSourcesPanel: React.FC = () => {
       return;
     }
     updateSource(selectedSource.id, { volume: clamp(value, 0, 2) });
+    await persistStudioState();
+  };
+
+  const handleAudioScopeChange = async (audioScope: "scene" | "persistent") => {
+    if (!selectedSource || !hasAudioToggle(selectedSource.type)) {
+      return;
+    }
+    updateSource(selectedSource.id, { audioScope });
+    await persistStudioState();
+  };
+
+  const handleCropChange = async (edge: keyof SourceCrop, value: number) => {
+    if (!selectedSource || selectedSource.type === "audio" || selectedSource.type === "text") {
+      return;
+    }
+    const current = selectedSource.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const opposite: Record<keyof SourceCrop, keyof SourceCrop> = {
+      top: "bottom",
+      bottom: "top",
+      left: "right",
+      right: "left"
+    };
+    const max = 95 - current[opposite[edge]];
+    updateSource(selectedSource.id, { crop: { ...current, [edge]: clamp(value, 0, max) } });
+    await persistStudioState();
+  };
+
+  const handleApplyTextLayout = async (
+    preset: "full" | "half-video-left" | "half-video-right" | "quarter-video-left" | "quarter-video-right"
+  ) => {
+    if (!selectedSource || selectedSource.type !== "text" || !activeScene) {
+      return;
+    }
+    const candidates = sceneSources.filter((source) =>
+      isVisualSource(source) && (!selectedSource.groupId || source.groupId === selectedSource.groupId)
+    );
+    const videoSource = candidates[candidates.length - 1];
+
+    if (preset === "full") {
+      updateSourceRect(selectedSource.id, { x: 0, y: 0, width: 100, height: 100 });
+    } else {
+      const videoOnLeft = preset.endsWith("left");
+      const videoWidth = preset.startsWith("half") ? 50 : 25;
+      const textWidth = 100 - videoWidth;
+      updateSourceRect(selectedSource.id, {
+        x: videoOnLeft ? videoWidth : 0,
+        y: 0,
+        width: textWidth,
+        height: 100
+      });
+      if (videoSource) {
+        updateSourceRect(videoSource.id, {
+          x: videoOnLeft ? 0 : textWidth,
+          y: 0,
+          width: videoWidth,
+          height: 100
+        });
+      }
+    }
     await persistStudioState();
   };
 
@@ -543,24 +604,68 @@ const SceneSourcesPanel: React.FC = () => {
                   </select>
                 </div>
               </div>
+              <div className="field">
+                <label>Quick Text + Video Layout</label>
+                <div className="layout-preset-grid">
+                  <button className="btn btn-outline btn-compact" onClick={() => handleApplyTextLayout("full")} disabled={activeSceneLocked || selectedSource.locked}>Full Text</button>
+                  <button className="btn btn-outline btn-compact" onClick={() => handleApplyTextLayout("half-video-left")} disabled={activeSceneLocked || selectedSource.locked}>1/2 - Video Left</button>
+                  <button className="btn btn-outline btn-compact" onClick={() => handleApplyTextLayout("half-video-right")} disabled={activeSceneLocked || selectedSource.locked}>1/2 - Video Right</button>
+                  <button className="btn btn-outline btn-compact" onClick={() => handleApplyTextLayout("quarter-video-left")} disabled={activeSceneLocked || selectedSource.locked}>Text 3/4 - Video Left</button>
+                  <button className="btn btn-outline btn-compact" onClick={() => handleApplyTextLayout("quarter-video-right")} disabled={activeSceneLocked || selectedSource.locked}>Text 3/4 - Video Right</button>
+                </div>
+                <span className="field-help">Uses a visual source in the same group when grouped; otherwise it uses the top visual source in this scene.</span>
+              </div>
+            </div>
+          ) : null}
+          {(selectedSource.type === "display" || selectedSource.type === "window") ? (
+            <div className="field">
+              <label htmlFor="selectedCaptureCursor">Cursor in Program</label>
+              <select
+                id="selectedCaptureCursor"
+                value={selectedSource.captureCursor ?? "never"}
+                onChange={(event) => {
+                  updateSource(selectedSource.id, { captureCursor: event.target.value as "never" | "motion" | "always" });
+                  persistStudioState().catch(() => undefined);
+                }}
+                disabled={activeSceneLocked || selectedSource.locked}
+              >
+                <option value="never">Hide Cursor</option>
+                <option value="motion">Show While Moving</option>
+                <option value="always">Always Show</option>
+              </select>
+              <span className="field-help">Hide Cursor prevents the pointer from appearing in Program, recordings, streams, and sanctuary output.</span>
             </div>
           ) : null}
           {hasAudioToggle(selectedSource.type) ? (
-            <div className="field">
-              <label htmlFor="selectedVolume">
-                Source Volume ({Math.round((selectedSource.volume ?? 1) * 100)}%)
-              </label>
-              <input
-                id="selectedVolume"
-                type="range"
-                min={0}
-                max={2}
-                step={0.01}
-                value={selectedSource.volume ?? 1}
-                onChange={(event) => handleVolumeChange(Number(event.target.value))}
-                disabled={activeSceneLocked || selectedSource.locked}
-              />
-            </div>
+            <>
+              <div className="field">
+                <label htmlFor="selectedVolume">
+                  Source Volume ({Math.round((selectedSource.volume ?? 1) * 100)}%)
+                </label>
+                <input
+                  id="selectedVolume"
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.01}
+                  value={selectedSource.volume ?? 1}
+                  onChange={(event) => handleVolumeChange(Number(event.target.value))}
+                  disabled={activeSceneLocked || selectedSource.locked}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="selectedAudioScope">Audio Routing</label>
+                <select
+                  id="selectedAudioScope"
+                  value={selectedSource.audioScope ?? "scene"}
+                  onChange={(event) => handleAudioScopeChange(event.target.value as "scene" | "persistent")}
+                  disabled={activeSceneLocked || selectedSource.locked}
+                >
+                  <option value="scene">Only while this scene is live</option>
+                  <option value="persistent">Keep playing across all scenes</option>
+                </select>
+              </div>
+            </>
           ) : null}
           <div className="field field-row">
             <label htmlFor="selectedLock">Locked</label>
@@ -588,6 +693,28 @@ const SceneSourcesPanel: React.FC = () => {
               ))}
             </select>
           </div>
+          {selectedSource.type !== "audio" && selectedSource.type !== "text" ? (
+            <div className="field">
+              <label>Trim / Crop Edges (%)</label>
+              <div className="trim-grid">
+                {(["top", "right", "bottom", "left"] as const).map((edge) => (
+                  <label key={edge}>
+                    <span>{edge.charAt(0).toUpperCase() + edge.slice(1)}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={95}
+                      step={0.5}
+                      value={selectedSource.crop?.[edge] ?? 0}
+                      onChange={(event) => handleCropChange(edge, parseNumber(event.target.value, selectedSource.crop?.[edge] ?? 0))}
+                      disabled={activeSceneLocked || selectedSource.locked}
+                    />
+                  </label>
+                ))}
+              </div>
+              <span className="field-help">Trim in Preview, then press TAKE. Program stays unchanged until TAKE.</span>
+            </div>
+          ) : null}
           <div className="field-grid">
             <div className="field">
               <label htmlFor="transformX">X (%)</label>

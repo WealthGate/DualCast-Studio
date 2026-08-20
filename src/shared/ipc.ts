@@ -4,6 +4,10 @@ export const IpcChannels = {
   updateSettings: "dualcast:update-settings",
   selectSaveDirectory: "dualcast:select-save-directory",
   saveRecording: "dualcast:save-recording",
+  beginRecording: "dualcast:begin-recording",
+  appendRecordingChunk: "dualcast:append-recording-chunk",
+  finishRecording: "dualcast:finish-recording",
+  cancelRecording: "dualcast:cancel-recording",
   openFolder: "dualcast:open-folder",
   hotkey: "dualcast:hotkey",
   openProjection: "dualcast:open-projection",
@@ -51,6 +55,12 @@ export const IpcChannels = {
   updateBrowserSource: "dualcast:update-browser-source",
   destroyBrowserSource: "dualcast:destroy-browser-source",
   fetchScripture: "dualcast:fetch-scripture",
+  listScriptureLibraries: "dualcast:list-scripture-libraries",
+  lookupScriptureLibrary: "dualcast:lookup-scripture-library",
+  importScriptureLibrary: "dualcast:import-scripture-library",
+  downloadScriptureLibrary: "dualcast:download-scripture-library",
+  saveScripturePassage: "dualcast:save-scripture-passage",
+  removeScriptureLibrary: "dualcast:remove-scripture-library",
   authorizeStreaming: "dualcast:authorize-streaming",
   downloadUserGuide: "dualcast:download-user-guide"
 } as const;

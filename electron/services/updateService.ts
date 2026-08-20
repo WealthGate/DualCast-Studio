@@ -12,9 +12,20 @@ let status: UpdateStatusPayload = {
 };
 let initialized = false;
 let updateInterval: NodeJS.Timeout | null = null;
+let initialCheckTimeout: NodeJS.Timeout | null = null;
+let checkPromise: Promise<UpdateStatusPayload> | null = null;
+
+const normalizeVersion = (version?: string | null) => version?.trim().replace(/^v/i, "") || null;
 
 const publishStatus = (update: Partial<UpdateStatusPayload>) => {
-  status = { ...status, ...update, currentVersion: app.getVersion() };
+  status = {
+    ...status,
+    ...update,
+    currentVersion: normalizeVersion(app.getVersion()) ?? app.getVersion(),
+    latestVersion: update.latestVersion === undefined
+      ? status.latestVersion
+      : normalizeVersion(update.latestVersion)
+  };
   BrowserWindow.getAllWindows().forEach((window) => {
     if (!window.isDestroyed()) {
       window.webContents.send(IpcChannels.updateStatus, status);
@@ -29,17 +40,27 @@ export const checkForUpdates = async () => {
     publishStatus({ state: "idle", message: "Update checks run in the installed desktop app." });
     return status;
   }
-
-  publishStatus({ state: "checking", message: null });
-  try {
-    await autoUpdater.checkForUpdates();
-  } catch (error) {
-    publishStatus({
-      state: "error",
-      message: error instanceof Error ? error.message : "Unable to check for updates."
-    });
+  if (checkPromise) {
+    return checkPromise;
   }
-  return status;
+
+  checkPromise = (async () => {
+    publishStatus({ state: "checking", progressPercent: null, message: `Installed version: v${app.getVersion()}.` });
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (error) {
+      publishStatus({
+        state: "error",
+        message: error instanceof Error ? error.message : "Unable to check for updates."
+      });
+    }
+    return status;
+  })();
+  try {
+    return await checkPromise;
+  } finally {
+    checkPromise = null;
+  }
 };
 
 export const downloadUpdate = async () => {
@@ -107,12 +128,19 @@ export const initializeUpdater = () => {
   }));
 
   if (app.isPackaged) {
-    setTimeout(() => void checkForUpdates(), 12_000);
+    initialCheckTimeout = setTimeout(() => {
+      initialCheckTimeout = null;
+      void checkForUpdates();
+    }, 12_000);
     updateInterval = setInterval(() => void checkForUpdates(), 4 * 60 * 60 * 1000);
   }
 };
 
 export const stopUpdater = () => {
+  if (initialCheckTimeout) {
+    clearTimeout(initialCheckTimeout);
+    initialCheckTimeout = null;
+  }
   if (updateInterval) {
     clearInterval(updateInterval);
     updateInterval = null;

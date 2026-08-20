@@ -7,25 +7,45 @@ import { StreamingAuthorizationPayload, StreamingAuthorizationResult } from "../
 const waitForCode = async (authorizeUrl: (redirectUri: string, state: string) => string) => {
   const state = randomBytes(24).toString("hex");
   return new Promise<{ code: string; redirectUri: string }>((resolve, reject) => {
+    let settled = false;
+    const finish = (result: { code: string; redirectUri: string } | Error) => {
+      if (settled) return;
+      settled = true;
+      try {
+        server.close();
+      } catch {
+        // The listener may have failed before the server started.
+      }
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    };
     const server = createServer((request, response) => {
       const url = new URL(request.url || "/", "http://127.0.0.1");
+      if (url.pathname !== "/callback") {
+        response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Not found");
+        return;
+      }
       const code = url.searchParams.get("code");
       const returnedState = url.searchParams.get("state");
       const error = url.searchParams.get("error");
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       response.end("<h2>OpenChurch authorization complete</h2><p>You may close this browser tab and return to the studio.</p>");
-      if (error) reject(new Error(`Authorization was declined: ${error}`));
-      else if (!code || returnedState !== state) reject(new Error("Authorization response could not be verified."));
-      else resolve({ code, redirectUri: `http://127.0.0.1:${(server.address() as AddressInfo).port}/callback` });
-      server.close();
+      if (error) finish(new Error(`Authorization was declined: ${error}`));
+      else if (!code || returnedState !== state) finish(new Error("Authorization response could not be verified."));
+      else finish({ code, redirectUri: `http://127.0.0.1:${(server.address() as AddressInfo).port}/callback` });
     });
+    server.once("error", (error) => finish(error));
     server.listen(0, "127.0.0.1", async () => {
       const redirectUri = `http://127.0.0.1:${(server.address() as AddressInfo).port}/callback`;
-      await shell.openExternal(authorizeUrl(redirectUri, state));
+      try {
+        await shell.openExternal(authorizeUrl(redirectUri, state));
+      } catch (error) {
+        finish(error instanceof Error ? error : new Error("Unable to open the authorization page."));
+      }
     });
     const timeout = setTimeout(() => {
-      server.close();
-      reject(new Error("Authorization timed out. Please try again."));
+      finish(new Error("Authorization timed out. Please try again."));
     }, 180_000);
     server.on("close", () => clearTimeout(timeout));
   });
@@ -54,6 +74,8 @@ const authorizeYouTube = async (): Promise<StreamingAuthorizationResult> => {
     fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers }),
     fetch("https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,contentDetails&broadcastStatus=all&mine=true&maxResults=25", { headers })
   ]);
+  if (!profileResponse.ok) throw new Error("YouTube account lookup failed.");
+  if (!broadcastResponse.ok) throw new Error("YouTube live-broadcast lookup failed.");
   const profile = await profileResponse.json() as { email?: string; name?: string };
   const broadcasts = await broadcastResponse.json() as { items?: Array<{ snippet?: { title?: string; scheduledStartTime?: string; actualStartTime?: string }; contentDetails?: { boundStreamId?: string } }> };
   const broadcast = broadcasts.items?.find((item) => item.snippet?.actualStartTime) ?? broadcasts.items?.find((item) => item.contentDetails?.boundStreamId);
@@ -61,6 +83,7 @@ const authorizeYouTube = async (): Promise<StreamingAuthorizationResult> => {
   let streamKey: string | undefined;
   if (broadcast?.contentDetails?.boundStreamId) {
     const streamResponse = await fetch(`https://www.googleapis.com/youtube/v3/liveStreams?part=cdn&id=${encodeURIComponent(broadcast.contentDetails.boundStreamId)}`, { headers });
+    if (!streamResponse.ok) throw new Error("YouTube stream endpoint lookup failed.");
     const stream = await streamResponse.json() as { items?: Array<{ cdn?: { ingestionInfo?: { ingestionAddress?: string; streamName?: string } } }> };
     rtmpUrl = stream.items?.[0]?.cdn?.ingestionInfo?.ingestionAddress;
     streamKey = stream.items?.[0]?.cdn?.ingestionInfo?.streamName;
@@ -84,10 +107,11 @@ const authorizeFacebook = async (): Promise<StreamingAuthorizationResult> => {
     url.search = new URLSearchParams({ client_id: appId, redirect_uri: callback, response_type: "code", scope: "public_profile,email,pages_show_list,pages_read_engagement,publish_video", state }).toString();
     return url.toString();
   });
-  const tokenResponse = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${new URLSearchParams({ client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code })}`);
+  const tokenResponse = await fetch(`https://graph.facebook.com/${graphVersion}/oauth/access_token?${new URLSearchParams({ client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code })}`);
   if (!tokenResponse.ok) throw new Error("Facebook token exchange failed.");
   const token = await tokenResponse.json() as { access_token: string };
   const profileResponse = await fetch(`https://graph.facebook.com/${graphVersion}/me?fields=id,name,email&access_token=${encodeURIComponent(token.access_token)}`);
+  if (!profileResponse.ok) throw new Error("Facebook account lookup failed.");
   const profile = await profileResponse.json() as { name?: string; email?: string };
   return { ok: true, account: profile.email || profile.name || "Facebook account", message: "Facebook connected. Choose or create the Live event in Facebook, then paste its Server URL and Stream Key if Facebook does not provide them through your app permissions." };
 };

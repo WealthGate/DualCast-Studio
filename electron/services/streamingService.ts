@@ -396,6 +396,15 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   if (destinations.length === 0) {
     return { ok: false, message: "Enable at least one stream destination." };
   }
+  if (destinations.length > 12) {
+    return { ok: false, message: "A maximum of 12 simultaneous stream destinations is supported." };
+  }
+  if (new Set(destinations.map((destination) => destination.id)).size !== destinations.length) {
+    return { ok: false, message: "Each stream destination must have a unique ID." };
+  }
+  if (!presetConfig[payload.preset] || ![15, 24, 25, 30, 50, 60].includes(payload.fps) || ![128, 192].includes(payload.audioBitrate)) {
+    return { ok: false, message: "The selected streaming quality settings are invalid." };
+  }
   const invalid = destinations.find(
     (destination) => !destination.streamKey || !isValidRtmpUrl(destination.rtmpUrl)
   );
@@ -429,32 +438,41 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   return { ok: true };
 };
 
-export const sendStreamChunk = (payload: Uint8Array) => {
+const writeToInput = (input: Writable, data: Buffer) => new Promise<void>((resolve, reject) => {
+  try {
+    input.write(data, (error) => error ? reject(error) : resolve());
+  } catch (error) {
+    reject(error);
+  }
+});
+
+export const sendStreamChunk = async (payload: Uint8Array) => {
   if (!payload?.length) {
     return;
   }
   const chunk = Buffer.from(payload);
   cachedHeader = cachedHeader ?? chunk;
 
-  runtimes.forEach((runtime) => {
+  await Promise.all(Array.from(runtimes.values()).map(async (runtime) => {
     const stdin = runtime.process?.stdin;
     if (!stdin?.writable) {
       return;
     }
     try {
       if (runtime.needsHeader && cachedHeader) {
-        stdin.write(cachedHeader);
+        await writeToInput(stdin, cachedHeader);
         runtime.needsHeader = false;
         if (chunk.equals(cachedHeader)) {
           return;
         }
       }
-      stdin.write(chunk);
+      await writeToInput(stdin, chunk);
     } catch (error) {
       runtime.lastError = (error as Error).message;
       writeStreamLog(runtime.destination.name, `stdin write failed: ${runtime.lastError}`);
+      publishAggregateStatus();
     }
-  });
+  }));
 };
 
 export const stopStreaming = async (): Promise<StreamStopResult> => {
@@ -494,6 +512,25 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
   publishAggregateStatus();
   log.info("Streaming stop requested for all destinations.");
   return { ok: true };
+};
+
+export const forceStopStreaming = () => {
+  stopRequested = true;
+  runtimes.forEach((runtime) => {
+    if (runtime.reconnectTimer) clearTimeout(runtime.reconnectTimer);
+    runtime.reconnectTimer = null;
+    try {
+      runtime.process?.kill("SIGKILL");
+    } catch {
+      // The process may already have exited.
+    }
+  });
+  runtimes.clear();
+  cachedHeader = null;
+  startedAt = null;
+  lastStartPayload = null;
+  logStream?.end();
+  logStream = null;
 };
 
 detectEncoders();

@@ -1,134 +1,558 @@
-# OpenChurch Broadcast Studio v0.6.1 - User Guide
+# OpenChurch Broadcast Studio v0.6.3 - Complete User Guide
 
-## 1. Purpose
+This guide is written for volunteers, media teams, pastors, and technical operators. You do not need previous broadcast-software experience.
 
-OpenChurch Broadcast Studio is an open church-production application for preparing presentations, switching cameras and scenes, recording services, streaming to several destinations, driving sanctuary displays, and operating lower thirds. Version 0.6.1 is designed around a Preview/Program workflow so edits can be prepared safely before the congregation sees them.
+## 1. Read This First
 
-## 2. Installation and Updates
+OpenChurch Broadcast Studio uses two video areas:
+
+- **Preview** is your private preparation area. Move, resize, trim, or edit sources here.
+- **Program** is the live output. Recording, streaming, projectors, and network viewers see Program.
+- **TAKE** sends the complete Preview scene to Program.
+
+Important rule: if you have not pressed TAKE, normal scene and source changes remain in Preview. The persistent microphone is intentionally different: when enabled, it stays in the audio mix across every scene.
+
+In this guide, a path such as **Sources > right-click a source > Properties** means to open the Sources dock, right-click the named item, and choose Properties.
+
+## 2. Five-Minute First Broadcast
+
+Use this short workflow for your first test.
+
+1. Connect the camera, microphone, headphones, and any projector before opening the app.
+2. Open the app and locate Preview on the left and Program on the right.
+3. In Scenes, create or select a scene.
+4. In Sources, right-click an empty area and choose **Add Source**.
+5. Choose Camera, select the camera, enter a clear name, and choose **Add Source**.
+6. Move or resize the camera box in Preview.
+7. Open Audio Mixer. Set **Program audio** to **Mic - all scenes** or **Scene sources + Mic**.
+8. Select the correct microphone under **Persistent microphone**.
+9. Speak normally. Confirm the Mic meter moves and does not show CLIP.
+10. Press TAKE. The prepared scene appears in Program.
+11. Open System Settings, choose a save directory, quality, and frame rate.
+12. Press Record, speak for ten seconds, then press Stop.
+13. Choose Open Folder and play the saved test from beginning to end.
+
+Do not begin a live service until the test recording contains both picture and clean audio.
+
+## 3. Installation, Portable Use, and Updates
 
 1. Open the project's GitHub Releases page.
-2. Download the Windows installer for the newest version.
-3. Run the installer. The version appears in the title area and Menu.
-4. Use Menu > Check for Updates. When a release is available, choose Download, then Install and Restart.
+2. Download the newest Windows installer, or download the portable ZIP if installation is not permitted.
+3. Run the installer. If using the ZIP, extract it before running the app.
+4. Confirm the version beside the product name is **v0.6.3**.
+5. Find the always-visible update button in the top header. It reads **Check for Updates** and shows the installed version below it.
+6. Select **Check for Updates**. The button is disabled while checking, and the banner confirms the installed version.
+7. If the app is current, dismiss the confirmation. If a newer release exists, select **Update to v[version]** to download that exact version.
+8. Watch the download percentage. Do not close the app or shut down the computer while downloading.
+9. When **Restart & Install** appears, save your work, stop recording or streaming, and select it to install the downloaded version.
+10. After restart, confirm the new installed version below the button. You can also check through **Menu > Check for Updates**.
 
-The portable ZIP can be used when installation is not permitted. Always back up important recordings before upgrading.
+Back up important recordings before updating. The portable ZIP should not be run directly from inside the compressed file.
 
-## 3. Interface and Docking
+## 4. The Workspace and Docks
 
-- Preview is the rehearsal workspace. Changes made here are not sent to Program until TAKE.
-- Program is the live output used by recording, streams, projectors, and network outputs.
-- Drag a dock tab by its title to another zone. The highlighted target shows where it will dock.
-- Drop a panel on another dock to merge it as a tab.
-- Drag dock boundaries horizontally or vertically to resize them.
-- Right-click a dock, scene, or source for its applicable commands.
-- Use the dock context menu to restore a hidden panel or reset the layout.
-- Use View > Open Multiview Window to monitor scenes and cameras. Single-click sends a tile to Preview; double-click sends it directly to Program.
+The workspace is made from movable docks such as Scenes, Sources, Audio Mixer, Lower Third Studio, Scripture, Live Streaming, and System Settings.
 
-## 4. Scenes, Sources, and Safe Switching
+- Drag a dock tab to another area to move it.
+- Drop a tab on another dock to combine them as tabs.
+- Drag the boundary between docks to resize them.
+- Right-click a dock to hide it or restore another dock.
+- Use the dock menu's reset command if the layout becomes difficult to use.
+- Choose **View > Open Multiview Window** to see several scenes and cameras together.
+- In Multiview, a single click sends a scene to Preview. A double-click sends it directly to Program, so use double-click carefully.
 
-Create scenes for sermon, worship, announcements, Scripture, media, and camera angles. Selecting a scene reveals only the sources attached to it. Every scene can contain any supported source type:
+### Choose Studio, Program Focus, or Full Program Only
 
-- Screen capture
+- **Studio Mode** shows Preview and Program together with the operating docks. Use it while preparing and switching a service.
+- **Program Focus** expands Program across the space normally shared by Preview and Program, but keeps the operating docks visible. In this mode, one click on a scene sends it directly to Program. Use it only when deliberate live switching is required.
+- **Full Program Only** keeps the earlier uncluttered mode: it hides Preview and all docks and expands Program across the app. It does not change the projector, recording, or stream output.
+
+To change modes:
+
+1. Choose **View** in the app header.
+2. Choose **Studio Mode** for normal Preview-to-Program preparation.
+3. Choose **Program Focus** to keep the docks while expanding Program in the center. A red LIVE label identifies the current Program scene; clicking another scene sends it live immediately.
+4. Choose **Full Program Only** to hide all operating docks.
+5. Open **View** and choose **Studio Mode** whenever you need private Preview preparation again.
+
+The app remembers the selected view for the next launch. The header remains visible in Full Program Only mode so you cannot become trapped in that view.
+
+## 5. Scenes: Building the Service
+
+A scene is one complete arrangement, such as Sermon Camera, Worship Lyrics, Scripture, Announcement Video, or Closing Slide.
+
+### Create and name a scene
+
+1. Open the Scenes dock.
+2. Right-click inside the scene list.
+3. Choose Add Scene.
+4. Right-click the new scene and choose Rename.
+5. Use a name that another volunteer can understand immediately.
+
+### Prepare and send a scene live
+
+1. Click the scene once. It becomes the Preview scene.
+2. Add, edit, move, or trim its sources.
+3. Check the complete result in Preview.
+4. Select Cut, Fade, or Crossfade in Scene Transitions.
+5. Press TAKE.
+6. Confirm the Program label and picture are correct.
+
+### Make a slow manual blend from Preview to Program
+
+1. Stay in **Studio Mode** and prepare the next scene in Preview.
+2. Open **Scene Transitions** and find **Live Preview Blend**.
+3. Move the fader slowly from Program toward Preview. The projector, recording, stream, and network output immediately see the selected mixture.
+4. Pause anywhere between 0% and 100% when the audience should see both scenes blended together.
+5. Choose **Reset to Program** to cancel the blend safely, or choose **Complete to Preview** to make Preview the new Program scene.
+
+Program audio remains active during the blend and switches only when **Complete to Preview** is chosen. The normal Cut, Fade, and Crossfade choices remain available for automatic TAKE transitions. Automatic transition duration can be set from 100 milliseconds up to 15 seconds.
+
+### Lock a finished scene
+
+Right-click a finished scene and choose Lock. Unlock it before making changes. Locking prevents accidental edits during a service.
+
+Program cannot be deleted while it is live. Select and TAKE another scene first.
+
+## 6. Sources: Adding What the Audience Sees or Hears
+
+Every scene can contain:
+
+- Display capture
 - Window capture
 - Camera
 - Image
-- Video
+- Video file
 - Browser/web page
 - Audio file
-- Text or lower-third text
+- Text
 
-Use the source context menu to show/hide, mute, lock, group, reorder, fit, restart media, edit, or remove a source. Move and resize unlocked sources in Preview. Select the desired transition, then press TAKE to snapshot Preview into Program. Later Preview edits remain private until the next TAKE.
+### Add a source
 
-Window Capture refreshes whenever its source picker opens. Use Refresh Windows to rescan all capturable desktop windows, including browser windows. Some protected/DRM video, minimized windows, elevated applications, or GPU-protected surfaces may be hidden or black because Windows or the content provider blocks capture. Use a Browser source with the page URL when direct window capture is blocked.
+1. Select the destination scene in Scenes.
+2. In Sources, right-click an empty area and choose **Add Source**.
+3. Choose a source type.
+4. Enter a useful name, such as Pulpit Camera or Worship Lyrics.
+5. Select the device, window, or file as requested.
+6. Choose **Add Source**.
+7. Arrange the source in Preview.
 
-## 5. Lower Third Studio
+### Arrange a source
 
-Open the Lower Third Studio dock for live text graphics.
+- Drag inside its outlined box to move it.
+- Drag a corner handle to resize it.
+- Use **Sources > right-click source > Properties** for exact X, Y, width, height, and rotation values.
+- Use Move Up or Move Down to change which source appears on top.
+- Choose Lock after the source is positioned correctly.
+- Assign related sources to a group when they should be managed as one layout.
 
-- Type a name, title, announcement, or message and choose Add and Show.
-- Paste lyrics or longer text with one blank line between sections. Choose Split Blank Lines into Slides.
-- Click a slide to cue it live, or focus the dock and use arrow keys for Previous/Next.
-- Clear Live removes the active lower third.
-- Formatting supports font family, size, text and background colors, alignment, bold, italic, underline, and a maximum line count.
-- Maximum Lines 0 displays the complete text and automatically reduces the font size when necessary.
-- Entrance and exit effects include fade, slide left, slide right, slide up, zoom, wipe, and none.
-- Add an image or church logo on the left, right, or as a background. It follows the selected lower-third animation.
-- Show over Program composites the graphic into recordings and streams. The dedicated lower-third display output remains transparent outside the graphic area.
+### Hide the mouse cursor from Program and the audience
 
-## 6. Scripture
+This applies to Display and Window capture sources.
 
-Open the Scripture dock, enter a reference such as John 3:16-18, and choose Fetch. The complete returned passage and Book/Chapter/Verse reference appear for review before sending to the lower third. You may edit or manually paste licensed Bible text.
+1. In Sources, right-click the Display or Window source and choose Properties.
+2. Find **Cursor in Program**.
+3. Choose **Hide Cursor** so the pointer is not captured.
+4. Choose Show While Moving only when viewers need to follow occasional pointer movement.
+5. Choose Always Show only for demonstrations where the pointer is part of the presentation.
+6. Check Program and make a short test recording.
+
+New Display and Window sources default to Hide Cursor. The setting is applied before the scene is composed, so a hidden pointer does not appear in Program, recording, streaming, projectors, or local-network output.
+
+### Window capture does not show the window
+
+1. Restore the wanted window if it is minimized.
+2. Open Add Source > Window.
+3. Choose Refresh.
+4. Run both applications at the same Windows privilege level.
+5. If protected video remains black, use a permitted media file or a Browser source. DRM-protected content may intentionally block capture.
+
+## 7. Audio Routing: Persistent Mic and Scene Audio
+
+Open the Audio Mixer dock before configuring audio.
+
+### Choose the program audio mode
+
+The **Program audio** list has four choices:
+
+- **Scene audio sources**: plays enabled audio belonging to the live scene, plus any source explicitly routed to All scenes. The microphone is not included.
+- **Mic - all scenes**: plays the selected microphone continuously across every scene. Scene audio sources are not included.
+- **Scene sources + Mic**: combines the persistent microphone with scene and All-scenes sources. This is the usual choice for a church service.
+- **Mute all**: sends no app audio to recordings or streams.
+
+The Audio list in the app header provides the same choices for quick access.
+
+### Set the persistent microphone
+
+1. Open Audio Mixer.
+2. Set Program audio to **Mic - all scenes** or **Scene sources + Mic**.
+3. Open **Persistent microphone**.
+4. Choose the church microphone or audio-interface input. Choose System default only when Windows is already set correctly.
+5. Speak at normal preaching volume.
+6. Move the Mic fader until the signal is healthy without clipping.
+7. Change scenes in Preview and TAKE them. The microphone remains in the program audio mix.
+
+If Windows asks for microphone permission, allow access. Device names may become clearer after permission is granted.
+
+### Make another audio source scene-only or persistent
+
+Use this for video sound, an audio file, or captured desktop/window sound.
+
+1. Add the source to a scene.
+2. Enable its audio if it is muted.
+3. In Audio Mixer, find its channel.
+4. Choose **This scene** if it should play only while its scene is live.
+5. Choose **All scenes** if it must continue when another scene is taken.
+
+You can also use **Sources > source > Properties > Audio Routing** and select:
+
+- **Only while this scene is live**
+- **Keep playing across all scenes**
+
+Use All scenes carefully for looping music or room audio. A persistent source stays active until it is muted, disabled, removed, or changed back to This scene.
+
+### Understand the audio meters
+
+- **M** means the source is mono.
+- **L R** means separate left and right stereo channels.
+- A meter at the bottom with no movement means silence; it no longer shows a false fixed level.
+- Green is the normal working range.
+- Yellow warns that the signal is getting high.
+- Red and the **CLIP** label mean the signal is too high and may distort.
+
+If CLIP appears, lower that channel first. If several channels clip together, lower Program Master. Test using the loudest expected speaking or music level, not a quiet rehearsal voice.
+
+### Audio troubleshooting
+
+- No Mic movement: select the correct device, enable Mic in Program audio, check Windows microphone permission, and verify the hardware is not muted.
+- No video/audio-file movement: enable audio on the source, press Play if paused, and confirm the source is in the live scene or routed to All scenes.
+- Meter moves but recording is silent: confirm Program audio is not Mute all, then make a new test recording.
+- Echo or doubled speech: monitor through headphones and make sure the microphone is not also being captured through a second desktop or interface route.
+- Only one stereo side moves: check the cable, mixer pan, and audio-interface channel routing.
+
+## 8. Text Layouts: Full, Half, and Three-Quarter Screen
+
+The layout buttons arrange a selected Text source and a video source without manual measurements.
+
+1. Put a Text source and a visual source in the same scene.
+2. Optional: assign both to the same group. Grouping tells the app exactly which visual source belongs with the text.
+3. Right-click the Text source and choose Properties.
+4. Find **Quick Text + Video Layout**.
+5. Choose one of these buttons:
+
+- **Full Text**: expands text to the complete frame. The existing visual can remain as a background if the text background is transparent.
+- **1/2 - Video Left**: video uses the left half; text uses the right half.
+- **1/2 - Video Right**: text uses the left half; video uses the right half.
+- **Text 3/4 - Video Left**: video uses the left quarter; text uses the remaining three quarters.
+- **Text 3/4 - Video Right**: text uses three quarters; video uses the right quarter.
+
+If the Text source is grouped, the app uses a visual source in that group. Otherwise it uses the top visual source in the scene. Check Preview, adjust font size or background if necessary, then press TAKE.
+
+## 9. Trim or Crop a Source Before It Goes Live
+
+Trimming hides unwanted edges of a camera, display, window, image, video, or browser source. It does not delete or permanently alter the original content.
+
+1. Select the scene in Preview.
+2. Right-click the visual source and choose Properties.
+3. Find **Trim / Crop Edges (%)**.
+4. Increase Top, Right, Bottom, or Left to hide that edge.
+5. Watch Preview while changing the values.
+6. Reposition or resize the cropped result if needed.
+7. Press TAKE only after Preview is correct.
+
+Program continues showing the earlier uncropped snapshot until TAKE. To restore the full source, set all four values to 0.
+
+## 10. Lower Third Studio
+
+Lower thirds can show a name, title, announcement, lyric, or Scripture passage.
+
+### Add and cue text
+
+1. Open Lower Third Studio.
+2. Type a short message in Manual lower-third text.
+3. Choose Add and Show.
+4. Click any saved slide to cue it.
+5. Use Previous and Next, or focus the dock and use the arrow keys.
+6. Choose Clear Live to remove the current slide.
+
+For lyrics or long text, paste the content with one blank line between slides, then choose **Split Blank Lines into Slides**.
+
+### Edit a lyric or text slide after splitting
+
+1. Find the slide in the lower-third slide list.
+2. Choose **Edit** beside that slide.
+3. Correct the words, spelling, or line breaks.
+4. Choose **Save & Show**.
+
+Save & Show updates the existing slide and immediately makes the edited slide active on the lower third. Choose Cancel to leave it unchanged. This works for split lyrics, manual text slides, and Scripture slides.
+
+While editing a slide, two additional choices are available:
+
+- **Add Slide After** saves the current edit and opens a new blank slide immediately after it. Type the new lyric or text, then choose **Save & Show**. Cancel removes the unfinished blank slide.
+- **Each Line → Slide** turns every non-empty line in the editor into an ordered slide. The first line stays in the current slide and every remaining line is inserted directly after it. Use this only when every line should appear separately.
+
+### Format the lower third
+
+Open **Formatting and Animation**. You can set font, size, text color, background color, alignment, bold, italic, underline, maximum lines, entrance, exit, and animation time.
+
+- Maximum Lines 0 shows the complete text and reduces font size when needed.
+- Show over Program includes the graphic in recordings and streams.
+- The dedicated lower-third output remains transparent outside the graphic area.
+
+### Set background transparency
+
+1. Choose the Background color.
+2. Move **Background Opacity** toward 0% for more transparency or 100% for a solid color.
+3. Check light and dark video behind the lower third before going live.
+
+### Use a background image
+
+1. Find **Lower-Third Background Image**.
+2. Choose Choose Background and select an image.
+3. Set Image Opacity so text remains readable.
+4. Use Remove to return to a color-only background.
+
+### Use a standard logo
+
+Under **Standard Lower-Third Logo**, choose an image and place it on the left, right, or as an image background. This logo is used for normal text and song slides.
+
+### Use a separate Bible logo or image
+
+1. Find **Bible Passage Logo / Image**.
+2. Choose Choose Bible Image.
+3. Select Left, Right, or Background placement.
+4. Send a passage from the Scripture dock.
+
+Scripture slides use the Bible image. Other lower thirds continue using the standard logo. If no Bible image is set, Scripture slides use the standard logo.
+
+## 11. Scripture
+
+The Scripture dock can use the configured online provider, individual passages saved for offline use, or compatible downloaded/imported JSON libraries.
+
+### Fetch from the configured online provider
+
+1. Open the Scripture dock.
+2. Set Scripture Source to **Configured Online Provider**.
+3. Enter a reference, such as John 3:16-18.
+4. Choose Fetch Online.
+5. Read the complete returned passage and reference.
+6. Correct the text manually if your licensed source requires it.
+
+### Save one passage for offline use
+
+1. Fetch or paste the complete passage.
+2. Confirm Displayed Reference is correct.
+3. Choose **Save Passage Offline**.
+4. Later, choose **Saved Passages** in Scripture Source.
+5. Enter the reference and choose Load Offline.
+
+### Import a Scripture library already downloaded to the computer
+
+1. Expand **Offline Scripture Libraries**.
+2. Choose **Import Downloaded JSON**.
+3. Select a compatible `.json` library file.
+4. The imported library becomes the selected Scripture Source.
+5. Enter a reference and choose Load Offline.
+
+### Download a Scripture library by HTTPS address
+
+1. Obtain an HTTPS JSON download address from a source that permits downloading and public display.
+2. Expand Offline Scripture Libraries.
+3. Paste the address into **HTTPS Library JSON Address**.
+4. Choose Download Library.
+5. Wait for the passage count and success message.
+6. Enter a reference and choose Load Offline.
+
+Libraries may contain `passages` or `verses` with `reference` and `text` fields, or `books` containing chapters and verses. Files must be valid JSON and no larger than 25 MB. The app stores imported libraries on the computer for use without internet. Use Remove Selected Library to delete an imported/downloaded library; Saved Passages is managed by saving individual passages.
+
+### Display Scripture in any layout
+
+- Choose **Send to Lower Third** for the configured lower-third height, animation, opacity, background image, and Bible-specific logo.
+- Expand **Add Scripture to Preview Scene** and choose Full Screen Text, either Half Screen arrangement, or either Text 3/4 arrangement.
+- Choose **Custom / Freely Resizable** and enter X, Y, Width, and Height for another size.
+- Choose Add to Preview Scene. Check the result in Preview, drag or resize it if needed, then press TAKE.
+
+Full, half, three-quarter, and custom Scripture text is added as a normal Text source. It can be edited, grouped, locked, moved, or resized from Sources. The lower-third line limit affects lower thirds only.
+
+When using the lower third, confirm that the Bible-specific logo and reference appear correctly.
 
 Providers are configured under Venue & Outputs:
 
 - Bible API: public reference lookup where available.
-- API.Bible: set a Bible ID and the API key environment variable.
-- Custom: configure an endpoint that accepts a reference query and returns JSON with text and optional reference/translation fields.
+- API.Bible: requires a Bible ID and the named API-key environment variable.
+- Custom: uses the configured endpoint.
 
-Translation availability and public display rights depend on the selected provider and Bible publisher. The church is responsible for applicable licenses.
+Translation availability and public-display rights depend on the provider and publisher. The church is responsible for the required Scripture and lyric licenses.
 
-## 7. Sanctuary and Independent Outputs
+## 12. Frame Rate, Quality, and Computer Load
 
-Use Sanctuary Displays to select one or more connected projectors/displays and open Program output. A separate lower-third display can feed a graphics key/fill workflow. Venue & Outputs also provides network output for displays and additional operators on the local network. Protect operator access with a PIN and use trusted church networks.
+Open System Settings to choose recording quality and frame rate.
 
-The app's built-in wireless output is the local-network Program URL, which works with browser-capable displays, receiver devices, and OBS Browser Sources. Native Miracast, AirPlay, Chromecast discovery, NDI, SDI, and virtual-camera output are not built in; those workflows require separate operating-system features, receiver hardware, or streaming software. Test latency and resolution before the service.
+- **15 fps**: lowest processing load; suitable for mostly static slides or emergency use.
+- **24 fps**: film-style motion with lower load than 30 fps.
+- **25 fps**: useful in 50 Hz regions and PAL-based workflows.
+- **30 fps**: recommended general church-service setting.
+- **50 fps**: smooth motion in 50 Hz workflows with higher load.
+- **60 fps**: smoothest motion and highest load.
 
-## 8. Multiview and Multiple Operators
+Live Streaming has its own FPS list. Set it separately in the Live Streaming dock.
 
-Assign each station a name and role: director, graphics, audio, or stream. Network operator URLs allow another authorized device to trigger supported production controls. The Multiview window shows scene and camera tiles with Preview and Program status. Keep the director responsible for TAKE while graphics and streaming operators prepare their own docks.
+The app reduces Preview rendering to a practical rate and renders Program at the selected frame rate. It also keeps only required sources active and sends Multiview and remote-display previews at reduced rates. These choices reduce CPU and GPU work without reducing the selected recording or streaming quality.
 
-## 9. Audio Mixer
+For a lighter setup without sacrificing the quality you actually need:
 
-Choose System, Microphone, System + Mic, or None in the header. The Audio Mixer controls source and master levels. Confirm that meters move without clipping, monitor through headphones, and make a test recording before every service. Audio files and video-source audio can be enabled per scene source.
+1. Use 30 fps unless the service contains fast movement that clearly benefits from 50/60 fps.
+2. Close unused browser pages and other GPU-heavy applications.
+3. Hide or close Multiview when it is not needed.
+4. Disable or remove capture sources that are not needed. Disabled sources are closed instead of continuing to consume camera, screen, browser, CPU, or GPU resources.
+5. Prefer one persistent mic route instead of capturing the same microphone twice.
+6. Make a private test stream while watching dropped frames and CPU use.
 
-## 10. Recording and Post Editor
+Never choose a higher frame rate only because the number is larger. A stable 30 fps stream looks better than an overloaded 60 fps stream.
 
-Choose quality, frame rate, audio mode, and save folder in System Settings. Press Record in the header or Controls dock. Open Folder locates the finished recording. The Post Editor exports a selected time range from a recording. FFmpeg performs encoding and may use a WebM fallback when the requested conversion is unavailable.
+## 13. Recording
 
-## 11. Multi-Destination Streaming
+1. Open System Settings.
+2. Choose the save directory, quality, and frame rate.
+3. TAKE the scene you want to record.
+4. Confirm Program picture and Audio Mixer levels.
+5. Press Record in the header or Controls dock.
+6. Confirm the red recording state and timer.
+7. Press Stop at the end.
+8. Choose Open Folder.
+9. Play the saved file and check its beginning, middle, end, and audio sync.
 
-Add one card per destination and enable the destinations required for the service. Custom RTMP accepts a server URL and stream key. YouTube Live and Facebook Live also provide Connect Account.
+During recording, the app writes short chunks to a temporary file instead of keeping the entire service in memory. When you press Stop, FFmpeg performs final MP4 encoding. Keep the app open and allow the conversion to finish before shutting down. If normal conversion is unavailable, the app saves a WebM fallback and shows a notice. Long services still require enough free disk space for both the temporary recording and final file.
 
-Platform authorization requires a church-owned developer application:
+## 14. Live Streaming
 
-- YouTube: set OPENCHURCH_YOUTUBE_CLIENT_ID and OPENCHURCH_YOUTUBE_CLIENT_SECRET. The app opens Google's official sign-in page and attempts to load the endpoint of a bound YouTube Live stream.
-- Facebook: set OPENCHURCH_FACEBOOK_APP_ID and OPENCHURCH_FACEBOOK_APP_SECRET. Facebook permissions and app review determine which live details can be loaded automatically.
+1. Open Live Streaming.
+2. Add one destination card for each service destination.
+3. Enable only destinations needed for this broadcast.
+4. For Custom RTMP, enter the exact RTMP/RTMPS server URL and stream key.
+5. For YouTube or Facebook, use Connect Account when the church's developer-app configuration is available.
+6. Select encoder, preset, FPS, and audio bitrate.
+7. TAKE the correct scene and confirm Program audio.
+8. Start the stream.
+9. Watch each destination status, bitrate, FPS, dropped frames, and error messages.
+10. Stop the stream after the service and confirm the platform ended correctly.
 
-Sign-in uses the official provider in the system browser. Gmail, Outlook, Yahoo, and other email providers do not themselves supply stream destinations; use the email account associated with YouTube or Facebook. OAuth access tokens are not written to normal app settings. Stream keys are stored using protected operating-system storage only when Remember Stream Key is enabled.
+YouTube authorization uses `OPENCHURCH_YOUTUBE_CLIENT_ID` and `OPENCHURCH_YOUTUBE_CLIENT_SECRET`. Facebook authorization uses `OPENCHURCH_FACEBOOK_APP_ID` and `OPENCHURCH_FACEBOOK_APP_SECRET`. Stream keys are stored only with protected operating-system credential storage and only when Remember Stream Key is enabled. If protected storage is unavailable, the checkbox is disabled and keys remain in memory only for the current app session.
 
-Select encoder, preset, FPS, and audio bitrate, then start streaming. Destination status cards and logs help diagnose individual failures without hiding other destinations.
+## 15. Sanctuary, Lower-Third, Network, and Multiview Outputs
 
-## 12. Themes and Accessibility
+### Program display
 
-System Settings includes System, Dark, Light, High Contrast, Midnight, and Warm themes. High Contrast adds strong focus indicators. Operators should choose a theme with readable contrast for the room lighting and use Windows display scaling when text is too small.
+1. Open Sanctuary Displays.
+2. Select one or more connected projectors/displays.
+3. Open Program output.
+4. Confirm that the output is on the intended screen before the congregation enters.
 
-## 13. Song Library and Integrations
+### Independent lower-third display
 
-Venue & Outputs contains adapter settings for a local song-library folder, Planning Center, or a custom API. Paste-and-split in Lower Third Studio works without a subscription. Verify copyright and reporting obligations for lyrics. AI settings reserve provider, endpoint, model, API-key environment variable, live captions, sermon summaries, and highlight detection. Version 0.6.1 does not yet execute those AI workflows, even after credentials are configured.
+Use the separate lower-third output for a transparent graphics workflow. Areas outside the graphic stay transparent. Cut to Black also clears this output; restoring Program allows the active lower third to return. Test transparency, image placement, black/restore behavior, and animation with the receiving system.
 
-## 14. Recommended Service Workflow
+### Local network output
 
-1. Connect displays, cameras, microphones, and network devices.
-2. Open the app and confirm the displayed version.
-3. Create scenes and attach the correct sources to each.
-4. Refresh Window Capture and verify every required media source.
-5. Load songs and Scripture; check line limits and animation speed.
-6. Confirm Preview and Program differ until TAKE.
-7. Open projector, lower-third, multiview, and network outputs.
-8. Make a short recording and private stream test.
-9. Verify audio, sync, stream health, and destination status.
-10. During the service, prepare in Preview and use TAKE deliberately.
+Venue & Outputs can provide Program and operator URLs on the local network. Use a trusted church network, set an operator PIN, and test latency before the service. Browser-capable displays and OBS Browser Sources can open the Program URL.
 
-## 15. Troubleshooting
+Native Miracast, AirPlay, Chromecast discovery, NDI, SDI, and virtual-camera output require separate operating-system features, receiver hardware, or software.
 
-- A window is missing: reopen Add Source > Window, choose Refresh Windows, restore minimized windows, run both apps at the same privilege level, or use Browser source.
-- Captured video is black: protected video may block capture; use permitted media files or a browser/source workflow supported by the provider.
-- Program changed unexpectedly: use TAKE rather than double-clicking Multiview; double-click is an intentional direct-to-Program action.
-- Stream cannot start: verify at least one enabled destination has both server URL and key, check the account's scheduled live event, and inspect stream logs.
-- Scripture fails: check provider URL, Bible ID, internet connection, and API-key environment variable; manual text remains available.
-- Update is not offered: choose Menu > Check for Updates and confirm internet/GitHub access.
-- Layout is crowded: resize dock boundaries, merge docks into tabs, hide unused docks from their right-click menu, or reset the layout.
+## 16. Multiple Operators
 
-## 16. Privacy and Safety
+Assign each station a clear name and role: director, graphics, audio, or stream.
 
-Do not display private browser windows, credentials, counseling notes, or member data. Use separate presentation/browser profiles for services. Keep API credentials in environment variables, restrict operator PINs, use least-privilege provider permissions, and rotate any stream key exposed on screen or in a recording.
+- The director controls Preview, Program, and TAKE.
+- The graphics operator prepares lower thirds and Scripture.
+- The audio operator watches routing, meters, and clipping.
+- The stream operator watches destination health and dropped frames.
+
+Agree before the service who is allowed to send a scene directly to Program.
+
+## 17. Post Editor
+
+The Post Editor exports a selected time range from a completed recording.
+
+1. Open Post Editor.
+2. Select the recording.
+3. Set start and end times.
+4. Preview the chosen range if available.
+5. Export the clip.
+6. Play the exported file and confirm the first and last moments are correct.
+
+Source edge trimming in Preview and time trimming in Post Editor are different: Preview trimming crops picture edges; Post Editor trimming shortens a recording by time.
+
+## 18. Recommended Pre-Service Checklist
+
+Complete this checklist before every service.
+
+1. Connect power, cameras, audio interface, microphone, headphones, and displays.
+2. Open the app and confirm the expected version.
+3. Check every camera and capture source in Preview.
+4. Confirm every scene has the correct source order and locks.
+5. Confirm Program audio mode and the persistent microphone device.
+6. Speak and play the loudest expected music; confirm no channel shows CLIP.
+7. Confirm scene-only sources stop when their scene changes.
+8. Confirm All-scenes sources and Mic continue as intended.
+9. Check full, half, or three-quarter text layouts on the actual output display.
+10. Check all source crops in Preview, then TAKE each required scene once.
+11. Test the normal and Bible lower-third logos.
+12. Load one online and one offline Scripture reference, and test the required full/half/custom layout.
+13. Test lower-third color opacity and background-image readability.
+14. Confirm recording quality and frame rate.
+15. Confirm streaming FPS, destination URLs, and keys.
+16. Open sanctuary, lower-third, network, and Multiview outputs as needed.
+17. Make and watch a short recording.
+18. Run a private stream test and check dropped frames and audio sync.
+19. Return Preview and Program to the service opening scene and Studio Mode.
+
+## 19. Troubleshooting Quick Reference
+
+- **Preview is correct but the audience sees the old scene:** press TAKE.
+- **Program changed unexpectedly:** someone may have double-clicked a Multiview tile, which sends directly to Program.
+- **Mic stops or is silent:** select Mic - all scenes or Scene sources + Mic, then verify the persistent device and Windows permission.
+- **An audio file continues after changing scenes:** it is routed to All scenes. Change it to This scene or mute it.
+- **Audio distorts:** lower any channel showing CLIP, then lower Program Master if needed.
+- **Meters stay at zero:** confirm the source is playing, unmuted, and included in the selected routing mode.
+- **A crop is not live:** crop changes remain in Preview until TAKE.
+- **Mouse cursor appears to the audience:** open the Display/Window source Properties, set Cursor in Program to Hide Cursor, and confirm the capture source was recreated.
+- **Wrong logo appears on Scripture:** set Bible Passage Logo / Image and send the slide from Scripture so its kind is Scripture.
+- **Lower third blocks too much video:** reduce Background Opacity or background-image opacity.
+- **Text layout moved the wrong video:** group the intended Text and visual source, then apply the layout again.
+- **Stream cannot start:** enable at least one destination, verify the RTMP/RTMPS URL and key, and inspect the status message.
+- **Scripture fetch fails:** check provider URL, Bible ID, internet access, and API-key environment variable; manual text entry remains available.
+- **Offline library will not import:** confirm it is valid JSON, 25 MB or smaller, and uses supported passage/verse or book/chapter structures.
+- **Downloaded library is rejected:** use an HTTPS direct JSON address rather than a normal web page, and confirm the source permits download.
+- **Offline reference is missing:** select the correct library and use a complete reference such as John 3:16-18.
+- **Only Program is visible in the app:** choose View > Switch to Studio Mode.
+- **Computer is overloaded:** use 30 or 25/24 fps, close Multiview and unused browser apps, and disable or remove unused active sources.
+- **Remember Stream Key is disabled:** the operating system did not provide protected credential storage. Enter keys for this session; the app intentionally will not save them insecurely.
+- **Stop was pressed but the file is not ready:** keep the app open while FFmpeg finishes the final MP4. Very long services take longer and need free disk space.
+- **Dock layout is crowded:** resize dock boundaries, merge docks as tabs, hide unused docks, or reset the layout.
+
+## 20. Privacy, Safety, and Licensing
+
+- Do not capture private browser tabs, passwords, counseling notes, member records, or financial information.
+- Use a separate browser profile for services.
+- Keep stream keys and API credentials off screen.
+- Store API credentials in environment variables where supported.
+- Use a trusted network and a strong operator PIN.
+- Rotate a stream key immediately if it appears in Preview, Program, a screenshot, or a recording.
+- Confirm permission to display Bible translations, song lyrics, videos, and images.
+
+## 21. Glossary
+
+- **Scene:** a saved collection and arrangement of sources.
+- **Source:** one camera, image, video, audio file, browser page, capture, or text item.
+- **Preview:** the private preparation output.
+- **Program:** the live output used by viewers, recordings, streams, and displays.
+- **TAKE:** sends Preview to Program.
+- **Persistent audio:** audio that continues across scene changes.
+- **Scene audio:** audio used only while its scene is live.
+- **Mono:** one audio channel, shown as M.
+- **Stereo:** separate left and right channels, shown as L R.
+- **Clipping:** signal overload that can create audible distortion.
+- **Crop/trim edges:** hide part of the source picture without changing the original file.
+- **Lower third:** text and graphics placed over the lower or upper part of video.
+- **Offline Scripture library:** Scripture JSON stored on the computer for use without an internet connection.
+- **RTMP/RTMPS:** common protocols used to send a live stream to a platform.

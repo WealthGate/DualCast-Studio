@@ -4,6 +4,9 @@ import { registerIpcHandlers } from "./services/ipc";
 import { setupLogging } from "./services/logger";
 import { registerHotkeys, unregisterHotkeys } from "./services/hotkeyService";
 import { initializeUpdater, stopUpdater } from "./services/updateService";
+import { cleanupRecordingSessions, cleanupStaleRecordingFiles } from "./services/recordingService";
+import { forceStopStreaming } from "./services/streamingService";
+import { cleanupEditorCommands } from "./services/editorService";
 
 
 const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -16,6 +19,7 @@ if (isDev) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 const createMainWindow = () => {
   mainWindow = new BrowserWindow({
@@ -48,19 +52,32 @@ const createMainWindow = () => {
   });
 };
 
-app.whenReady().then(() => {
-  setupLogging();
-  createMainWindow();
-  registerIpcHandlers();
-  registerHotkeys(() => mainWindow);
-  initializeUpdater();
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
     }
   });
-});
+
+  app.whenReady().then(async () => {
+    setupLogging();
+    await cleanupStaleRecordingFiles();
+    createMainWindow();
+    registerIpcHandlers();
+    registerHotkeys(() => mainWindow);
+    initializeUpdater();
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow();
+      }
+    });
+  });
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -71,4 +88,7 @@ app.on("window-all-closed", () => {
 app.on("will-quit", () => {
   unregisterHotkeys();
   stopUpdater();
+  forceStopStreaming();
+  cleanupRecordingSessions();
+  cleanupEditorCommands();
 });

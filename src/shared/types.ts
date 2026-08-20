@@ -1,14 +1,16 @@
 export type AudioMode = "system" | "microphone" | "both" | "none";
+export type AudioRoutingScope = "scene" | "persistent";
 export type QualityPreset = "low" | "medium" | "high";
-export type FrameRatePreset = 30 | 60;
+export type FrameRatePreset = 15 | 24 | 25 | 30 | 50 | 60;
 export type StreamingPreset = "low" | "medium" | "high";
-export type StreamingFps = 30 | 60;
+export type StreamingFps = 15 | 24 | 25 | 30 | 50 | 60;
 export type StreamingAudioBitrate = 128 | 192;
 export type StreamingEncoder = "auto" | "x264" | "nvenc" | "qsv" | "amf";
 export type OperatorRole = "director" | "graphics" | "audio" | "stream";
 export type TextSourceRole = "standard" | "lower-third";
 export type ThemePreference = "system" | "dark" | "light" | "high-contrast" | "midnight" | "warm";
 export type LowerThirdAnimation = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "zoom" | "wipe";
+export type WorkspaceViewMode = "studio" | "program-focus" | "program-only";
 export type StreamPlatform = "custom" | "youtube" | "facebook";
 
 export type CaptureSourceType = "screen" | "window";
@@ -20,6 +22,13 @@ export type SourceRect = {
   y: number;
   width: number;
   height: number;
+};
+
+export type SourceCrop = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
 };
 
 export type SourceGroup = {
@@ -42,8 +51,11 @@ type SourceBase = {
   rect: SourceRect;
   enabled: boolean;
   audioEnabled: boolean;
+  audioScope?: AudioRoutingScope;
+  captureCursor?: "never" | "motion" | "always";
   volume?: number;
   rotation?: number;
+  crop?: SourceCrop;
   locked?: boolean;
   groupId?: string | null;
   media?: {
@@ -118,6 +130,9 @@ export type LowerThirdSettings = {
   heightPercent: number;
   position: "top" | "bottom";
   backgroundColor: string;
+  backgroundOpacity: number;
+  backgroundImageUrl: string;
+  backgroundImageOpacity: number;
   textColor: string;
   fontSize: number;
   fontFamily: string;
@@ -127,6 +142,8 @@ export type LowerThirdSettings = {
   textAlign: "left" | "center" | "right";
   imageUrl: string;
   imagePosition: "left" | "right" | "background";
+  bibleImageUrl: string;
+  bibleImagePosition: "left" | "right" | "background";
   entranceAnimation: LowerThirdAnimation;
   exitAnimation: LowerThirdAnimation;
   animationDurationMs: number;
@@ -164,6 +181,8 @@ export type Settings = {
   qualityPreset: QualityPreset;
   frameRate: FrameRatePreset;
   audioMode: AudioMode;
+  microphoneDeviceId: string | null;
+  microphoneGain: number;
   lastDisplayId: string | null;
   streamRtmpUrl: string;
   streamPreset: StreamingPreset;
@@ -186,6 +205,14 @@ export type SettingsUpdate = Partial<Settings>;
 
 export type SaveRecordingPayload = {
   data: Uint8Array | ArrayBuffer | number[];
+};
+
+export type RecordingChunkPayload = SaveRecordingPayload & {
+  sessionId: string;
+};
+
+export type RecordingSessionPayload = {
+  sessionId: string;
 };
 
 export type SaveRecordingResult = {
@@ -325,6 +352,28 @@ export type ScriptureFetchResult = {
   reference: string;
   text: string;
   translation?: string;
+};
+
+export type ScriptureLibrarySummary = {
+  id: string;
+  name: string;
+  translation?: string;
+  source?: string;
+  passageCount: number;
+  savedPassages?: boolean;
+};
+
+export type ScriptureLibraryLookupPayload = {
+  libraryId: string;
+  reference: string;
+};
+
+export type ScriptureLibraryDownloadPayload = {
+  url: string;
+};
+
+export type ScriptureLibraryRemovePayload = {
+  libraryId: string;
 };
 
 export type StreamingAuthorizationPayload = {

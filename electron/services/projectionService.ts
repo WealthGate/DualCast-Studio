@@ -51,7 +51,8 @@ const createOutputWindow = async (
   const outputWindow = new BrowserWindow({
     show: false,
     frame: false,
-    backgroundColor: "#000000",
+    backgroundColor: mode === "lower-third" ? "#00000000" : "#000000",
+    transparent: mode === "lower-third",
     skipTaskbar: true,
     fullscreenable: false,
     alwaysOnTop: true,

@@ -1,5 +1,6 @@
 import React from "react";
 import { UpdateStatusPayload } from "../../shared/types";
+import { normalizeVersion } from "../utils/updateControl";
 
 type UpdateBannerProps = {
   status: UpdateStatusPayload;
@@ -11,7 +12,8 @@ type UpdateBannerProps = {
 };
 
 const UpdateBanner: React.FC<UpdateBannerProps> = ({ status, onCheck, onDownload, onInstall, onOpenRelease, onDismiss }) => {
-  const latestVersion = status.latestVersion ? `v${status.latestVersion}` : "New version";
+  const latestVersion = status.latestVersion ? `v${normalizeVersion(status.latestVersion)}` : "New version";
+  const currentVersion = normalizeVersion(status.currentVersion);
   const progress = Math.round(status.progressPercent ?? 0);
 
   return (
@@ -22,10 +24,10 @@ const UpdateBanner: React.FC<UpdateBannerProps> = ({ status, onCheck, onDownload
           {status.state === "downloading" ? `Downloading ${latestVersion} · ${progress}%` : null}
           {status.state === "downloaded" ? `${latestVersion} is ready to install` : null}
           {status.state === "checking" ? "Checking for updates…" : null}
-          {status.state === "up-to-date" ? `OpenChurch v${status.currentVersion} is current` : null}
+          {status.state === "up-to-date" ? `OpenChurch v${currentVersion} is current` : null}
           {status.state === "error" ? "Update check failed" : null}
         </strong>
-        <span>{status.message ?? `Installed version: v${status.currentVersion}`}</span>
+        <span>{status.message ?? `Installed version: v${currentVersion}`}</span>
       </div>
       {status.state === "downloading" ? (
         <div className="update-progress" aria-label={`Download ${progress}%`}>

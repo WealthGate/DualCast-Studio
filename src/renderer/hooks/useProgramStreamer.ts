@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { pickRecorderMimeType, stopMediaStream } from "../utils/media";
-import { AudioMode, StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "../../shared/types";
+import { StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "../../shared/types";
 
 const presetBitrateMap: Record<string, number> = {
   low: 2_500_000,
   medium: 4_500_000,
   high: 6_500_000
 };
-
-const shouldIncludeSystem = (mode: AudioMode) => mode === "system" || mode === "both";
-const shouldIncludeMic = (mode: AudioMode) => mode === "microphone" || mode === "both";
 
 const formatTimer = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -42,7 +39,6 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
   const canvasStreamRef = useRef<MediaStream | null>(null);
   const stopRequestedRef = useRef(false);
   const startInFlightRef = useRef(false);
@@ -57,9 +53,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
   const cleanupCapture = () => {
     stopMediaStream(canvasStreamRef.current);
-    stopMediaStream(micStreamRef.current);
     canvasStreamRef.current = null;
-    micStreamRef.current = null;
     audioContextRef.current?.close();
     audioContextRef.current = null;
   };
@@ -142,32 +136,17 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       canvasStreamRef.current = canvasStream;
       const tracks = [...canvasStream.getVideoTracks()];
 
-      const audioMode = settings.audioMode;
-      const includeProgramAudio = shouldIncludeSystem(audioMode);
-      const captureAudio = includeProgramAudio || shouldIncludeMic(audioMode);
+      const captureAudio = settings.audioMode !== "none" && Boolean(programAudioStream?.getAudioTracks().length);
       const audioContext = captureAudio ? new AudioContext() : null;
       const destination = audioContext ? audioContext.createMediaStreamDestination() : null;
       audioContextRef.current = audioContext;
 
-      if (includeProgramAudio && programAudioStream && audioContext && destination && programAudioStream.getAudioTracks().length > 0) {
+      if (programAudioStream && audioContext && destination && programAudioStream.getAudioTracks().length > 0) {
         try {
           const source = audioContext.createMediaStreamSource(programAudioStream);
           source.connect(destination);
         } catch {
           setStatusMessage("Program audio is unavailable for this scene.");
-        }
-      }
-
-      if (shouldIncludeMic(audioMode)) {
-        try {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          micStreamRef.current = micStream;
-          if (audioContext && destination && micStream.getAudioTracks().length > 0) {
-            const source = audioContext.createMediaStreamSource(micStream);
-            source.connect(destination);
-          }
-        } catch (error) {
-          setStatusMessage("Microphone access was denied or unavailable.");
         }
       }
 
@@ -222,7 +201,14 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
           chunkQueueRef.current = chunkQueueRef.current
             .then(() => event.data.arrayBuffer())
             .then((buffer) => window.dualcast.sendStreamChunk(new Uint8Array(buffer)))
-            .catch(() => undefined);
+            .then(() => undefined)
+            .catch((error) => {
+              const message = error instanceof Error ? error.message : "Stream data delivery failed.";
+              setLastError(message);
+              setStatusMessage(message);
+              stopRequestedRef.current = true;
+              if (recorder.state !== "inactive") recorder.stop();
+            });
         };
 
         recorder.onstop = async () => {

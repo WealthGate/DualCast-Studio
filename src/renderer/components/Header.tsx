@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { AudioMode } from "../../shared/types";
+import { AudioMode, UpdateStatusPayload, WorkspaceViewMode } from "../../shared/types";
 import packageJson from "../../../package.json";
+import { getUpdateControlView, normalizeVersion } from "../utils/updateControl";
 
 const formatTimer = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -15,10 +16,27 @@ type HeaderProps = {
   onOpenFolder: () => void;
   onOpenMultiview: () => void;
   onCheckForUpdates: () => void;
+  onDownloadUpdate: () => void;
+  onInstallUpdate: () => void;
   onDownloadUserGuide: () => void;
+  updateStatus: UpdateStatusPayload | null;
+  viewMode: WorkspaceViewMode;
+  onChangeViewMode: (mode: WorkspaceViewMode) => void;
 };
 
-const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOpenFolder, onOpenMultiview, onCheckForUpdates, onDownloadUserGuide }) => {
+const Header: React.FC<HeaderProps> = ({
+  onStartRecording,
+  onStopRecording,
+  onOpenFolder,
+  onOpenMultiview,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
+  onDownloadUserGuide,
+  updateStatus,
+  viewMode,
+  onChangeViewMode
+}) => {
   const {
     isRecording,
     recordingSeconds,
@@ -29,6 +47,8 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
   } = useAppStore();
   const [openMenu, setOpenMenu] = useState<"menu" | "view" | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const updateControl = getUpdateControlView(updateStatus, packageJson.version);
+  const installedVersion = normalizeVersion(updateStatus?.currentVersion ?? packageJson.version);
 
   useEffect(() => {
     if (!openMenu) {
@@ -54,6 +74,20 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
     updateSettings({ audioMode: event.target.value as AudioMode });
   };
 
+  const handleUpdateAction = () => {
+    if (updateControl.action === "download") {
+      onDownloadUpdate();
+      return;
+    }
+    if (updateControl.action === "install") {
+      onInstallUpdate();
+      return;
+    }
+    if (updateControl.action === "check") {
+      onCheckForUpdates();
+    }
+  };
+
   return (
     <header className="app-header">
       <div className="brand">
@@ -76,7 +110,7 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
                   }}
                 >
                   Check for Updates
-                  <span>Installed v{packageJson.version}</span>
+                  <span>Installed v{installedVersion}</span>
                 </button>
                 <button className="menu-command" onClick={() => { setOpenMenu(null); onDownloadUserGuide(); }}>
                   Download User Guide
@@ -91,7 +125,40 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
             </button>
             {openMenu === "view" ? (
               <div className="menu-panel">
-                <div className="menu-title">Windows</div>
+                <div className="menu-title">Workspace View</div>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onChangeViewMode("studio");
+                  }}
+                  aria-pressed={viewMode === "studio"}
+                >
+                  Studio Mode
+                  <span>Preview + Program + operating docks</span>
+                </button>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onChangeViewMode("program-focus");
+                  }}
+                  aria-pressed={viewMode === "program-focus"}
+                >
+                  Program Focus
+                  <span>Program fills the center; docks remain and scene clicks go live</span>
+                </button>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onChangeViewMode("program-only");
+                  }}
+                  aria-pressed={viewMode === "program-only"}
+                >
+                  Full Program Only
+                  <span>Program fills the entire app; operating docks are hidden</span>
+                </button>
                 <button
                   className="menu-command"
                   onClick={() => {
@@ -113,6 +180,16 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
         </div>
       </div>
       <div className="header-controls">
+        <button
+          className={`btn header-update-button state-${updateStatus?.state ?? "idle"} ${updateControl.emphasis === "primary" ? "btn-primary" : "btn-outline"}`}
+          type="button"
+          onClick={handleUpdateAction}
+          disabled={updateControl.disabled}
+          aria-label={`${updateControl.label}. ${updateControl.detail}`}
+        >
+          <span>{updateControl.label}</span>
+          <small>{updateControl.detail}</small>
+        </button>
         <div className="recording-status">
           <span className={isRecording ? "indicator live" : "indicator"} />
           <span>{isRecording ? "Recording" : "Idle"}</span>
@@ -121,10 +198,10 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
         <div className="control-group">
           <label htmlFor="audioMode">Audio</label>
           <select id="audioMode" value={settings.audioMode} onChange={handleAudioChange}>
-            <option value="system">System</option>
-            <option value="microphone">Microphone</option>
-            <option value="both">System + Mic</option>
-            <option value="none">None</option>
+            <option value="system">Scene Sources</option>
+            <option value="microphone">Mic (All Scenes)</option>
+            <option value="both">Sources + Mic</option>
+            <option value="none">Mute All</option>
           </select>
         </div>
         <div className="control-group">

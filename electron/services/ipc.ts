@@ -5,7 +5,13 @@ import { pathToFileURL } from "url";
 import { IpcChannels } from "../../src/shared/ipc";
 import { listDisplays } from "./displayService";
 import { getSettings, updateSettings } from "./settingsService";
-import { saveRecording } from "./recordingService";
+import {
+  appendRecordingChunk,
+  beginRecording,
+  cancelRecording,
+  finishRecording,
+  saveRecording
+} from "./recordingService";
 import {
   getStreamLogPath,
   getStreamLogContent,
@@ -15,11 +21,13 @@ import {
   startStreaming,
   stopStreaming
 } from "./streamingService";
-import { clearStreamKey, getStreamKey, setStreamKey } from "./streamKeyService";
+import { clearStreamKey, getStreamKey, isEncryptionAvailable, setStreamKey } from "./streamKeyService";
 import {
   ExportClipPayload,
   MultiviewAction,
   MultiviewPayload,
+  RecordingChunkPayload,
+  RecordingSessionPayload,
   SaveRecordingPayload,
   SettingsUpdate,
   ProgramState,
@@ -50,7 +58,15 @@ import {
   forwardMultiviewData,
   openMultiviewWindow
 } from "./multiviewService";
-import { fetchScripture } from "./scriptureService";
+import {
+  downloadScriptureLibrary,
+  fetchScripture,
+  importScriptureLibrary,
+  listScriptureLibraries,
+  lookupScriptureLibrary,
+  removeScriptureLibrary,
+  saveScripturePassage
+} from "./scriptureService";
 import { authorizeStreaming } from "./streamingAuthService";
 
 export const registerIpcHandlers = () => {
@@ -79,6 +95,10 @@ export const registerIpcHandlers = () => {
   });
 
   ipcMain.handle(IpcChannels.saveRecording, async (_event, payload: SaveRecordingPayload) => saveRecording(payload));
+  ipcMain.handle(IpcChannels.beginRecording, async () => beginRecording());
+  ipcMain.handle(IpcChannels.appendRecordingChunk, async (_event, payload: RecordingChunkPayload) => appendRecordingChunk(payload));
+  ipcMain.handle(IpcChannels.finishRecording, async (_event, payload: RecordingSessionPayload) => finishRecording(payload));
+  ipcMain.handle(IpcChannels.cancelRecording, async (_event, payload: RecordingSessionPayload) => cancelRecording(payload));
 
   ipcMain.handle(IpcChannels.selectMediaFile, async (_event, payload: { kind: "image" | "video" | "audio" }) => {
     const window = BrowserWindow.getFocusedWindow();
@@ -153,6 +173,21 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IpcChannels.updateBrowserSource, async (_event, payload) => updateBrowserSource(payload));
   ipcMain.handle(IpcChannels.destroyBrowserSource, async (_event, payload) => destroyBrowserSource(payload));
   ipcMain.handle(IpcChannels.fetchScripture, async (_event, payload) => fetchScripture(payload));
+  ipcMain.handle(IpcChannels.listScriptureLibraries, async () => listScriptureLibraries());
+  ipcMain.handle(IpcChannels.lookupScriptureLibrary, async (_event, payload) => lookupScriptureLibrary(payload));
+  ipcMain.handle(IpcChannels.importScriptureLibrary, async () => {
+    const owner = BrowserWindow.getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      properties: ["openFile"],
+      filters: [{ name: "Scripture Library JSON", extensions: ["json"] }]
+    };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return importScriptureLibrary(result.filePaths[0]);
+  });
+  ipcMain.handle(IpcChannels.downloadScriptureLibrary, async (_event, payload) => downloadScriptureLibrary(payload));
+  ipcMain.handle(IpcChannels.saveScripturePassage, async (_event, payload) => saveScripturePassage(payload));
+  ipcMain.handle(IpcChannels.removeScriptureLibrary, async (_event, payload) => removeScriptureLibrary(payload));
   ipcMain.handle(IpcChannels.authorizeStreaming, async (_event, payload) => authorizeStreaming(payload));
   ipcMain.handle(IpcChannels.downloadUserGuide, async () => {
     const owner = BrowserWindow.getFocusedWindow();
@@ -177,7 +212,10 @@ export const registerIpcHandlers = () => {
     getStreamLogContent(payload)
   );
 
-  ipcMain.handle(IpcChannels.getStreamingCapabilities, async () => getStreamingCapabilities());
+  ipcMain.handle(IpcChannels.getStreamingCapabilities, async () => ({
+    ...getStreamingCapabilities(),
+    secureStorageAvailable: isEncryptionAvailable()
+  }));
 
   ipcMain.handle(IpcChannels.getStoredStreamKey, async (_event, payload?: { destinationId?: string }) =>
     getStreamKey(payload?.destinationId)
@@ -233,9 +271,10 @@ export const registerIpcHandlers = () => {
     }
   });
 
-  ipcMain.on(IpcChannels.streamChunk, (_event, payload: Uint8Array) => {
+  ipcMain.handle(IpcChannels.streamChunk, async (_event, payload: Uint8Array) => {
     if (payload && payload.length > 0) {
-      sendStreamChunk(payload);
+      await sendStreamChunk(payload);
     }
+    return true;
   });
 };

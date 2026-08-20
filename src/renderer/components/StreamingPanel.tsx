@@ -38,6 +38,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [logPath, setLogPath] = useState<string | null>(null);
   const [availableEncoders, setAvailableEncoders] = useState<StreamingEncoder[]>([]);
+  const [secureStorageAvailable, setSecureStorageAvailable] = useState<boolean | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [logContent, setLogContent] = useState("");
   const [logLoading, setLogLoading] = useState(false);
@@ -47,13 +48,24 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
   useEffect(() => {
     window.dualcast
       .getStreamingCapabilities()
-      .then((caps) => setAvailableEncoders(caps.encoders))
-      .catch(() => setAvailableEncoders(["x264"]));
+      .then(async (caps) => {
+        setAvailableEncoders(caps.encoders);
+        setSecureStorageAvailable(caps.secureStorageAvailable);
+        if (!caps.secureStorageAvailable) {
+          await window.dualcast.clearStoredStreamKey();
+          if (useAppStore.getState().settings.rememberStreamKey) {
+            await useAppStore.getState().updateSettings({ rememberStreamKey: false });
+          }
+        }
+      })
+      .catch(() => {
+        setAvailableEncoders(["x264"]);
+        setSecureStorageAvailable(false);
+      });
   }, []);
 
   useEffect(() => {
-    if (!settings.rememberStreamKey) {
-      setStreamKeys({});
+    if (!settings.rememberStreamKey || secureStorageAvailable !== true) {
       return;
     }
     Promise.all(
@@ -63,12 +75,13 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
       }))
     )
       .then((stored) => {
-        setStreamKeys(
-          Object.fromEntries(stored.filter((entry) => entry.key).map((entry) => [entry.id, entry.key as string]))
-        );
+        setStreamKeys((current) => ({
+          ...current,
+          ...Object.fromEntries(stored.filter((entry) => entry.key).map((entry) => [entry.id, entry.key as string]))
+        }));
       })
       .catch(() => undefined);
-  }, [destinationIds, settings.rememberStreamKey]);
+  }, [destinationIds, secureStorageAvailable, settings.rememberStreamKey]);
 
   const isActive =
     status === "connecting" ||
@@ -88,7 +101,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
       setLocalMessage(result.message ?? "Unable to start streaming.");
       return;
     }
-    if (settings.rememberStreamKey) {
+    if (settings.rememberStreamKey && secureStorageAvailable) {
       await Promise.all(
         destinations
           .filter((destination) => destination.streamKey)
@@ -103,6 +116,10 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
   };
 
   const handleRememberToggle = async (checked: boolean) => {
+    if (checked && !secureStorageAvailable) {
+      setLocalMessage("Secure operating-system credential storage is unavailable, so stream keys will not be saved.");
+      return;
+    }
     await updateSettings({ rememberStreamKey: checked });
     if (!checked) {
       await window.dualcast.clearStoredStreamKey();
@@ -175,7 +192,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
       });
       if (result.streamKey) {
         setStreamKeys((current) => ({ ...current, [destination.id]: result.streamKey as string }));
-        if (settings.rememberStreamKey) await window.dualcast.setStoredStreamKey({ destinationId: destination.id, streamKey: result.streamKey });
+        if (settings.rememberStreamKey && secureStorageAvailable) await window.dualcast.setStoredStreamKey({ destinationId: destination.id, streamKey: result.streamKey });
       }
     } catch (error) {
       setLocalMessage(error instanceof Error ? error.message : "Account authorization failed.");
@@ -308,10 +325,12 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
         <input
           id="rememberKey"
           type="checkbox"
-          checked={settings.rememberStreamKey}
+          checked={settings.rememberStreamKey && secureStorageAvailable === true}
           onChange={(event) => handleRememberToggle(event.target.checked)}
+          disabled={secureStorageAvailable !== true}
         />
       </div>
+      {secureStorageAvailable === false ? <div className="field-help">Stream keys stay in memory for this session because secure OS credential storage is unavailable.</div> : null}
       <div className="field">
         <label htmlFor="preset">Preset</label>
         <select
@@ -331,7 +350,11 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
           value={settings.streamFps}
           onChange={(event) => handleFpsChange(Number(event.target.value) as StreamingFps)}
         >
+          <option value={15}>15 fps</option>
+          <option value={24}>24 fps</option>
+          <option value={25}>25 fps</option>
           <option value={30}>30 fps</option>
+          <option value={50}>50 fps</option>
           <option value={60}>60 fps</option>
         </select>
       </div>

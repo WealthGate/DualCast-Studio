@@ -72,7 +72,11 @@ const SettingsPanel: React.FC = () => {
           value={settings.frameRate}
           onChange={(event) => updateSettings({ frameRate: Number(event.target.value) as FrameRatePreset })}
         >
+          <option value={15}>15 fps</option>
+          <option value={24}>24 fps</option>
+          <option value={25}>25 fps</option>
           <option value={30}>30 fps</option>
+          <option value={50}>50 fps</option>
           <option value={60}>60 fps</option>
         </select>
       </div>
