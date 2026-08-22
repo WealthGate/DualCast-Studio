@@ -30,7 +30,11 @@ import {
   ScriptureLibraryDownloadPayload,
   ScriptureLibraryLookupPayload,
   ScriptureLibraryRemovePayload,
+  ScriptureLibraryCatalog,
   ScriptureLibrarySummary,
+  SongDownloadPayload,
+  SongLibraryEntry,
+  SongRemovePayload,
   StreamingAuthorizationPayload,
   StreamingAuthorizationResult
 } from "../src/shared/types";
@@ -100,6 +104,14 @@ const api = {
     ipcRenderer.invoke(IpcChannels.saveScripturePassage, payload),
   removeScriptureLibrary: (payload: ScriptureLibraryRemovePayload): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.removeScriptureLibrary, payload),
+  getScriptureLibraryCatalog: (libraryId: string): Promise<ScriptureLibraryCatalog> =>
+    ipcRenderer.invoke(IpcChannels.getScriptureLibraryCatalog, libraryId),
+  listSongs: (): Promise<SongLibraryEntry[]> => ipcRenderer.invoke(IpcChannels.listSongs),
+  importSong: (): Promise<SongLibraryEntry | null> => ipcRenderer.invoke(IpcChannels.importSong),
+  downloadSong: (payload: SongDownloadPayload): Promise<SongLibraryEntry> =>
+    ipcRenderer.invoke(IpcChannels.downloadSong, payload),
+  removeSong: (payload: SongRemovePayload): Promise<boolean> =>
+    ipcRenderer.invoke(IpcChannels.removeSong, payload),
   authorizeStreaming: (payload: StreamingAuthorizationPayload): Promise<StreamingAuthorizationResult> =>
     ipcRenderer.invoke(IpcChannels.authorizeStreaming, payload),
   downloadUserGuide: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.downloadUserGuide),

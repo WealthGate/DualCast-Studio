@@ -1,4 +1,4 @@
-# OpenChurch Broadcast Studio v0.6.3 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.4 - Complete User Guide
 
 This guide is written for volunteers, media teams, pastors, and technical operators. You do not need previous broadcast-software experience.
 
@@ -39,7 +39,7 @@ Do not begin a live service until the test recording contains both picture and c
 1. Open the project's GitHub Releases page.
 2. Download the newest Windows installer, or download the portable ZIP if installation is not permitted.
 3. Run the installer. If using the ZIP, extract it before running the app.
-4. Confirm the version beside the product name is **v0.6.3**.
+4. Confirm the version beside the product name is **v0.6.4**.
 5. Find the always-visible update button in the top header. It reads **Check for Updates** and shows the installed version below it.
 6. Select **Check for Updates**. The button is disabled while checking, and the banner confirms the installed version.
 7. If the app is current, dismiss the confirmation. If a newer release exists, select **Update to v[version]** to download that exact version.
@@ -271,11 +271,43 @@ Lower thirds can show a name, title, announcement, lyric, or Scripture passage.
 1. Open Lower Third Studio.
 2. Type a short message in Manual lower-third text.
 3. Choose Add and Show.
-4. Click any saved slide to cue it.
-5. Use Previous and Next, or focus the dock and use the arrow keys.
-6. Choose Clear Live to remove the current slide.
+4. Check the staged message in Preview. Program remains unchanged.
+5. Choose **Take Text Live** to change only Program text, or press **TAKE** to send the complete Preview scene and staged text together.
+6. Click any saved slide to stage it in Preview.
+7. Use Previous and Next, or focus the dock and use the arrow keys. Navigation remains inside the selected song or Scripture deck.
+8. Choose **Clear Preview** to stage no text. Choose **Clear Program Text** when live text must be removed immediately.
 
-For lyrics or long text, paste the content with one blank line between slides, then choose **Split Blank Lines into Slides**.
+### Keep the screen uncluttered
+
+**One presentation text layer at a time** is the default and recommended setting. When it is active:
+
+- Staging lower-third lyrics or Scripture removes an existing managed Scripture, lyric, song, or lower-third Text source from the Preview scene.
+- Adding full-screen, half-screen, three-quarter, or custom Scripture to Preview clears the staged configured lower third.
+- Ordinary Text sources such as a clock, score, or permanent label are not automatically removed.
+- Program remains unchanged until TAKE or Take Text Live.
+
+Enable **Allow more than one text presentation on screen** only when two or more text presentations are intentional. Check every layer in Preview before TAKE. Turning on this option does not automatically reposition overlapping text.
+
+### Automatically create lyric slides
+
+1. Enter a song or presentation title.
+2. Paste the lyrics. Put each sung line on its own line; blank lines may separate verses or choruses.
+3. Choose **Lines per slide** from 1 to 6.
+4. Set the approximate characters per line. The default works well for most lower thirds.
+5. Choose **Auto-Separate Text into Slides**.
+6. Check the first slide in Preview, then use Next to inspect the complete song.
+
+The app wraps long pasted lines before grouping them. A two-line setting therefore creates slides containing up to two display lines, not simply two pasted paragraphs.
+
+### Download or import songs for offline use
+
+1. Expand **Downloaded and Imported Songs**.
+2. To download, paste an HTTPS address for a permitted TXT, Markdown, or compatible JSON lyrics file and choose **Download and Save Song**.
+3. To use a file already on the computer, choose **Import TXT, MD or JSON Song**.
+4. Select the saved song and choose **Load Song**.
+5. Choose the lines per slide and then choose **Auto-Separate Text into Slides**.
+
+Downloaded and imported songs remain stored on the computer. Compatible JSON may contain `title` plus `lyrics`/`text`, or ordered `slides`/`verses`. Use only material the church is permitted to download and display.
 
 ### Edit a lyric or text slide after splitting
 
@@ -284,7 +316,7 @@ For lyrics or long text, paste the content with one blank line between slides, t
 3. Correct the words, spelling, or line breaks.
 4. Choose **Save & Show**.
 
-Save & Show updates the existing slide and immediately makes the edited slide active on the lower third. Choose Cancel to leave it unchanged. This works for split lyrics, manual text slides, and Scripture slides.
+Save & Show updates the existing slide and stages the edited slide in Preview. Choose Take Text Live or TAKE only after checking it. Cancel leaves the original slide unchanged. This works for split lyrics, manual text slides, and Scripture slides.
 
 While editing a slide, two additional choices are available:
 
@@ -333,10 +365,13 @@ The Scripture dock can use the configured online provider, individual passages s
 
 1. Open the Scripture dock.
 2. Set Scripture Source to **Configured Online Provider**.
-3. Enter a reference, such as John 3:16-18.
-4. Choose Fetch Online.
-5. Read the complete returned passage and reference.
-6. Correct the text manually if your licensed source requires it.
+3. Select the Bible book.
+4. Select the chapter, start verse, and end verse.
+5. Press Enter or choose the displayed **Load [reference]** button.
+6. Read the complete returned passage and reference.
+7. Correct the text manually if your licensed source requires it.
+
+Expand **Type a reference instead** when a reference is faster to type or has a format that is not convenient in the selector.
 
 ### Save one passage for offline use
 
@@ -344,7 +379,7 @@ The Scripture dock can use the configured online provider, individual passages s
 2. Confirm Displayed Reference is correct.
 3. Choose **Save Passage Offline**.
 4. Later, choose **Saved Passages** in Scripture Source.
-5. Enter the reference and choose Load Offline.
+5. Select the book, chapter, and verse in the offline library catalog, then press Enter or choose Load.
 
 ### Import a Scripture library already downloaded to the computer
 
@@ -352,27 +387,39 @@ The Scripture dock can use the configured online provider, individual passages s
 2. Choose **Import Downloaded JSON**.
 3. Select a compatible `.json` library file.
 4. The imported library becomes the selected Scripture Source.
-5. Enter a reference and choose Load Offline.
+5. Select a book, chapter, and verse from that library and choose Load.
 
 ### Download a Scripture library by HTTPS address
 
 1. Obtain an HTTPS JSON download address from a source that permits downloading and public display.
 2. Expand Offline Scripture Libraries.
-3. Paste the address into **HTTPS Library JSON Address**.
+3. Paste the address into the **HTTPS address** field.
 4. Choose Download Library.
 5. Wait for the passage count and success message.
-6. Enter a reference and choose Load Offline.
+6. Select the book, chapter, and verse from the downloaded version, then press Enter or choose Load.
 
-Libraries may contain `passages` or `verses` with `reference` and `text` fields, or `books` containing chapters and verses. Files must be valid JSON and no larger than 25 MB. The app stores imported libraries on the computer for use without internet. Use Remove Selected Library to delete an imported/downloaded library; Saved Passages is managed by saving individual passages.
+Libraries may contain `passages` or `verses` with `reference` and `text` fields, or `books` containing chapters and verses. Files must be valid JSON and no larger than 25 MB. The app stores every downloaded translation separately, so multiple Bible versions can remain available offline at the same time. Use Remove Selected Library to delete one imported/downloaded library; Saved Passages is managed by saving individual passages.
+
+### Split Scripture into animated slides
+
+1. Load a passage and confirm its text and displayed reference.
+2. Under **Scripture Slide Arrangement**, choose **One verse per slide**, **Automatic lines per slide**, or **Entire passage on one slide**.
+3. For automatic lines, choose how many lines each slide should contain.
+4. Choose the verse entrance animation and transition speed.
+5. Choose **Create Slides in Preview**.
+6. Inspect each verse with Previous and Next. Scripture navigation stays inside that passage deck.
+7. Press TAKE to send the scene and Scripture together, or choose Take Text Live in Lower Third Studio to change only the text.
+
+Scripture slides use all lower-third functions: font, alignment, opacity, background image, Bible-specific image, line limit, entrance animation, and exit animation. Moving to the next verse automatically runs the configured slide transition.
 
 ### Display Scripture in any layout
 
-- Choose **Send to Lower Third** for the configured lower-third height, animation, opacity, background image, and Bible-specific logo.
+- Choose **Create Slides in Preview** for the configured lower-third height, animation, opacity, background image, and Bible-specific logo.
 - Expand **Add Scripture to Preview Scene** and choose Full Screen Text, either Half Screen arrangement, or either Text 3/4 arrangement.
 - Choose **Custom / Freely Resizable** and enter X, Y, Width, and Height for another size.
 - Choose Add to Preview Scene. Check the result in Preview, drag or resize it if needed, then press TAKE.
 
-Full, half, three-quarter, and custom Scripture text is added as a normal Text source. It can be edited, grouped, locked, moved, or resized from Sources. The lower-third line limit affects lower thirds only.
+Full, half, three-quarter, and custom Scripture text is added as a managed presentation Text source. It can be edited, grouped, locked, moved, or resized from Sources. With the recommended one-text setting, it replaces existing managed lyrics or Scripture in Preview but does not disturb ordinary text sources. The lower-third line limit affects lower thirds only.
 
 When using the lower third, confirm that the Bible-specific logo and reference appear correctly.
 
@@ -422,7 +469,7 @@ Never choose a higher frame rate only because the number is larger. A stable 30 
 8. Choose Open Folder.
 9. Play the saved file and check its beginning, middle, end, and audio sync.
 
-During recording, the app writes short chunks to a temporary file instead of keeping the entire service in memory. When you press Stop, FFmpeg performs final MP4 encoding. Keep the app open and allow the conversion to finish before shutting down. If normal conversion is unavailable, the app saves a WebM fallback and shows a notice. Long services still require enough free disk space for both the temporary recording and final file.
+During recording, the app writes each short WebM chunk through an ordered direct-to-disk session instead of keeping the entire service in memory. The temporary file grows throughout the service, so memory use does not grow with the recording duration. When you press Stop, the app closes that disk session and FFmpeg performs final MP4 encoding. Keep the app open and allow the conversion to finish before shutting down. If normal conversion is unavailable, the app saves a WebM fallback and shows a notice. Long services still require enough free disk space for both the temporary recording and final file.
 
 ## 14. Live Streaming
 
@@ -540,7 +587,15 @@ Complete this checklist before every service.
 - Rotate a stream key immediately if it appears in Preview, Program, a screenshot, or a recording.
 - Confirm permission to display Bible translations, song lyrics, videos, and images.
 
-## 21. Glossary
+## 21. Known Limits
+
+- Direct-to-disk recording still needs free space in the operating system's temporary directory and the selected save directory.
+- A forced shutdown or power loss before Stop can leave the active recording incomplete. The app removes stale temporary recording sessions when it next starts.
+- Final MP4 conversion begins after recording stops. Long services take longer to convert and may temporarily require space for both the WebM capture and MP4 output.
+- If FFmpeg conversion is unavailable or fails, the app preserves the recording as WebM and identifies it as a fallback.
+- The Post Editor currently trims and exports one completed recording; it is not yet a multitrack editor.
+
+## 22. Glossary
 
 - **Scene:** a saved collection and arrangement of sources.
 - **Source:** one camera, image, video, audio file, browser page, capture, or text item.

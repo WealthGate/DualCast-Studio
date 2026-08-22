@@ -2880,8 +2880,57 @@ body {
   gap: 6px;
 }
 
+.presentation-safety-card,
+.scripture-reference-picker {
+  display: grid;
+  gap: 8px;
+  margin: 9px 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-soft));
+}
+
+.presentation-safety-card > strong {
+  color: var(--accent-2);
+}
+
+.presentation-safety-card > span:not(.field-help) {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.presentation-split-options,
+.scripture-reference-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scripture-reference-picker > .btn {
+  width: 100%;
+}
+
+.scripture-direct-reference,
+.song-library-manager {
+  margin: 8px 0 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.scripture-direct-reference summary,
+.song-library-manager summary {
+  margin-bottom: 8px;
+  color: var(--accent-2);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lower-third-live-actions {
+  margin-top: 6px;
+}
+
 .scripture-scene-layout,
-.scripture-library-manager {
+.scripture-library-manager,
+.song-library-manager {
   margin-top: 10px;
   border-top: 1px solid var(--border);
   padding-top: 8px;

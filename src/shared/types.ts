@@ -7,7 +7,7 @@ export type StreamingFps = 15 | 24 | 25 | 30 | 50 | 60;
 export type StreamingAudioBitrate = 128 | 192;
 export type StreamingEncoder = "auto" | "x264" | "nvenc" | "qsv" | "amf";
 export type OperatorRole = "director" | "graphics" | "audio" | "stream";
-export type TextSourceRole = "standard" | "lower-third";
+export type TextSourceRole = "standard" | "lower-third" | "presentation";
 export type ThemePreference = "system" | "dark" | "light" | "high-contrast" | "midnight" | "warm";
 export type LowerThirdAnimation = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "zoom" | "wipe";
 export type WorkspaceViewMode = "studio" | "program-focus" | "program-only";
@@ -122,6 +122,8 @@ export type LowerThirdSlide = {
   text: string;
   reference?: string;
   kind?: "text" | "song" | "scripture";
+  deckId?: string;
+  deckTitle?: string;
 };
 
 export type LowerThirdSettings = {
@@ -150,7 +152,12 @@ export type LowerThirdSettings = {
   showOnProgram: boolean;
   maxLines: number;
   slides: LowerThirdSlide[];
+  /** The slide staged in Preview. */
   activeSlideId: string | null;
+  /** The independently committed slide visible on Program. */
+  programSlideId: string | null;
+  /** Opt-in override for operators who intentionally want stacked presentation text. */
+  allowMultipleTextLayers: boolean;
 };
 
 export type NetworkOutputSettings = {
@@ -352,6 +359,10 @@ export type ScriptureFetchResult = {
   reference: string;
   text: string;
   translation?: string;
+  verses?: Array<{
+    reference: string;
+    text: string;
+  }>;
 };
 
 export type ScriptureLibrarySummary = {
@@ -374,6 +385,32 @@ export type ScriptureLibraryDownloadPayload = {
 
 export type ScriptureLibraryRemovePayload = {
   libraryId: string;
+};
+
+export type ScriptureLibraryCatalog = {
+  libraryId: string;
+  books: Array<{
+    name: string;
+    chapters: Array<{
+      number: number;
+      verses: number[];
+    }>;
+  }>;
+};
+
+export type SongLibraryEntry = {
+  id: string;
+  title: string;
+  lyrics: string;
+  source?: string;
+};
+
+export type SongDownloadPayload = {
+  url: string;
+};
+
+export type SongRemovePayload = {
+  songId: string;
 };
 
 export type StreamingAuthorizationPayload = {

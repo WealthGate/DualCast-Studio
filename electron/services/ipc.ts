@@ -62,11 +62,13 @@ import {
   downloadScriptureLibrary,
   fetchScripture,
   importScriptureLibrary,
+  getScriptureLibraryCatalog,
   listScriptureLibraries,
   lookupScriptureLibrary,
   removeScriptureLibrary,
   saveScripturePassage
 } from "./scriptureService";
+import { downloadSong, importSong, listSongs, removeSong } from "./songService";
 import { authorizeStreaming } from "./streamingAuthService";
 
 export const registerIpcHandlers = () => {
@@ -188,6 +190,20 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IpcChannels.downloadScriptureLibrary, async (_event, payload) => downloadScriptureLibrary(payload));
   ipcMain.handle(IpcChannels.saveScripturePassage, async (_event, payload) => saveScripturePassage(payload));
   ipcMain.handle(IpcChannels.removeScriptureLibrary, async (_event, payload) => removeScriptureLibrary(payload));
+  ipcMain.handle(IpcChannels.getScriptureLibraryCatalog, async (_event, libraryId: string) => getScriptureLibraryCatalog(libraryId));
+  ipcMain.handle(IpcChannels.listSongs, async () => listSongs());
+  ipcMain.handle(IpcChannels.importSong, async () => {
+    const owner = BrowserWindow.getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      properties: ["openFile"],
+      filters: [{ name: "Song Lyrics", extensions: ["txt", "md", "json"] }]
+    };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return importSong(result.filePaths[0]);
+  });
+  ipcMain.handle(IpcChannels.downloadSong, async (_event, payload) => downloadSong(payload));
+  ipcMain.handle(IpcChannels.removeSong, async (_event, payload) => removeSong(payload));
   ipcMain.handle(IpcChannels.authorizeStreaming, async (_event, payload) => authorizeStreaming(payload));
   ipcMain.handle(IpcChannels.downloadUserGuide, async () => {
     const owner = BrowserWindow.getFocusedWindow();

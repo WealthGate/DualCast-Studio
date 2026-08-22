@@ -61,6 +61,11 @@ export const IpcChannels = {
   downloadScriptureLibrary: "dualcast:download-scripture-library",
   saveScripturePassage: "dualcast:save-scripture-passage",
   removeScriptureLibrary: "dualcast:remove-scripture-library",
+  getScriptureLibraryCatalog: "dualcast:get-scripture-library-catalog",
+  listSongs: "dualcast:list-songs",
+  importSong: "dualcast:import-song",
+  downloadSong: "dualcast:download-song",
+  removeSong: "dualcast:remove-song",
   authorizeStreaming: "dualcast:authorize-streaming",
   downloadUserGuide: "dualcast:download-user-guide"
 } as const;

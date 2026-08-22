@@ -83,7 +83,7 @@ const normalizeSource = (id: string, value: unknown): Source | null => {
       color: cleanString(data.color, "#ffffff", 64),
       backgroundColor: cleanString(data.backgroundColor, "transparent", 64),
       align: data.align === "left" || data.align === "right" ? data.align : "center",
-      role: data.role === "lower-third" ? "lower-third" : "standard"
+      role: data.role === "lower-third" || data.role === "presentation" ? data.role : "standard"
     }
   };
 };

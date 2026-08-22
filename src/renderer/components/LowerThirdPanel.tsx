@@ -1,7 +1,8 @@
-import React, { useMemo, useRef, useState } from "react";
-import { LowerThirdAnimation, LowerThirdSlide } from "../../shared/types";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { LowerThirdAnimation, LowerThirdSlide, SongLibraryEntry } from "../../shared/types";
 import { useAppStore } from "../store/useAppStore";
 import { insertSlideAfter, replaceSlideWithLines, splitSlideLines } from "../utils/lowerThirdSlides";
+import { splitTextIntoSlides } from "../utils/presentationSlides";
 
 const createId = () => crypto.randomUUID?.() ?? `lower-third-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -16,31 +17,67 @@ const animationOptions: Array<{ value: LowerThirdAnimation; label: string }> = [
 ];
 
 const LowerThirdPanel: React.FC = () => {
-  const { settings, updateSettings } = useAppStore();
+  const {
+    settings,
+    updateSettings,
+    stageLowerThird,
+    takeLowerThirdToProgram,
+    clearProgramText
+  } = useAppStore();
   const lowerThird = settings.lowerThird;
   const [manualText, setManualText] = useState("");
   const [bulkText, setBulkText] = useState("");
+  const [bulkTitle, setBulkTitle] = useState("Lyrics");
+  const [linesPerSlide, setLinesPerSlide] = useState(2);
+  const [maxCharactersPerLine, setMaxCharactersPerLine] = useState(52);
   const [editingSlideId, setEditingSlideId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [draftSlideId, setDraftSlideId] = useState<string | null>(null);
+  const [songs, setSongs] = useState<SongLibraryEntry[]>([]);
+  const [selectedSongId, setSelectedSongId] = useState("");
+  const [songUrl, setSongUrl] = useState("");
+  const [songLibraryMessage, setSongLibraryMessage] = useState<string | null>(null);
+  const [songLibraryLoading, setSongLibraryLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const activeIndex = useMemo(
     () => lowerThird.slides.findIndex((slide) => slide.id === lowerThird.activeSlideId),
     [lowerThird.activeSlideId, lowerThird.slides]
   );
+  const activeSlide = activeIndex >= 0 ? lowerThird.slides[activeIndex] : null;
+  const navigationSlides = useMemo(
+    () => activeSlide?.deckId
+      ? lowerThird.slides.filter((slide) => slide.deckId === activeSlide.deckId)
+      : lowerThird.slides,
+    [activeSlide?.deckId, lowerThird.slides]
+  );
+  const navigationIndex = navigationSlides.findIndex((slide) => slide.id === lowerThird.activeSlideId);
+
+  const refreshSongs = async () => {
+    try {
+      const next = await window.dualcast.listSongs();
+      setSongs(next);
+      if (selectedSongId && !next.some((song) => song.id === selectedSongId)) setSelectedSongId("");
+    } catch {
+      setSongs([]);
+    }
+  };
+
+  useEffect(() => {
+    void refreshSongs();
+  }, []);
 
   const saveLowerThird = (update: Partial<typeof lowerThird>) =>
     updateSettings({ lowerThird: { ...lowerThird, ...update } });
 
-  const activateSlide = (slideId: string | null) => saveLowerThird({ activeSlideId: slideId });
+  const activateSlide = (slideId: string | null) => stageLowerThird(lowerThird.slides, slideId);
 
   const moveSlide = (direction: -1 | 1) => {
-    if (lowerThird.slides.length === 0) {
+    if (navigationSlides.length === 0) {
       return;
     }
-    const current = activeIndex < 0 ? (direction > 0 ? -1 : lowerThird.slides.length) : activeIndex;
-    const nextIndex = Math.max(0, Math.min(lowerThird.slides.length - 1, current + direction));
-    activateSlide(lowerThird.slides[nextIndex].id);
+    const current = navigationIndex < 0 ? (direction > 0 ? -1 : navigationSlides.length) : navigationIndex;
+    const nextIndex = Math.max(0, Math.min(navigationSlides.length - 1, current + direction));
+    void activateSlide(navigationSlides[nextIndex].id);
   };
 
   const addManualSlide = () => {
@@ -48,36 +85,94 @@ const LowerThirdPanel: React.FC = () => {
     if (!text) {
       return;
     }
-    const slide: LowerThirdSlide = { id: createId(), text, kind: "text" };
-    saveLowerThird({ slides: [...lowerThird.slides, slide], activeSlideId: slide.id });
+    const deckId = createId();
+    const slide: LowerThirdSlide = { id: createId(), text, kind: "text", deckId, deckTitle: "Manual Text" };
+    void stageLowerThird([...lowerThird.slides, slide], slide.id);
     setManualText("");
   };
 
   const splitBulkText = () => {
-    const slides = bulkText
-      .trim()
-      .split(/\r?\n\s*\r?\n/g)
-      .map((text) => text.trim())
-      .filter(Boolean)
-      .map<LowerThirdSlide>((text) => ({ id: createId(), text, kind: "song" }));
+    const deckId = createId();
+    const slides = splitTextIntoSlides(bulkText, { linesPerSlide, maxCharactersPerLine })
+      .map<LowerThirdSlide>((text) => ({ id: createId(), text, kind: "song", deckId, deckTitle: bulkTitle.trim() || "Lyrics" }));
     if (slides.length === 0) {
       return;
     }
-    saveLowerThird({ slides: [...lowerThird.slides, ...slides], activeSlideId: slides[0].id });
+    void stageLowerThird([...lowerThird.slides, ...slides], slides[0].id);
     setBulkText("");
+    setBulkTitle("Lyrics");
+  };
+
+  const loadSelectedSong = () => {
+    const song = songs.find((candidate) => candidate.id === selectedSongId);
+    if (!song) return;
+    setBulkTitle(song.title);
+    setBulkText(song.lyrics);
+    setSongLibraryMessage(`${song.title} loaded into the slide editor. Choose the line count, then create the slides.`);
+  };
+
+  const importSong = async () => {
+    setSongLibraryLoading(true);
+    try {
+      const song = await window.dualcast.importSong();
+      if (song) {
+        await refreshSongs();
+        setSelectedSongId(song.id);
+        setBulkTitle(song.title);
+        setBulkText(song.lyrics);
+        setSongLibraryMessage(`${song.title} imported and loaded into the slide editor.`);
+      }
+    } catch (error) {
+      setSongLibraryMessage(error instanceof Error ? error.message : "Unable to import the song.");
+    } finally {
+      setSongLibraryLoading(false);
+    }
+  };
+
+  const downloadSong = async () => {
+    if (!songUrl.trim()) return;
+    setSongLibraryLoading(true);
+    try {
+      const song = await window.dualcast.downloadSong({ url: songUrl.trim() });
+      await refreshSongs();
+      setSelectedSongId(song.id);
+      setBulkTitle(song.title);
+      setBulkText(song.lyrics);
+      setSongUrl("");
+      setSongLibraryMessage(`${song.title} downloaded, saved and loaded into the slide editor.`);
+    } catch (error) {
+      setSongLibraryMessage(error instanceof Error ? error.message : "Unable to download the song.");
+    } finally {
+      setSongLibraryLoading(false);
+    }
+  };
+
+  const removeSelectedSong = async () => {
+    if (!selectedSongId) return;
+    setSongLibraryLoading(true);
+    try {
+      await window.dualcast.removeSong({ songId: selectedSongId });
+      setSelectedSongId("");
+      await refreshSongs();
+      setSongLibraryMessage("The selected downloaded song was removed from this computer.");
+    } catch (error) {
+      setSongLibraryMessage(error instanceof Error ? error.message : "Unable to remove the song.");
+    } finally {
+      setSongLibraryLoading(false);
+    }
   };
 
   const removeSlide = (slideId: string) => {
+    if (slideId === lowerThird.programSlideId) return;
     const slides = lowerThird.slides.filter((slide) => slide.id !== slideId);
     if (editingSlideId === slideId) {
       setEditingSlideId(null);
       setEditingText("");
       setDraftSlideId(null);
     }
-    saveLowerThird({
-      slides,
-      activeSlideId: lowerThird.activeSlideId === slideId ? slides[0]?.id ?? null : lowerThird.activeSlideId
-    });
+    const nextActive = lowerThird.activeSlideId === slideId ? null : lowerThird.activeSlideId;
+    if (lowerThird.activeSlideId === slideId) void stageLowerThird(slides, nextActive);
+    else void saveLowerThird({ slides });
   };
 
   const beginEditSlide = (slide: LowerThirdSlide) => {
@@ -88,10 +183,18 @@ const LowerThirdPanel: React.FC = () => {
   const saveEditedSlide = () => {
     const text = editingText.trim();
     if (!editingSlideId || !text) return;
-    saveLowerThird({
-      slides: lowerThird.slides.map((slide) => slide.id === editingSlideId ? { ...slide, text } : slide),
-      activeSlideId: editingSlideId
-    });
+    const current = lowerThird.slides.find((slide) => slide.id === editingSlideId);
+    if (!current) return;
+
+    if (current.id === lowerThird.programSlideId) {
+      const previewCopy = { ...current, id: createId(), text };
+      void stageLowerThird(insertSlideAfter(lowerThird.slides, current.id, previewCopy), previewCopy.id);
+    } else {
+      void stageLowerThird(
+        lowerThird.slides.map((slide) => slide.id === editingSlideId ? { ...slide, text } : slide),
+        editingSlideId
+      );
+    }
     setEditingSlideId(null);
     setEditingText("");
     setDraftSlideId(null);
@@ -102,9 +205,15 @@ const LowerThirdPanel: React.FC = () => {
     if (!editingSlideId || !text) return;
     const current = lowerThird.slides.find((slide) => slide.id === editingSlideId);
     if (!current) return;
-    const draft: LowerThirdSlide = { id: createId(), text: "", kind: current.kind };
-    const updated = lowerThird.slides.map((slide) => slide.id === current.id ? { ...slide, text } : slide);
-    saveLowerThird({ slides: insertSlideAfter(updated, current.id, draft), activeSlideId: current.id });
+    const draft: LowerThirdSlide = { ...current, id: createId(), text: "" };
+    if (current.id === lowerThird.programSlideId) {
+      const previewCopy = { ...current, id: createId(), text };
+      const withPreviewCopy = insertSlideAfter(lowerThird.slides, current.id, previewCopy);
+      void stageLowerThird(insertSlideAfter(withPreviewCopy, previewCopy.id, draft), previewCopy.id);
+    } else {
+      const updated = lowerThird.slides.map((slide) => slide.id === current.id ? { ...slide, text } : slide);
+      void stageLowerThird(insertSlideAfter(updated, current.id, draft), current.id);
+    }
     setEditingSlideId(draft.id);
     setEditingText("");
     setDraftSlideId(draft.id);
@@ -112,9 +221,24 @@ const LowerThirdPanel: React.FC = () => {
 
   const splitEditedSlide = () => {
     if (!editingSlideId) return;
+    const current = lowerThird.slides.find((slide) => slide.id === editingSlideId);
+    if (!current) return;
+    if (current.id === lowerThird.programSlideId) {
+      const lines = splitSlideLines(editingText);
+      if (lines.length < 2) return;
+      const replacements = lines.map((text) => ({ ...current, id: createId(), text }));
+      const currentIndex = lowerThird.slides.findIndex((slide) => slide.id === current.id);
+      const slides = [...lowerThird.slides];
+      slides.splice(currentIndex + 1, 0, ...replacements);
+      void stageLowerThird(slides, replacements[0].id);
+      setEditingSlideId(null);
+      setEditingText("");
+      setDraftSlideId(null);
+      return;
+    }
     const result = replaceSlideWithLines(lowerThird.slides, editingSlideId, editingText, createId);
     if (!result) return;
-    saveLowerThird(result);
+    void stageLowerThird(result.slides, result.activeSlideId);
     setEditingSlideId(null);
     setEditingText("");
     setDraftSlideId(null);
@@ -122,10 +246,10 @@ const LowerThirdPanel: React.FC = () => {
 
   const cancelSlideEdit = () => {
     if (draftSlideId) {
-      saveLowerThird({
-        slides: lowerThird.slides.filter((slide) => slide.id !== draftSlideId),
-        activeSlideId: lowerThird.activeSlideId === draftSlideId ? null : lowerThird.activeSlideId
-      });
+      void stageLowerThird(
+        lowerThird.slides.filter((slide) => slide.id !== draftSlideId),
+        lowerThird.activeSlideId === draftSlideId ? null : lowerThird.activeSlideId
+      );
     }
     setEditingSlideId(null);
     setEditingText("");
@@ -160,7 +284,21 @@ const LowerThirdPanel: React.FC = () => {
     >
       <div className="panel-header">
         <h2>Lower Third Studio</h2>
-        <span className="tag">{activeIndex >= 0 ? `${activeIndex + 1}/${lowerThird.slides.length}` : "Off"}</span>
+        <span className="tag">{activeSlide ? `Preview ${navigationIndex + 1}/${navigationSlides.length}` : "Preview Clear"}</span>
+      </div>
+
+      <div className="presentation-safety-card">
+        <strong>Text Layer Safety</strong>
+        <span>{lowerThird.allowMultipleTextLayers ? "Multiple presentation text layers are allowed." : "One presentation text layer at a time (recommended)."}</span>
+        <label className="feature-toggle">
+          <input
+            type="checkbox"
+            checked={lowerThird.allowMultipleTextLayers}
+            onChange={(event) => saveLowerThird({ allowMultipleTextLayers: event.target.checked })}
+          />
+          Allow more than one text presentation on screen
+        </label>
+        <span className="field-help">When off, staging lyrics or Scripture removes the previous managed text from Preview. Program changes only when you TAKE or use Take Text Live.</span>
       </div>
 
       <div className="field">
@@ -175,23 +313,64 @@ const LowerThirdPanel: React.FC = () => {
       </div>
 
       <div className="field">
-        <label htmlFor="bulkLowerThird">Songs or long text</label>
+        <label htmlFor="bulkLowerThird">Songs, lyrics or long text</label>
+        <input aria-label="Song or presentation title" value={bulkTitle} onChange={(event) => setBulkTitle(event.target.value)} placeholder="Song or presentation title" />
         <textarea
           id="bulkLowerThird"
           className="bulk-slide-input"
           value={bulkText}
           onChange={(event) => setBulkText(event.target.value)}
-          placeholder={"Paste lyrics or text here.\n\nLeave one blank line between slides."}
+          placeholder={"Paste lyrics or text here. Keep each sung line on a new line. Blank lines may separate verses."}
         />
-        <button className="btn btn-outline" onClick={splitBulkText} disabled={!bulkText.trim()}>Split Blank Lines into Slides</button>
+        <div className="field-grid presentation-split-options">
+          <label className="field">
+            <span>Lines per slide</span>
+            <select value={linesPerSlide} onChange={(event) => setLinesPerSlide(Number(event.target.value))}>
+              {[1, 2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Approx. characters per line</span>
+            <input type="number" min={18} max={120} value={maxCharactersPerLine} onChange={(event) => setMaxCharactersPerLine(Number(event.target.value))} />
+          </label>
+        </div>
+        <button className="btn btn-outline" onClick={splitBulkText} disabled={!bulkText.trim()}>Auto-Separate Text into Slides</button>
+        <span className="field-help">The app wraps long lines, then groups one or more lines into each slide using your selection.</span>
       </div>
 
+      <details className="song-library-manager">
+        <summary>Downloaded and Imported Songs</summary>
+        <div className="field">
+          <label htmlFor="savedSong">Saved song</label>
+          <select id="savedSong" value={selectedSongId} onChange={(event) => setSelectedSongId(event.target.value)}>
+            <option value="">Choose a saved song</option>
+            {songs.map((song) => <option key={song.id} value={song.id}>{song.title}</option>)}
+          </select>
+          <div className="field-row">
+            <button className="btn btn-outline" onClick={loadSelectedSong} disabled={!selectedSongId}>Load Song</button>
+            <button className="btn btn-danger" onClick={() => void removeSelectedSong()} disabled={!selectedSongId || songLibraryLoading}>Remove</button>
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="songDownloadUrl">HTTPS lyrics or song JSON address</label>
+          <input id="songDownloadUrl" type="url" value={songUrl} onChange={(event) => setSongUrl(event.target.value)} placeholder="https://example.org/licensed-song.txt" />
+          <button className="btn btn-outline" onClick={() => void downloadSong()} disabled={!songUrl.trim() || songLibraryLoading}>Download and Save Song</button>
+        </div>
+        <button className="btn btn-outline" onClick={() => void importSong()} disabled={songLibraryLoading}>Import TXT, MD or JSON Song</button>
+        <span className="field-help">Downloaded songs remain available offline. Use only lyrics you are licensed or permitted to download and display.</span>
+        {songLibraryMessage ? <p className="panel-note">{songLibraryMessage}</p> : null}
+      </details>
+
       <div className="lower-third-navigation">
-        <button className="btn btn-outline" onClick={() => moveSlide(-1)} disabled={lowerThird.slides.length === 0}>Previous</button>
-        <button className="btn btn-danger" onClick={() => activateSlide(null)}>Clear Live</button>
-        <button className="btn btn-outline" onClick={() => moveSlide(1)} disabled={lowerThird.slides.length === 0}>Next</button>
+        <button className="btn btn-outline" onClick={() => moveSlide(-1)} disabled={navigationSlides.length === 0}>Previous</button>
+        <button className="btn btn-danger" onClick={() => void activateSlide(null)}>Clear Preview</button>
+        <button className="btn btn-outline" onClick={() => moveSlide(1)} disabled={navigationSlides.length === 0}>Next</button>
       </div>
-      <div className="field-help">Focus this dock and use the arrow keys to move between slides.</div>
+      <div className="lower-third-navigation lower-third-live-actions">
+        <button className="btn btn-primary" onClick={() => void takeLowerThirdToProgram()} disabled={lowerThird.activeSlideId === lowerThird.programSlideId}>Take Text Live</button>
+        <button className="btn btn-danger" onClick={() => void clearProgramText()} disabled={!lowerThird.programSlideId}>Clear Program Text</button>
+      </div>
+      <div className="field-help">Preview is private. TAKE sends the scene and staged text together; Take Text Live changes only the text. Arrow keys move within the selected song or Scripture deck.</div>
 
       <div className="lower-third-slide-list">
         {lowerThird.slides.map((slide, index) => (
@@ -209,15 +388,22 @@ const LowerThirdPanel: React.FC = () => {
                 <span className="field-help">Each Line → Slide keeps the first line here and inserts every remaining non-empty line directly after it.</span>
               </div>
             ) : (
-              <button className="lower-third-slide-cue" onClick={() => activateSlide(slide.id)}>
+              <button className="lower-third-slide-cue" onClick={() => void activateSlide(slide.id)}>
                 <span>{index + 1}</span>
                 <strong>{slide.text}</strong>
                 {slide.reference ? <small>{slide.reference}</small> : null}
+                {slide.deckTitle ? <small>{slide.deckTitle}</small> : null}
+                {slide.id === lowerThird.programSlideId ? <small>PROGRAM LIVE</small> : null}
               </button>
             )}
             <div className="lower-third-slide-actions">
               {editingSlideId !== slide.id ? <button className="btn btn-outline btn-compact" onClick={() => beginEditSlide(slide)}>Edit</button> : null}
-              <button className="btn btn-danger btn-compact" onClick={() => removeSlide(slide.id)}>×</button>
+              <button
+                className="btn btn-danger btn-compact"
+                onClick={() => removeSlide(slide.id)}
+                disabled={slide.id === lowerThird.programSlideId}
+                title={slide.id === lowerThird.programSlideId ? "Clear or replace the live Program text before deleting this slide." : "Delete slide"}
+              >×</button>
             </div>
           </div>
         ))}

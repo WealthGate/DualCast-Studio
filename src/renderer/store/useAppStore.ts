@@ -3,6 +3,7 @@ import {
   AudioMode,
   DisplaySource,
   FrameRatePreset,
+  LowerThirdSlide,
   QualityPreset,
   SaveRecordingResult,
   Scene,
@@ -14,6 +15,7 @@ import {
   StudioState
 } from "../../shared/types";
 import { normalizeStudioState } from "../../shared/settings";
+import { removePresentationTextSources } from "../utils/presentationText";
 
 const defaultStudioState: StudioState = {
   scenes: [{ id: "scene-1", name: "Scene 1", sourceIds: [] }],
@@ -68,7 +70,9 @@ const defaultSettings: Settings = {
     showOnProgram: true,
     maxLines: 0,
     slides: [],
-    activeSlideId: null
+    activeSlideId: null,
+    programSlideId: null,
+    allowMultipleTextLayers: false
   },
   networkOutput: {
     enabled: false,
@@ -167,6 +171,10 @@ type AppState = {
   selectPreviewScene: (sceneId: string) => void;
   setProgramScene: (sceneId: string) => void;
   takeToProgram: () => void;
+  stageLowerThird: (slides: LowerThirdSlide[], activeSlideId: string | null) => Promise<void>;
+  takeLowerThirdToProgram: () => Promise<void>;
+  clearProgramText: () => Promise<void>;
+  addPresentationSourceToScene: (sceneId: string, source: Omit<Source, "id">) => Promise<void>;
   addSourceToScene: (sceneId: string, source: Omit<Source, "id">) => void;
   removeSourceFromScene: (sceneId: string, sourceId: string) => void;
   moveSourceInScene: (sceneId: string, sourceId: string, direction: -1 | 1) => void;
@@ -284,28 +292,122 @@ export const useAppStore = create<AppState>((set, get) => ({
     const scene = state.scenes.find((candidate) => candidate.id === sceneId);
     if (scene) {
       const snapshot = createProgramSnapshot(scene, state.sources);
+      const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
       set({
         programSceneId: sceneId,
         programSceneSnapshot: snapshot.scene,
         programSources: snapshot.sources,
         programRevision: state.programRevision + 1,
         programTransitionMode: "configured",
-        manualBlend: 0
+        manualBlend: 0,
+        settings: { ...state.settings, lowerThird }
       });
+      if (typeof window !== "undefined" && window.dualcast) {
+        void window.dualcast.updateSettings({ lowerThird }).then((settings) => set({ settings })).catch(() => undefined);
+      }
     }
   },
-  takeToProgram: () => set((state) => {
+  takeToProgram: () => {
+    const state = get();
     const scene = state.scenes.find((candidate) => candidate.id === state.previewSceneId) ?? null;
     const snapshot = createProgramSnapshot(scene, state.sources);
-    return {
+    const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
+    set({
       programSceneId: state.previewSceneId,
       programSceneSnapshot: snapshot.scene,
       programSources: snapshot.sources,
       programRevision: state.programRevision + 1,
       programTransitionMode: "configured",
-      manualBlend: 0
+      manualBlend: 0,
+      settings: { ...state.settings, lowerThird }
+    });
+    if (typeof window !== "undefined" && window.dualcast) {
+      void window.dualcast.updateSettings({ lowerThird }).then((settings) => set({ settings })).catch(() => undefined);
+    }
+  },
+  stageLowerThird: async (slides, activeSlideId) => {
+    const state = get();
+    const lowerThird = { ...state.settings.lowerThird, slides, activeSlideId };
+    let scenes = state.scenes;
+    let sources = state.sources;
+    if (activeSlideId && !lowerThird.allowMultipleTextLayers && state.previewSceneId) {
+      const previewScene = state.scenes.find((scene) => scene.id === state.previewSceneId);
+      if (previewScene) {
+        const cleaned = removePresentationTextSources(previewScene, sources);
+        sources = cleaned.sources;
+        scenes = state.scenes.map((scene) => scene.id === previewScene.id ? cleaned.scene : scene);
+      }
+    }
+    const studioState = {
+      scenes,
+      sources,
+      groups: state.groups,
+      previewSceneId: state.previewSceneId,
+      programSceneId: state.programSceneId
     };
-  }),
+    set({ settings: { ...state.settings, lowerThird }, scenes, sources });
+    if (typeof window === "undefined" || !window.dualcast) return;
+    const settings = await window.dualcast.updateSettings({ lowerThird, studioState });
+    set({ settings });
+  },
+  takeLowerThirdToProgram: async () => {
+    const state = get();
+    const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
+    set({ settings: { ...state.settings, lowerThird } });
+    if (typeof window === "undefined" || !window.dualcast) return;
+    const settings = await window.dualcast.updateSettings({ lowerThird });
+    set({ settings });
+  },
+  clearProgramText: async () => {
+    const state = get();
+    const lowerThird = { ...state.settings.lowerThird, programSlideId: null };
+    set({ settings: { ...state.settings, lowerThird } });
+    if (typeof window === "undefined" || !window.dualcast) return;
+    const settings = await window.dualcast.updateSettings({ lowerThird });
+    set({ settings });
+  },
+  addPresentationSourceToScene: async (sceneId, source) => {
+    const state = get();
+    const scene = state.scenes.find((candidate) => candidate.id === sceneId);
+    if (!scene) return;
+    let scenes = state.scenes;
+    let sources = state.sources;
+    let targetScene = scene;
+    let lowerThird = state.settings.lowerThird;
+    if (!lowerThird.allowMultipleTextLayers) {
+      const cleaned = removePresentationTextSources(scene, sources);
+      targetScene = cleaned.scene;
+      sources = cleaned.sources;
+      lowerThird = { ...lowerThird, activeSlideId: null };
+    }
+    const id = getId();
+    const nextSource = {
+      rotation: 0,
+      locked: false,
+      groupId: null,
+      volume: 1,
+      audioScope: "scene",
+      captureCursor: "never",
+      crop: { top: 0, right: 0, bottom: 0, left: 0 },
+      media: { paused: false, restartToken: 0 },
+      ...source,
+      id
+    } as Source;
+    sources = { ...sources, [id]: nextSource };
+    targetScene = { ...targetScene, sourceIds: [...targetScene.sourceIds, id] };
+    scenes = scenes.map((candidate) => candidate.id === sceneId ? targetScene : candidate);
+    const studioState = {
+      scenes,
+      sources,
+      groups: state.groups,
+      previewSceneId: state.previewSceneId,
+      programSceneId: state.programSceneId
+    };
+    set({ scenes, sources, settings: { ...state.settings, lowerThird } });
+    if (typeof window === "undefined" || !window.dualcast) return;
+    const settings = await window.dualcast.updateSettings({ lowerThird, studioState });
+    set({ settings });
+  },
   addSourceToScene: (sceneId, source) => {
     const id = getId();
     const nextSource = {
@@ -465,19 +567,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTransitionType: (value) => set({ transitionType: value }),
   setTransitionDuration: (value) => set({ transitionDurationMs: Math.max(100, Math.min(15000, value)) }),
   setManualBlend: (value) => set({ manualBlend: Math.max(0, Math.min(1, value)) }),
-  completeManualBlend: () => set((state) => {
+  completeManualBlend: () => {
+    const state = get();
     const scene = state.scenes.find((candidate) => candidate.id === state.previewSceneId) ?? null;
-    if (!scene || state.manualBlend <= 0) return { manualBlend: 0 };
+    if (!scene || state.manualBlend <= 0) {
+      set({ manualBlend: 0 });
+      return;
+    }
     const snapshot = createProgramSnapshot(scene, state.sources);
-    return {
+    const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
+    set({
       programSceneId: state.previewSceneId,
       programSceneSnapshot: snapshot.scene,
       programSources: snapshot.sources,
       programRevision: state.programRevision + 1,
       programTransitionMode: "none",
-      manualBlend: 0
-    };
-  }),
+      manualBlend: 0,
+      settings: { ...state.settings, lowerThird }
+    });
+    if (typeof window !== "undefined" && window.dualcast) {
+      void window.dualcast.updateSettings({ lowerThird }).then((settings) => set({ settings })).catch(() => undefined);
+    }
+  },
   setSourceMediaPaused: (sourceId, paused) =>
     set((state) => {
       const current = state.sources[sourceId];

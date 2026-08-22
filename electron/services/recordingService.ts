@@ -8,18 +8,13 @@ import { RecordingChunkPayload, RecordingSessionPayload, SaveRecordingPayload, S
 import { formatRecordingFilename } from "../../src/shared/recording";
 import { getSettings, getDefaultSaveDirectory } from "./settingsService";
 import log from "./logger";
+import { RecordingDiskSession } from "./recordingDiskSession";
 
 if (ffmpegPath) {
   ffmpeg.setFfmpegPath(ffmpegPath);
 }
 
-type RecordingSession = {
-  tempPath: string;
-  bytesWritten: number;
-  writeQueue: Promise<void>;
-};
-
-const recordingSessions = new Map<string, RecordingSession>();
+const recordingSessions = new Map<string, RecordingDiskSession>();
 const activeRecordingCommands = new Set<ReturnType<typeof ffmpeg>>();
 const MAX_CHUNK_BYTES = 64 * 1024 * 1024;
 
@@ -116,8 +111,7 @@ const finalizeRecording = async (tempPath: string): Promise<SaveRecordingResult>
 export const beginRecording = async () => {
   const sessionId = randomUUID();
   const tempPath = path.join(app.getPath("temp"), `openchurch-recording-${sessionId}.webm`);
-  await fs.promises.writeFile(tempPath, Buffer.alloc(0), { flag: "wx" });
-  recordingSessions.set(sessionId, { tempPath, bytesWritten: 0, writeQueue: Promise.resolve() });
+  recordingSessions.set(sessionId, await RecordingDiskSession.create(tempPath));
   return { sessionId };
 };
 
@@ -127,11 +121,7 @@ export const appendRecordingChunk = async (payload: RecordingChunkPayload) => {
   const buffer = normalizeRecordingData(payload.data);
   if (!buffer?.length) return true;
   if (buffer.length > MAX_CHUNK_BYTES) throw new Error("A recording chunk exceeded the safe size limit.");
-  session.writeQueue = session.writeQueue.then(async () => {
-    await fs.promises.appendFile(session.tempPath, buffer);
-    session.bytesWritten += buffer.length;
-  });
-  await session.writeQueue;
+  await session.append(buffer);
   return true;
 };
 
@@ -140,11 +130,11 @@ export const finishRecording = async (payload: RecordingSessionPayload) => {
   if (!session) throw new Error("The recording session is no longer active.");
   recordingSessions.delete(payload.sessionId);
   try {
-    await session.writeQueue;
-    if (session.bytesWritten === 0) throw new Error("No recording data was captured.");
-    return await finalizeRecording(session.tempPath);
+    const bytesWritten = await session.seal();
+    if (bytesWritten === 0) throw new Error("No recording data was captured.");
+    return await finalizeRecording(session.filePath);
   } catch (error) {
-    await fs.promises.unlink(session.tempPath).catch(() => undefined);
+    await fs.promises.unlink(session.filePath).catch(() => undefined);
     throw error;
   }
 };
@@ -153,8 +143,7 @@ export const cancelRecording = async (payload: RecordingSessionPayload) => {
   const session = recordingSessions.get(payload?.sessionId);
   if (!session) return false;
   recordingSessions.delete(payload.sessionId);
-  await session.writeQueue.catch(() => undefined);
-  await fs.promises.unlink(session.tempPath).catch(() => undefined);
+  await session.cancel();
   return true;
 };
 
@@ -167,13 +156,7 @@ export const cleanupRecordingSessions = () => {
     }
   });
   activeRecordingCommands.clear();
-  recordingSessions.forEach((session) => {
-    try {
-      fs.unlinkSync(session.tempPath);
-    } catch {
-      // The temporary file may already be finalized or unavailable.
-    }
-  });
+  recordingSessions.forEach((session) => session.disposeSync());
   recordingSessions.clear();
 };
 

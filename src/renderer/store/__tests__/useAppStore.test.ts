@@ -21,7 +21,20 @@ const studioState: StudioState = {
 };
 
 describe("Preview and Program isolation", () => {
-  beforeEach(() => useAppStore.getState().setStudioState(studioState));
+  beforeEach(() => {
+    useAppStore.getState().setStudioState(studioState);
+    const settings = useAppStore.getState().settings;
+    useAppStore.getState().setSettings({
+      ...settings,
+      lowerThird: {
+        ...settings.lowerThird,
+        slides: [],
+        activeSlideId: null,
+        programSlideId: null,
+        allowMultipleTextLayers: false
+      }
+    });
+  });
 
   it("keeps Preview edits out of Program until TAKE", () => {
     const initialProgramSource = Object.values(useAppStore.getState().programSources)[0];
@@ -81,5 +94,39 @@ describe("Preview and Program isolation", () => {
     useAppStore.getState().setProgramScene("scene-a");
     expect(useAppStore.getState().manualBlend).toBe(0);
     expect(useAppStore.getState().programTransitionMode).toBe("configured");
+  });
+
+  it("stages configured text in Preview without changing Program text", async () => {
+    const slide = { id: "slide-1", text: "Amazing grace", kind: "song" as const };
+    await useAppStore.getState().stageLowerThird([slide], slide.id);
+
+    expect(useAppStore.getState().settings.lowerThird.activeSlideId).toBe(slide.id);
+    expect(useAppStore.getState().settings.lowerThird.programSlideId).toBeNull();
+
+    useAppStore.getState().takeToProgram();
+    expect(useAppStore.getState().settings.lowerThird.programSlideId).toBe(slide.id);
+  });
+
+  it("removes an existing managed scene text layer when exclusive mode stages lyrics", async () => {
+    useAppStore.getState().setStudioState({
+      ...studioState,
+      sources: {
+        ...studioState.sources,
+        "text-a": {
+          id: "text-a",
+          name: "Scripture - John 3:16",
+          type: "text",
+          rect: { x: 5, y: 70, width: 90, height: 20 },
+          enabled: true,
+          audioEnabled: false,
+          data: { text: "John 3:16", fontSize: 48, color: "#fff", backgroundColor: "#000", align: "center", role: "presentation" }
+        }
+      }
+    });
+    const slide = { id: "slide-1", text: "Amazing grace", kind: "song" as const };
+    await useAppStore.getState().stageLowerThird([slide], slide.id);
+
+    expect(useAppStore.getState().scenes[0].sourceIds).toEqual([]);
+    expect(useAppStore.getState().sources["text-a"]).toBeUndefined();
   });
 });

@@ -65,7 +65,9 @@ const defaultLowerThird = {
   showOnProgram: true,
   maxLines: 0,
   slides: [],
-  activeSlideId: null
+  activeSlideId: null,
+  programSlideId: null,
+  allowMultipleTextLayers: false
 };
 
 const defaultNetworkOutput = {
@@ -188,12 +190,19 @@ const normalizeLowerThird = (value: unknown): Settings["lowerThird"] => {
       id: slide.id.slice(0, 200),
       text: slide.text.slice(0, 100_000),
       reference: typeof slide.reference === "string" ? slide.reference.slice(0, 500) : undefined,
-      kind: slide.kind === "song" || slide.kind === "scripture" ? slide.kind : "text" as const
+      kind: slide.kind === "song" || slide.kind === "scripture" ? slide.kind : "text" as const,
+      deckId: typeof slide.deckId === "string" ? slide.deckId.slice(0, 200) : undefined,
+      deckTitle: typeof slide.deckTitle === "string" ? slide.deckTitle.slice(0, 300) : undefined
     }];
   }).slice(0, 500);
   const activeSlideId = typeof raw.activeSlideId === "string" && slides.some((slide) => slide.id === raw.activeSlideId)
     ? raw.activeSlideId
     : null;
+  const programSlideId = typeof raw.programSlideId === "string" && slides.some((slide) => slide.id === raw.programSlideId)
+    ? raw.programSlideId
+    : raw.programSlideId === undefined
+      ? activeSlideId
+      : null;
   return {
     ...defaultLowerThird,
     enabled: raw.enabled === true,
@@ -225,7 +234,9 @@ const normalizeLowerThird = (value: unknown): Settings["lowerThird"] => {
     showOnProgram: raw.showOnProgram !== false,
     maxLines: finiteNumber(raw.maxLines, defaultLowerThird.maxLines, 0, 20),
     slides,
-    activeSlideId
+    activeSlideId,
+    programSlideId,
+    allowMultipleTextLayers: raw.allowMultipleTextLayers === true
   };
 };
 

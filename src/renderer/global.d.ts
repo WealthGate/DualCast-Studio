@@ -28,7 +28,11 @@ import {
   ScriptureLibraryDownloadPayload,
   ScriptureLibraryLookupPayload,
   ScriptureLibraryRemovePayload,
+  ScriptureLibraryCatalog,
   ScriptureLibrarySummary,
+  SongDownloadPayload,
+  SongLibraryEntry,
+  SongRemovePayload,
   StreamingAuthorizationPayload,
   StreamingAuthorizationResult
 } from "../shared/types";
@@ -81,6 +85,11 @@ declare global {
       downloadScriptureLibrary: (payload: ScriptureLibraryDownloadPayload) => Promise<ScriptureLibrarySummary>;
       saveScripturePassage: (payload: ScriptureFetchResult) => Promise<ScriptureLibrarySummary>;
       removeScriptureLibrary: (payload: ScriptureLibraryRemovePayload) => Promise<boolean>;
+      getScriptureLibraryCatalog: (libraryId: string) => Promise<ScriptureLibraryCatalog>;
+      listSongs: () => Promise<SongLibraryEntry[]>;
+      importSong: () => Promise<SongLibraryEntry | null>;
+      downloadSong: (payload: SongDownloadPayload) => Promise<SongLibraryEntry>;
+      removeSong: (payload: SongRemovePayload) => Promise<boolean>;
       authorizeStreaming: (payload: StreamingAuthorizationPayload) => Promise<StreamingAuthorizationResult>;
       downloadUserGuide: () => Promise<string | null>;
       onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => () => void;

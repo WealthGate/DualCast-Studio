@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.3**.
+Current release: **v0.6.4**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -14,9 +14,19 @@ Current release: **v0.6.3**.
 
 The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper may therefore ask users to confirm that they trust the download.
 
-Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.3 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
+Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.4 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.3
+### What's new in v0.6.4
+
+- Separates staged Preview text from live Program text, so lyrics and Scripture can be checked privately before TAKE or **Take Text Live**.
+- Enforces one managed presentation-text layer by default; staging lyrics, Scripture, or a presentation text source removes the previous managed text from Preview while leaving ordinary text sources untouched.
+- Adds an explicit **Allow more than one text presentation on screen** override for intentional text layering.
+- Adds a click-based Bible book, chapter, start-verse, and end-verse picker with Enter-to-load support for online and downloaded translations.
+- Creates Scripture decks as one verse per slide, automatic lines per slide, or a complete-passage slide, using the existing Bible branding and animated lower-third transitions.
+- Adds offline song storage with HTTPS download and TXT, Markdown, or JSON import, plus automatic lyric wrapping and selectable one-to-six lines per slide.
+- Keeps Previous/Next navigation inside the selected song or Scripture deck, preventing an operator from accidentally jumping into another presentation.
+
+### Included from v0.6.3
 
 - Adds lyric-editor controls to insert a new slide directly after the current slide or turn every non-empty edited line into its own ordered slide.
 - Adds Program Focus mode: Program fills the combined Preview/Program workspace while operating docks remain visible, and one scene click sends that scene directly live.
@@ -47,13 +57,20 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Th
 - Merges panels dropped on another dock into persistent tabs and previews the target before docking.
 - Reveals dock, scene, and source actions only from right-click context menus to preserve workspace space.
 - Saves each operator's dock arrangement and sizes locally, with hide, restore, and Reset Workspace Layout controls.
-- Provides a live Lower Third Studio for manually typed messages and pasted lyrics, with blank-line bulk splitting plus add-after and per-line slide creation inside the editor.
+- Provides a Preview-first Lower Third Studio for manually typed messages, downloaded/imported songs, and pasted lyrics, with automatic wrapping, selectable lines per slide, add-after, and per-line slide creation.
+- Keeps staged Preview text separate from live Program text and enforces one managed presentation-text layer by default, with an explicit multi-text override.
 - Supports lower-third fonts, colors, alignment, emphasis, line limits, logos, arrow-key cueing, and entrance/exit animations.
 - Records the Program canvas with configurable quality, frame rate, and System/Mic/Both/None audio modes.
 - Writes recording chunks directly to a temporary disk session to keep memory stable during long services.
 - Saves MP4 through bundled FFmpeg, with WebM fallback when conversion fails.
 - Provides global record and cut hotkeys.
 - Checks GitHub Releases automatically and provides one-click download plus restart-to-install update controls.
+
+### Scripture and Song Presentation
+- Selects Scripture by Bible version, book, chapter, start verse, and end verse, with Enter-to-load and typed-reference alternatives.
+- Stores multiple downloaded/imported Bible translations offline and builds an exact book/chapter/verse catalog for each library.
+- Splits passages by verse, by a chosen number of display lines, or as one complete slide, with shared lower-third branding and animations.
+- Downloads permitted song lyric files by HTTPS or imports TXT, Markdown, and JSON songs for reusable offline presentation decks.
 
 ### Large-Venue Outputs
 - Sends the same Program feed to multiple selected sanctuary projectors or displays.
@@ -160,9 +177,10 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
-- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.3; the current controls only prepare provider settings for a future implementation.
+- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.4; the current controls only prepare provider settings for a future implementation.
 - The post-production editor currently provides trim/export rather than a multitrack timeline.
 - Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
+- Direct-to-disk recording still needs free space in the operating system's temporary directory and the selected save directory. A forced shutdown or power loss before Stop can leave the active recording incomplete; stale temporary sessions are removed when the app next starts.
 - Final MP4 conversion runs after recording stops; allow time and free disk space for FFmpeg to finish long services.
 
 ## Project Structure

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
+import { isPresentationTextSource, visiblePresentationSourceIds } from "../utils/presentationText";
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
 import { LowerThirdAnimation, LowerThirdSlide, Scene, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
@@ -144,7 +145,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const bibleImageRef = useRef<HTMLImageElement | null>(null);
   const lowerThirdBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
-  const lowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
+  const previewLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
+  const programLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
 
   const programScene = programSceneSnapshot;
   const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
@@ -213,13 +215,17 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
   useEffect(() => {
     const next = settings.lowerThird.slides.find((slide) => slide.id === settings.lowerThird.activeSlideId) ?? null;
-    const cue = lowerThirdCueRef.current;
-    if (cue.current?.id !== next?.id) {
-      lowerThirdCueRef.current = { previous: cue.current, current: next, changedAt: performance.now() };
-    } else {
-      cue.current = next;
-    }
+    const cue = previewLowerThirdCueRef.current;
+    if (cue.current?.id !== next?.id) previewLowerThirdCueRef.current = { previous: cue.current, current: next, changedAt: performance.now() };
+    else cue.current = next;
   }, [settings.lowerThird.activeSlideId, settings.lowerThird.slides]);
+
+  useEffect(() => {
+    const next = settings.lowerThird.slides.find((slide) => slide.id === settings.lowerThird.programSlideId) ?? null;
+    const cue = programLowerThirdCueRef.current;
+    if (cue.current?.id !== next?.id) programLowerThirdCueRef.current = { previous: cue.current, current: next, changedAt: performance.now() };
+    else cue.current = next;
+  }, [settings.lowerThird.programSlideId, settings.lowerThird.slides]);
 
   useEffect(() => {
     if (!settings.lowerThird.imageUrl) {
@@ -809,23 +815,37 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     scene: Scene | null,
     sourceMap: Record<string, Source>,
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    configuredSlideId: string | null = null
   ) => {
     if (!scene) {
       return;
     }
+    const visiblePresentationIds = visiblePresentationSourceIds(
+      scene,
+      sourceMap,
+      settings.lowerThird.allowMultipleTextLayers,
+      Boolean(configuredSlideId)
+    );
     scene.sourceIds.forEach((id) => {
       const source = sourceMap[id];
       if (!source) {
         return;
       }
+      if (isPresentationTextSource(source) && visiblePresentationIds && !visiblePresentationIds.has(id)) return;
       drawSource(ctx, source, canvasWidth, canvasHeight);
     });
   };
 
-  const drawConfiguredLowerThird = (ctx: CanvasRenderingContext2D, canvasWidth: number, canvasHeight: number, now: number) => {
+  const drawConfiguredLowerThird = (
+    ctx: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number,
+    now: number,
+    cueRef: React.MutableRefObject<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>
+  ) => {
     const config = settings.lowerThird;
-    const cue = lowerThirdCueRef.current;
+    const cue = cueRef.current;
     if (!cue.current && !cue.previous) return;
     const duration = Math.max(100, config.animationDurationMs);
     const progress = Math.min(1, Math.max(0, (now - cue.changedAt) / duration));
@@ -1079,7 +1099,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        drawScene(ctx, previewScene, sources, canvas.width, canvas.height);
+        drawScene(ctx, previewScene, sources, canvas.width, canvas.height, settings.lowerThird.activeSlideId);
+        if (settings.lowerThird.activeSlideId) {
+          drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), previewLowerThirdCueRef);
+        }
       }
 
       rafId = requestAnimationFrame(render);
@@ -1091,7 +1114,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         cancelAnimationFrame(rafId);
       }
     };
-  }, [previewScene, programSize.height, programSize.width, settings.frameRate, showPreview, sources]);
+  }, [previewScene, programSize.height, programSize.width, settings.frameRate, settings.lowerThird, showPreview, sources]);
 
   useEffect(() => {
     const canvas = programCanvasRef.current;
@@ -1126,9 +1149,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         if (manualBlend > 0 && previewScene) {
           ctx.save();
           ctx.globalAlpha = 1 - manualBlend;
-          drawScene(ctx, programScene, programSources, canvas.width, canvas.height);
+          drawScene(ctx, programScene, programSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
           ctx.globalAlpha = manualBlend;
-          drawScene(ctx, previewScene, sources, canvas.width, canvas.height);
+          drawScene(ctx, previewScene, sources, canvas.width, canvas.height, settings.lowerThird.activeSlideId);
           ctx.restore();
           syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
           syncBrowserSources(previewScene, sources, canvas.width, canvas.height);
@@ -1146,20 +1169,20 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
           if (transition.type === "crossfade") {
             ctx.save();
             ctx.globalAlpha = 1 - progress;
-            drawScene(ctx, fromScene, transition.fromSources, canvas.width, canvas.height);
+            drawScene(ctx, fromScene, transition.fromSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
             ctx.globalAlpha = progress;
-            drawScene(ctx, toScene, transition.toSources, canvas.width, canvas.height);
+            drawScene(ctx, toScene, transition.toSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
             ctx.restore();
           } else {
             if (progress < 0.5) {
               ctx.save();
               ctx.globalAlpha = 1 - progress * 2;
-              drawScene(ctx, fromScene, transition.fromSources, canvas.width, canvas.height);
+              drawScene(ctx, fromScene, transition.fromSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
               ctx.restore();
             } else {
               ctx.save();
               ctx.globalAlpha = (progress - 0.5) * 2;
-              drawScene(ctx, toScene, transition.toSources, canvas.width, canvas.height);
+              drawScene(ctx, toScene, transition.toSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
               ctx.restore();
             }
           }
@@ -1169,12 +1192,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
           if (transition) {
             transitionRef.current = null;
           }
-          drawScene(ctx, programScene, programSources, canvas.width, canvas.height);
+          drawScene(ctx, programScene, programSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
           syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
         }
       }
-      if (!isCutToBlack && settings.lowerThird.showOnProgram) {
-        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now());
+      if (!isCutToBlack && settings.lowerThird.showOnProgram && settings.lowerThird.programSlideId) {
+        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), programLowerThirdCueRef);
       }
 
       if (!isFrozen) {
@@ -1251,15 +1274,25 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const sendLowerThirdFrame = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (!isCutToBlack && programScene) {
+        const visiblePresentationIds = visiblePresentationSourceIds(
+          programScene,
+          programSources,
+          settings.lowerThird.allowMultipleTextLayers,
+          Boolean(settings.lowerThird.programSlideId)
+        );
         programScene.sourceIds.forEach((id) => {
           const source = programSources[id];
-          if (source?.type === "text" && source.data.role === "lower-third") {
+          if (
+            source?.type === "text"
+            && source.data.role === "lower-third"
+            && (!visiblePresentationIds || visiblePresentationIds.has(id))
+          ) {
             drawSource(ctx, source, canvas.width, canvas.height);
           }
         });
       }
-      if (!isCutToBlack) {
-        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now());
+      if (!isCutToBlack && settings.lowerThird.programSlideId) {
+        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), programLowerThirdCueRef);
       }
       window.dualcast.sendLowerThirdFrame(canvas.toDataURL("image/webp", 0.9));
     };

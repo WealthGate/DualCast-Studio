@@ -9,6 +9,7 @@ import {
   ScriptureLibraryDownloadPayload,
   ScriptureLibraryLookupPayload,
   ScriptureLibraryRemovePayload,
+  ScriptureLibraryCatalog,
   ScriptureLibrarySummary
 } from "../../src/shared/types";
 
@@ -189,6 +190,30 @@ export const listScriptureLibraries = async (): Promise<ScriptureLibrarySummary[
   return summaries.flatMap((summary) => summary ? [summary] : []);
 };
 
+export const getScriptureLibraryCatalog = async (libraryId: string): Promise<ScriptureLibraryCatalog> => {
+  const library = await readLibrary(libraryId);
+  const books = new Map<string, Map<number, Set<number>>>();
+  library.passages.forEach((passage) => {
+    const parts = referenceParts(passage.reference);
+    if (!parts) return;
+    const bookName = passage.reference.replace(/\s+\d+:.*$/, "").trim();
+    const chapters = books.get(bookName) ?? new Map<number, Set<number>>();
+    const verses = chapters.get(parts.chapter) ?? new Set<number>();
+    for (let verse = parts.start; verse <= parts.end; verse += 1) verses.add(verse);
+    chapters.set(parts.chapter, verses);
+    books.set(bookName, chapters);
+  });
+  return {
+    libraryId,
+    books: Array.from(books.entries()).map(([name, chapters]) => ({
+      name,
+      chapters: Array.from(chapters.entries())
+        .sort(([left], [right]) => left - right)
+        .map(([number, verses]) => ({ number, verses: Array.from(verses).sort((left, right) => left - right) }))
+    }))
+  };
+};
+
 export const importScriptureLibrary = async (filePath: string): Promise<ScriptureLibrarySummary> => {
   const stats = await fs.stat(filePath);
   if (stats.size > MAX_LIBRARY_BYTES) throw new Error("Scripture library files must be 25 MB or smaller.");
@@ -223,7 +248,11 @@ export const lookupScriptureLibrary = async (payload: ScriptureLibraryLookupPayl
   const query = normalizedReference(payload.reference);
   if (!query) throw new Error("Enter a Bible reference, for example John 3:16-18.");
   const exact = library.passages.find((passage) => normalizedReference(passage.reference) === query);
-  if (exact) return { ...exact, translation: exact.translation ?? library.translation };
+  if (exact) return {
+    ...exact,
+    translation: exact.translation ?? library.translation,
+    verses: [{ reference: exact.reference, text: exact.text }]
+  };
   const range = referenceParts(query);
   if (range) {
     const matches = library.passages.filter((passage) => {
@@ -234,6 +263,7 @@ export const lookupScriptureLibrary = async (payload: ScriptureLibraryLookupPayl
       return {
         reference: payload.reference.trim(),
         text: matches.map((passage) => passage.text).join(" "),
+        verses: matches.map((passage) => ({ reference: passage.reference, text: passage.text })),
         translation: matches.every((passage) => passage.translation === matches[0].translation)
           ? matches[0].translation ?? library.translation
           : library.translation
@@ -241,7 +271,11 @@ export const lookupScriptureLibrary = async (payload: ScriptureLibraryLookupPayl
     }
   }
   const partial = library.passages.find((passage) => normalizedReference(passage.reference).includes(query));
-  if (partial) return { ...partial, translation: partial.translation ?? library.translation };
+  if (partial) return {
+    ...partial,
+    translation: partial.translation ?? library.translation,
+    verses: [{ reference: partial.reference, text: partial.text }]
+  };
   throw new Error(`No passage matching ${payload.reference} was found in ${library.name}.`);
 };
 
@@ -282,9 +316,22 @@ export const fetchScripture = async (payload: ScriptureFetchPayload): Promise<Sc
     const baseUrl = (integrations.scriptureApiUrl || "https://bible-api.com").replace(/\/$/, "");
     const response = await fetch(`${baseUrl}/${encodeURIComponent(reference)}`);
     if (!response.ok) throw new Error(`Bible API returned ${response.status}.`);
-    const data = await response.json() as { reference?: string; text?: string; translation_name?: string };
+    const data = await response.json() as {
+      reference?: string;
+      text?: string;
+      translation_name?: string;
+      verses?: Array<{ book_name?: string; chapter?: number; verse?: number; text?: string }>;
+    };
     if (!data.text) throw new Error("No verses were returned for that reference.");
-    return { reference: data.reference || reference, text: data.text.trim(), translation: data.translation_name };
+    return {
+      reference: data.reference || reference,
+      text: data.text.trim(),
+      translation: data.translation_name,
+      verses: data.verses?.flatMap((verse) => {
+        const text = verse.text?.trim();
+        return text ? [{ reference: `${verse.book_name ?? ""} ${verse.chapter ?? ""}:${verse.verse ?? ""}`.trim(), text }] : [];
+      })
+    };
   }
   if (integrations.scriptureProvider === "api-bible") {
     const apiKey = process.env[integrations.scriptureApiKeyEnv];
@@ -300,7 +347,11 @@ export const fetchScripture = async (payload: ScriptureFetchPayload): Promise<Sc
     if (!passages.length) throw new Error("No verses were returned for that reference.");
     return {
       reference: passages.map((passage) => passage.reference).filter(Boolean).join("; ") || reference,
-      text: passages.map((passage) => stripMarkup(passage.content || "")).filter(Boolean).join(" ")
+      text: passages.map((passage) => stripMarkup(passage.content || "")).filter(Boolean).join(" "),
+      verses: passages.flatMap((passage) => {
+        const text = stripMarkup(passage.content || "");
+        return text ? [{ reference: passage.reference || reference, text }] : [];
+      })
     };
   }
   const baseUrl = integrations.scriptureApiUrl.trim();
@@ -310,7 +361,19 @@ export const fetchScripture = async (payload: ScriptureFetchPayload): Promise<Sc
   const key = process.env[integrations.scriptureApiKeyEnv];
   const response = await fetch(url, { headers: key ? { Authorization: `Bearer ${key}` } : undefined });
   if (!response.ok) throw new Error(`Scripture provider returned ${response.status}.`);
-  const data = await response.json() as { reference?: string; text?: string; translation?: string };
+  const data = await response.json() as {
+    reference?: string;
+    text?: string;
+    translation?: string;
+    verses?: Array<{ reference?: string; text?: string }>;
+  };
   if (!data.text) throw new Error("Custom provider must return JSON containing text.");
-  return { reference: data.reference || reference, text: data.text, translation: data.translation };
+  return {
+    reference: data.reference || reference,
+    text: data.text,
+    translation: data.translation,
+    verses: data.verses?.flatMap((verse) => verse.text?.trim()
+      ? [{ reference: verse.reference || reference, text: verse.text.trim() }]
+      : [])
+  };
 };
