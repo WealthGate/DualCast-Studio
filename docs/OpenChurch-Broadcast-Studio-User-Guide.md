@@ -1,4 +1,4 @@
-# OpenChurch Broadcast Studio v0.6.4 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.5 - Complete User Guide
 
 This guide is written for volunteers, media teams, pastors, and technical operators. You do not need previous broadcast-software experience.
 
@@ -39,7 +39,7 @@ Do not begin a live service until the test recording contains both picture and c
 1. Open the project's GitHub Releases page.
 2. Download the newest Windows installer, or download the portable ZIP if installation is not permitted.
 3. Run the installer. If using the ZIP, extract it before running the app.
-4. Confirm the version beside the product name is **v0.6.4**.
+4. Confirm the version beside the product name is **v0.6.5**.
 5. Find the always-visible update button in the top header. It reads **Check for Updates** and shows the installed version below it.
 6. Select **Check for Updates**. The button is disabled while checking, and the banner confirms the installed version.
 7. If the app is current, dismiss the confirmation. If a newer release exists, select **Update to v[version]** to download that exact version.
@@ -94,9 +94,11 @@ A scene is one complete arrangement, such as Sermon Camera, Worship Lyrics, Scri
 1. Click the scene once. It becomes the Preview scene.
 2. Add, edit, move, or trim its sources.
 3. Check the complete result in Preview.
-4. Select Cut, Fade, or Crossfade in Scene Transitions.
-5. Press TAKE.
+4. Set the transition duration before sending the scene live.
+5. Choose **Cut**, **Fade**, or **Crossfade** in Scene Transitions. The selected transition immediately sends Preview to Program; do not press TAKE afterward.
 6. Confirm the Program label and picture are correct.
+
+TAKE remains available as a separate control. It uses the most recently selected transition, so operators can still use the TAKE button, Ctrl/Cmd + Enter, or a remote TAKE command when that workflow is preferred.
 
 ### Make a slow manual blend from Preview to Program
 
@@ -106,7 +108,7 @@ A scene is one complete arrangement, such as Sermon Camera, Worship Lyrics, Scri
 4. Pause anywhere between 0% and 100% when the audience should see both scenes blended together.
 5. Choose **Reset to Program** to cancel the blend safely, or choose **Complete to Preview** to make Preview the new Program scene.
 
-Program audio remains active during the blend and switches only when **Complete to Preview** is chosen. The normal Cut, Fade, and Crossfade choices remain available for automatic TAKE transitions. Automatic transition duration can be set from 100 milliseconds up to 15 seconds.
+Program audio remains active during the blend and switches only when **Complete to Preview** is chosen. Cut, Fade, and Crossfade immediately send Preview live; TAKE uses the last selected transition. Automatic transition duration can be set from 100 milliseconds up to 15 seconds.
 
 ### Lock a finished scene
 

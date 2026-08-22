@@ -1,10 +1,7 @@
 import { create } from "zustand";
 import {
-  AudioMode,
   DisplaySource,
-  FrameRatePreset,
   LowerThirdSlide,
-  QualityPreset,
   SaveRecordingResult,
   Scene,
   Settings,
@@ -188,6 +185,7 @@ type AppState = {
   renameGroup: (groupId: string, name: string) => void;
   removeGroup: (groupId: string) => void;
   setTransitionType: (value: "cut" | "fade" | "crossfade") => void;
+  applyTransition: (value: "cut" | "fade" | "crossfade") => void;
   setTransitionDuration: (value: number) => void;
   setManualBlend: (value: number) => void;
   completeManualBlend: () => void;
@@ -303,17 +301,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         settings: { ...state.settings, lowerThird }
       });
       if (typeof window !== "undefined" && window.dualcast) {
-        void window.dualcast.updateSettings({ lowerThird }).then((settings) => set({ settings })).catch(() => undefined);
+        const studioState = {
+          scenes: state.scenes,
+          sources: state.sources,
+          groups: state.groups,
+          previewSceneId: state.previewSceneId,
+          programSceneId: sceneId
+        };
+        void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);
       }
     }
   },
   takeToProgram: () => {
     const state = get();
     const scene = state.scenes.find((candidate) => candidate.id === state.previewSceneId) ?? null;
+    if (!scene) return;
     const snapshot = createProgramSnapshot(scene, state.sources);
     const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
     set({
-      programSceneId: state.previewSceneId,
+      programSceneId: scene.id,
       programSceneSnapshot: snapshot.scene,
       programSources: snapshot.sources,
       programRevision: state.programRevision + 1,
@@ -322,7 +328,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       settings: { ...state.settings, lowerThird }
     });
     if (typeof window !== "undefined" && window.dualcast) {
-      void window.dualcast.updateSettings({ lowerThird }).then((settings) => set({ settings })).catch(() => undefined);
+      const studioState = {
+        scenes: state.scenes,
+        sources: state.sources,
+        groups: state.groups,
+        previewSceneId: state.previewSceneId,
+        programSceneId: scene.id
+      };
+      void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);
     }
   },
   stageLowerThird: async (slides, activeSlideId) => {
@@ -565,6 +578,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { groups, sources };
     }),
   setTransitionType: (value) => set({ transitionType: value }),
+  applyTransition: (value) => {
+    set({ transitionType: value });
+    get().takeToProgram();
+  },
   setTransitionDuration: (value) => set({ transitionDurationMs: Math.max(100, Math.min(15000, value)) }),
   setManualBlend: (value) => set({ manualBlend: Math.max(0, Math.min(1, value)) }),
   completeManualBlend: () => {
@@ -586,7 +603,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       settings: { ...state.settings, lowerThird }
     });
     if (typeof window !== "undefined" && window.dualcast) {
-      void window.dualcast.updateSettings({ lowerThird }).then((settings) => set({ settings })).catch(() => undefined);
+      const studioState = {
+        scenes: state.scenes,
+        sources: state.sources,
+        groups: state.groups,
+        previewSceneId: state.previewSceneId,
+        programSceneId: scene.id
+      };
+      void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);
     }
   },
   setSourceMediaPaused: (sourceId, paused) =>

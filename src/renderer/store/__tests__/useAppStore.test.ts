@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { StudioState } from "../../../shared/types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SettingsUpdate, StudioState } from "../../../shared/types";
 import { useAppStore } from "../useAppStore";
 
 const studioState: StudioState = {
@@ -21,6 +21,10 @@ const studioState: StudioState = {
 };
 
 describe("Preview and Program isolation", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     useAppStore.getState().setStudioState(studioState);
     const settings = useAppStore.getState().settings;
@@ -64,6 +68,60 @@ describe("Preview and Program isolation", () => {
     useAppStore.getState().takeToProgram();
     const takenProgramSource = Object.values(useAppStore.getState().programSources)[0];
     expect(takenProgramSource.crop?.top).toBe(8);
+  });
+
+  it("sends Preview immediately when a transition button is applied", () => {
+    useAppStore.getState().setStudioState({
+      ...studioState,
+      scenes: [
+        ...studioState.scenes,
+        { id: "scene-b", name: "Lyrics", sourceIds: [] }
+      ],
+      previewSceneId: "scene-b",
+      programSceneId: "scene-a"
+    });
+    const revision = useAppStore.getState().programRevision;
+
+    useAppStore.getState().applyTransition("fade");
+
+    expect(useAppStore.getState().transitionType).toBe("fade");
+    expect(useAppStore.getState().programSceneId).toBe("scene-b");
+    expect(useAppStore.getState().programRevision).toBe(revision + 1);
+    expect(useAppStore.getState().programTransitionMode).toBe("configured");
+  });
+
+  it("persists the new Program scene when an immediate transition is applied", async () => {
+    useAppStore.getState().setStudioState({
+      ...studioState,
+      scenes: [
+        ...studioState.scenes,
+        { id: "scene-b", name: "Lyrics", sourceIds: [] }
+      ],
+      previewSceneId: "scene-b",
+      programSceneId: "scene-a"
+    });
+    const existingSettings = useAppStore.getState().settings;
+    const updateSettings = vi.fn(async (update: SettingsUpdate) => ({ ...existingSettings, ...update }));
+    vi.stubGlobal("window", { dualcast: { updateSettings } });
+
+    useAppStore.getState().applyTransition("crossfade");
+
+    await vi.waitFor(() => expect(updateSettings).toHaveBeenCalled());
+    expect(updateSettings.mock.calls[0][0].studioState?.programSceneId).toBe("scene-b");
+    expect(updateSettings.mock.calls[0][0].lowerThird?.programSlideId).toBe(
+      existingSettings.lowerThird.activeSlideId
+    );
+  });
+
+  it("does not clear Program when TAKE has no valid Preview scene", () => {
+    const originalProgramScene = useAppStore.getState().programSceneId;
+    const originalProgramSnapshot = useAppStore.getState().programSceneSnapshot;
+    useAppStore.setState({ previewSceneId: null });
+
+    useAppStore.getState().takeToProgram();
+
+    expect(useAppStore.getState().programSceneId).toBe(originalProgramScene);
+    expect(useAppStore.getState().programSceneSnapshot).toBe(originalProgramSnapshot);
   });
 
   it("holds a manual blend until the operator completes Preview to Program", () => {

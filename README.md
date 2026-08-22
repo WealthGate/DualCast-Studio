@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.4**.
+Current release: **v0.6.5**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -14,9 +14,18 @@ Current release: **v0.6.4**.
 
 The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper may therefore ask users to confirm that they trust the download.
 
-Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.4 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
+Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.5 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.4
+### What's new in v0.6.5
+
+- Makes the Cut, Fade, and Crossfade controls immediately send Preview to Program; a separate TAKE click is no longer required after choosing one.
+- Keeps TAKE available with the most recently selected transition for keyboard, remote-operator, and dedicated-control workflows.
+- Prevents an invalid or missing Preview scene from clearing a valid live Program scene.
+- Persists every Program scene change consistently, including transition buttons, TAKE, Multiview, Program Focus, and completed manual blends.
+- Removes obsolete insecure legacy stream-key records while preserving keys protected by operating-system secure storage.
+- Enables stricter unused-code compilation and reports streaming shutdown failures instead of leaving rejected cleanup operations unhandled.
+
+### Included from v0.6.4
 
 - Separates staged Preview text from live Program text, so lyrics and Scripture can be checked privately before TAKE or **Take Text Live**.
 - Enforces one managed presentation-text layer by default; staging lyrics, Scripture, or a presentation text source removes the previous managed text from Preview while leaving ordinary text sources untouched.
@@ -45,7 +54,8 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Th
 ### Live Production
 - Captures connected displays and builds layered scenes from display, camera, image, video, and text sources.
 - Provides Preview and Program buses with TAKE, CUT TO BLACK, and FREEZE controls.
-- Keeps every scene/source edit isolated in Preview until TAKE snapshots it into Program.
+- Keeps every scene/source edit isolated in Preview until TAKE or an immediate Cut, Fade, or Crossfade snapshots it into Program.
+- Applies Cut, Fade, or Crossfade immediately from the Scene Transitions dock while retaining TAKE as a separate control.
 - Preserves the live Program media and audio graph while Multiview is open or Preview sources are edited.
 - Opens a separate Multiview from `View > Open Multiview Window` with every configured scene and camera source.
 - Sends a Multiview tile to Preview on single click and directly to Program on double-click.
@@ -177,7 +187,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
-- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.4; the current controls only prepare provider settings for a future implementation.
+- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.5; the current controls only prepare provider settings for a future implementation.
 - The post-production editor currently provides trim/export rather than a multitrack timeline.
 - Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
 - Direct-to-disk recording still needs free space in the operating system's temporary directory and the selected save directory. A forced shutdown or power loss before Stop can leave the active recording incomplete; stale temporary sessions are removed when the app next starts.

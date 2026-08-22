@@ -54,7 +54,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const cleanupCapture = () => {
     stopMediaStream(canvasStreamRef.current);
     canvasStreamRef.current = null;
-    audioContextRef.current?.close();
+    audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
   };
 
@@ -254,7 +254,11 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       return;
     }
     stopRequestedRef.current = true;
-    void window.dualcast.stopStream();
+    void window.dualcast.stopStream().catch((error) => {
+      const message = error instanceof Error ? error.message : "Unable to stop the stream.";
+      setLastError(message);
+      setStatusMessage(message);
+    });
   }, []);
 
   return {
