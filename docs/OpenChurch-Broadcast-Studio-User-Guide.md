@@ -1,4 +1,4 @@
-# OpenChurch Broadcast Studio v0.6.5 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.6 - Complete User Guide
 
 This guide is written for volunteers, media teams, pastors, and technical operators. You do not need previous broadcast-software experience.
 
@@ -39,7 +39,7 @@ Do not begin a live service until the test recording contains both picture and c
 1. Open the project's GitHub Releases page.
 2. Download the newest Windows installer, or download the portable ZIP if installation is not permitted.
 3. Run the installer. If using the ZIP, extract it before running the app.
-4. Confirm the version beside the product name is **v0.6.5**.
+4. Confirm the version beside the product name is **v0.6.6**.
 5. Find the always-visible update button in the top header. It reads **Check for Updates** and shows the installed version below it.
 6. Select **Check for Updates**. The button is disabled while checking, and the banner confirms the installed version.
 7. If the app is current, dismiss the confirmation. If a newer release exists, select **Update to v[version]** to download that exact version.
@@ -486,7 +486,7 @@ During recording, the app writes each short WebM chunk through an ordered direct
 9. Watch each destination status, bitrate, FPS, dropped frames, and error messages.
 10. Stop the stream after the service and confirm the platform ended correctly.
 
-YouTube authorization uses `OPENCHURCH_YOUTUBE_CLIENT_ID` and `OPENCHURCH_YOUTUBE_CLIENT_SECRET`. Facebook authorization uses `OPENCHURCH_FACEBOOK_APP_ID` and `OPENCHURCH_FACEBOOK_APP_SECRET`. Stream keys are stored only with protected operating-system credential storage and only when Remember Stream Key is enabled. If protected storage is unavailable, the checkbox is disabled and keys remain in memory only for the current app session.
+Manual YouTube RTMP streaming does not require OAuth environment variables: enter `rtmp://a.rtmp.youtube.com/live2` as the RTMP URL and paste the stream key from YouTube Studio. The optional Connect YouTube Account button uses `OPENCHURCH_YOUTUBE_CLIENT_ID` and `OPENCHURCH_YOUTUBE_CLIENT_SECRET`. Facebook authorization uses `OPENCHURCH_FACEBOOK_APP_ID` and `OPENCHURCH_FACEBOOK_APP_SECRET`. Stream keys are stored only with protected operating-system credential storage and only when Remember Stream Key is enabled. If protected storage is unavailable, the checkbox is disabled and keys remain in memory only for the current app session.
 
 ## 15. Sanctuary, Lower-Third, Network, and Multiview Outputs
 
@@ -577,6 +577,8 @@ Complete this checklist before every service.
 - **Computer is overloaded:** use 30 or 25/24 fps, close Multiview and unused browser apps, and disable or remove unused active sources.
 - **Remember Stream Key is disabled:** the operating system did not provide protected credential storage. Enter keys for this session; the app intentionally will not save them insecurely.
 - **Stop was pressed but the file is not ready:** keep the app open while FFmpeg finishes the final MP4. Very long services take longer and need free disk space.
+- **Streaming repeatedly shows Reconnecting and `ffmpeg.exe ENOENT`:** install v0.6.6 or later from the in-app update button or the latest GitHub release. v0.6.6 launches the bundled executable from the installed `app.asar.unpacked` resources instead of trying to run it inside the application archive.
+- **FFmpeg is reported missing after installing v0.6.6 or later:** stop streaming, reinstall the current release, and allow antivirus or endpoint-protection software to keep the bundled FFmpeg executable. Then restart the app and make a private test stream.
 - **Dock layout is crowded:** resize dock boundaries, merge docks as tabs, hide unused docks, or reset the layout.
 
 ## 20. Privacy, Safety, and Licensing

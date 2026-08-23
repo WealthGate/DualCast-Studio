@@ -3,12 +3,15 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { app } from "electron";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegPath from "ffmpeg-static";
+import bundledFfmpegPath from "ffmpeg-static";
 import { RecordingChunkPayload, RecordingSessionPayload, SaveRecordingPayload, SaveRecordingResult } from "../../src/shared/types";
 import { formatRecordingFilename } from "../../src/shared/recording";
 import { getSettings, getDefaultSaveDirectory } from "./settingsService";
 import log from "./logger";
 import { RecordingDiskSession } from "./recordingDiskSession";
+import { resolveFfmpegExecutablePath } from "./ffmpegPathService";
+
+const ffmpegPath = resolveFfmpegExecutablePath(bundledFfmpegPath);
 
 if (ffmpegPath) {
   ffmpeg.setFfmpegPath(ffmpegPath);

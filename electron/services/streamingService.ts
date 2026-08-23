@@ -3,8 +3,9 @@ import { Readable, Writable } from "stream";
 import fs from "fs";
 import path from "path";
 import { app } from "electron";
-import ffmpegPath from "ffmpeg-static";
+import bundledFfmpegPath from "ffmpeg-static";
 import log from "./logger";
+import { resolveFfmpegExecutablePath } from "./ffmpegPathService";
 import {
   StreamDestinationInput,
   StreamStartPayload,
@@ -32,6 +33,7 @@ type DestinationRuntime = {
 const STOP_TIMEOUT_MS = 4000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
+const ffmpegPath = resolveFfmpegExecutablePath(bundledFfmpegPath);
 
 const presetConfig: Record<StreamingPreset, { maxWidth: number; videoBitrateKbps: number }> = {
   low: { maxWidth: 1280, videoBitrateKbps: 2500 },
@@ -321,9 +323,12 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
       });
   });
 
-  process.on("error", (error) => {
+  process.on("error", (error: NodeJS.ErrnoException) => {
     runtime.lastError = error.message;
     runtime.status = "error";
+    if (error.code === "ENOENT" || error.code === "EACCES") {
+      runtime.reconnectAttempt = MAX_RECONNECT_ATTEMPTS;
+    }
     writeStreamLog(runtime.destination.name, `ffmpeg spawn error: ${error.message}`);
     publishAggregateStatus();
   });
@@ -389,7 +394,7 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
     return { ok: false, message: "Streaming is already active." };
   }
   if (!ffmpegPath) {
-    return { ok: false, message: "FFmpeg is unavailable." };
+    return { ok: false, message: "FFmpeg is missing from the application resources. Reinstall or update OpenChurch Broadcast Studio." };
   }
 
   const destinations = normalizeDestinations(payload);

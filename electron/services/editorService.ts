@@ -1,8 +1,11 @@
 import fs from "fs";
 import path from "path";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegPath from "ffmpeg-static";
+import bundledFfmpegPath from "ffmpeg-static";
 import { ExportClipPayload, ExportClipResult } from "../../src/shared/types";
+import { resolveFfmpegExecutablePath } from "./ffmpegPathService";
+
+const ffmpegPath = resolveFfmpegExecutablePath(bundledFfmpegPath);
 
 if (ffmpegPath) {
   ffmpeg.setFfmpegPath(ffmpegPath);
