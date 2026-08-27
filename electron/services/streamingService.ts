@@ -25,6 +25,7 @@ import {
   StreamingStatus
 } from "../../src/shared/types";
 import { buildRecoverableRtmpOutputArgs } from "../../src/shared/streamingOutputs";
+import { isValidRtmpUrl } from "../../src/shared/streamingValidation";
 
 type StatusPublisher = (payload: StreamStatusPayload) => void;
 
@@ -115,15 +116,6 @@ const sanitizeLogLine = (line: string) => {
 const writeStreamLog = (destinationName: string, line: string) => {
   ensureLogStream();
   logStream?.write(`[${destinationName}] ${sanitizeLogLine(line)}\n`);
-};
-
-const isValidRtmpUrl = (rtmpUrl: string) => {
-  try {
-    const parsed = new URL(rtmpUrl);
-    return parsed.protocol === "rtmp:" || parsed.protocol === "rtmps:";
-  } catch {
-    return false;
-  }
 };
 
 const parseStats = (line: string) => {
@@ -446,8 +438,6 @@ export const getStreamLogContent = async (payload?: { maxLines?: number }) => {
 export const getStreamingCapabilities = () => ({
   encoders: Array.from(availableEncoders)
 });
-
-export const getStreamingStatus = () => currentStatus;
 
 export const startStreaming = async (payload: StreamStartPayload): Promise<StreamStartResult> => {
   if (runtimes.size > 0) {

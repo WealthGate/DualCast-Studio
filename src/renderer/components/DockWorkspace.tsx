@@ -71,6 +71,19 @@ const defaultSizes: DockSizes = {
 
 const zoneIds: DockZoneId[] = ["top", "left", "right", "bottom"];
 
+const startPointerResize = (cursor: string, handleMove: (event: PointerEvent) => void) => {
+  document.body.style.cursor = cursor;
+  document.body.style.userSelect = "none";
+  const handleUp = () => {
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    window.removeEventListener("pointermove", handleMove);
+    window.removeEventListener("pointerup", handleUp);
+  };
+  window.addEventListener("pointermove", handleMove);
+  window.addEventListener("pointerup", handleUp);
+};
+
 const cloneLayout = (layout: DockLayout): DockLayout => ({
   top: layout.top.map((group) => ({ ...group, panelIds: [...group.panelIds] })),
   left: layout.left.map((group) => ({ ...group, panelIds: [...group.panelIds] })),
@@ -336,22 +349,12 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     const startSize = sizes[zoneId];
     const axisLimit = isHorizontalSize ? workspace.clientWidth : workspace.clientHeight;
     const direction = zoneId === "right" || zoneId === "bottom" ? -1 : 1;
-    document.body.style.cursor = isHorizontalSize ? "col-resize" : "row-resize";
-    document.body.style.userSelect = "none";
-
     const handleMove = (moveEvent: PointerEvent) => {
       const pointer = isHorizontalSize ? moveEvent.clientX : moveEvent.clientY;
       const next = Math.max(120, Math.min(axisLimit * 0.55, startSize + (pointer - startPointer) * direction));
       setSizes((current) => ({ ...current, [zoneId]: Math.round(next) }));
     };
-    const handleUp = () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-    };
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleUp);
+    startPointerResize(isHorizontalSize ? "col-resize" : "row-resize", handleMove);
   };
 
   const beginGroupResize = (event: React.PointerEvent, zoneId: DockZoneId, beforeId: string, afterId: string) => {
@@ -366,9 +369,6 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     const startPointer = horizontal ? event.clientX : event.clientY;
     const beforeSize = horizontal ? before.getBoundingClientRect().width : before.getBoundingClientRect().height;
     const afterSize = horizontal ? after.getBoundingClientRect().width : after.getBoundingClientRect().height;
-    document.body.style.cursor = horizontal ? "col-resize" : "row-resize";
-    document.body.style.userSelect = "none";
-
     const handleMove = (moveEvent: PointerEvent) => {
       const pointer = horizontal ? moveEvent.clientX : moveEvent.clientY;
       const delta = pointer - startPointer;
@@ -383,14 +383,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
         }
       }));
     };
-    const handleUp = () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
-    };
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleUp);
+    startPointerResize(horizontal ? "col-resize" : "row-resize", handleMove);
   };
 
   const renderZone = (zoneId: DockZoneId) => {

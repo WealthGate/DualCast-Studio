@@ -1,4 +1,4 @@
-# OpenChurch Broadcast Studio v0.6.7 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.8 - Complete User Guide
 
 This guide is written for volunteers, media teams, pastors, and technical operators. You do not need previous broadcast-software experience.
 
@@ -39,7 +39,7 @@ Do not begin a live service until the test recording contains both picture and c
 1. Open the project's GitHub Releases page.
 2. Download the newest Windows installer, or download the portable ZIP if installation is not permitted.
 3. Run the installer. If using the ZIP, extract it before running the app.
-4. Confirm the version beside the product name is **v0.6.7**.
+4. Confirm the version beside the product name is **v0.6.8**.
 5. Find the always-visible update button in the top header. It reads **Check for Updates** and shows the installed version below it.
 6. Select **Check for Updates**. The button is disabled while checking, and the banner confirms the installed version.
 7. If the app is current, dismiss the confirmation. If a newer release exists, select **Update to v[version]** to download that exact version.
@@ -656,7 +656,7 @@ Complete this checklist before every service.
 - **Only Program is visible in the app:** choose View > Switch to Studio Mode.
 - **Computer is overloaded:** use 30 or 25/24 fps, close Multiview and unused browser apps, and disable or remove unused active sources.
 - **Remember Stream Key is disabled:** the operating system did not provide protected credential storage. Enter keys for this session; the app intentionally will not save them insecurely.
-- **YouTube says application credentials are missing:** open Settings > Streaming Accounts, follow the four Google setup steps, and save a Desktop OAuth client. A user email/password is not entered into these fields.
+- **YouTube says application credentials are missing:** open **Controls > Settings > System Settings > Streaming Accounts**, follow the Google Desktop OAuth setup steps in section 14, and save the client identity. A user email/password is not entered into these fields.
 - **The wrong Google account opens:** in Stream Setup choose Change Account. Google opens the external account chooser; click the intended church email/channel.
 - **A VP9 decoder error repeats while reconnecting:** stop the stream and start it once to create a clean input. This version prefers VP8 ingest and keeps the decoder alive during recoverable network retries, preventing the old incomplete-fragment reconnect loop.
 - **Stop was pressed but the file is not ready:** keep the app open while FFmpeg finishes the final MP4. Very long services take longer and need free disk space.

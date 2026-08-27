@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.7**.
+Current release: **v0.6.8**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -14,9 +14,16 @@ Current release: **v0.6.7**.
 
 The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper may therefore ask users to confirm that they trust the download.
 
-Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.7 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
+Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.8 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.7
+### What's new in v0.6.8
+
+- Removes unused media and streaming exports identified by a whole-source redundancy audit.
+- Replaces duplicated recording/stream timers and RTMP URL validation with single shared implementations.
+- Reuses one pointer-resize cleanup path for both dock-zone and dock-group resizing.
+- Adds focused regression tests for the shared timer and RTMP validation behavior.
+
+### Included from v0.6.7
 
 - Consolidates streaming, recording, Stream Setup, TAKE, one highlighted Studio Mode toggle, Auto Configure, and Settings in the Controls dock.
 - Expands the desktop File menu and adds reusable Profiles for complete scene and settings arrangements without exporting protected secrets.
@@ -188,7 +195,7 @@ npm test
 
 ## Provider Configuration
 
-Streaming OAuth application credentials are entered under **Settings > Streaming Accounts** and protected by the operating system; administrator-managed YouTube/Facebook environment variables remain supported as a fallback. Scripture and AI provider API keys are not saved in ordinary app settings. Enter the name of an environment variable in Venue, then set that variable before starting OpenChurch Broadcast Studio. Examples:
+Streaming OAuth application credentials are entered under **Controls > Settings > System Settings > Streaming Accounts** and protected by the operating system; administrator-managed YouTube/Facebook environment variables remain supported as a fallback. Scripture and AI provider API keys are not saved in ordinary app settings. Enter the name of an environment variable in Venue, then set that variable before starting OpenChurch Broadcast Studio. Examples:
 
 ```powershell
 $env:OPENAI_API_KEY="your-key"
@@ -213,7 +220,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
-- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.7; the current controls only prepare provider settings for a future implementation.
+- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.8; the current controls only prepare provider settings for a future implementation.
 - The post-production editor currently provides trim/export rather than a multitrack timeline.
 - Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
 - Direct-to-disk recording still needs free space in the operating system's temporary directory and the selected save directory. A forced shutdown or power loss before Stop can leave the active recording incomplete; stale temporary sessions are removed when the app next starts.

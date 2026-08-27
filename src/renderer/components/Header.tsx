@@ -3,12 +3,7 @@ import { useAppStore } from "../store/useAppStore";
 import { AudioMode, UpdateStatusPayload, WorkspaceViewMode } from "../../shared/types";
 import packageJson from "../../../package.json";
 import { getUpdateControlView, normalizeVersion } from "../utils/updateControl";
-
-const formatTimer = (seconds: number) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-};
+import { formatElapsedTimer } from "../utils/time";
 
 type HeaderProps = {
   onOpenMultiview: () => void;
@@ -187,7 +182,7 @@ const Header: React.FC<HeaderProps> = ({
         <div className="recording-status">
           <span className={isRecording ? "indicator live" : "indicator"} />
           <span>{isRecording ? "Recording" : "Idle"}</span>
-          <span className="timer">{formatTimer(recordingSeconds)}</span>
+          <span className="timer">{formatElapsedTimer(recordingSeconds)}</span>
         </div>
         <div className="control-group">
           <label htmlFor="audioMode">Audio</label>

@@ -2,26 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { pickStreamingRecorderMimeType, stopMediaStream } from "../utils/media";
 import { StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "../../shared/types";
+import { isValidRtmpUrl } from "../../shared/streamingValidation";
+import { formatElapsedTimer } from "../utils/time";
 
 const presetBitrateMap: Record<string, number> = {
   low: 2_500_000,
   medium: 4_500_000,
   high: 6_500_000
-};
-
-const formatTimer = (seconds: number) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-};
-
-const isValidRtmpUrl = (rtmpUrl: string) => {
-  try {
-    const parsed = new URL(rtmpUrl);
-    return parsed.protocol === "rtmp:" || parsed.protocol === "rtmps:";
-  } catch {
-    return false;
-  }
 };
 
 export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
@@ -83,7 +70,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     const updateElapsed = () => {
       const seconds = Math.max(0, Math.floor((Date.now() - (startedAtRef.current ?? Date.now())) / 1000));
       setElapsedSeconds(seconds);
-      setFormattedElapsed(formatTimer(seconds));
+      setFormattedElapsed(formatElapsedTimer(seconds));
     };
 
     updateElapsed();
