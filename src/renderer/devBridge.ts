@@ -73,6 +73,10 @@ export const installDevelopmentBridge = () => {
     downloadSong: async () => { throw new Error("Song downloads run in the Electron desktop app."); },
     removeSong: async () => false,
     authorizeStreaming: async () => ({ ok: false, message: "Account authorization runs in the Electron desktop app." }),
+    getStreamingCredentialStatus: async (provider) => ({ provider, configured: false, source: "none", account: null }),
+    setStreamingCredentials: async ({ provider }) => ({ provider, configured: true, source: "secure", account: null }),
+    clearStreamingCredentials: async (provider) => ({ provider, configured: false, source: "none", account: null }),
+    disconnectStreamingAccount: async (provider) => ({ provider, configured: false, source: "none", account: null }),
     downloadUserGuide: async () => null,
     onStreamStatus: () => noopUnsubscribe,
     updateProgramState: () => undefined,
@@ -107,6 +111,7 @@ export const installDevelopmentBridge = () => {
     onMultiviewAction: () => noopUnsubscribe,
     onUpdateStatus: () => noopUnsubscribe,
     onHotkey: () => noopUnsubscribe,
-    onRemoteOperatorAction: () => noopUnsubscribe
+    onRemoteOperatorAction: () => noopUnsubscribe,
+    onAppCommand: () => noopUnsubscribe
   };
 };

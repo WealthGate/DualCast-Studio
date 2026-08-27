@@ -12,8 +12,9 @@ import {
   ScriptureLibraryCatalog,
   ScriptureLibrarySummary
 } from "../../src/shared/types";
+import { sanitizeScriptureText } from "../../src/shared/scriptureText";
 
-const stripMarkup = (value: string) => value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const stripMarkup = sanitizeScriptureText;
 
 type ScriptureLibraryPassage = {
   reference: string;
@@ -324,12 +325,12 @@ export const fetchScripture = async (payload: ScriptureFetchPayload): Promise<Sc
     };
     if (!data.text) throw new Error("No verses were returned for that reference.");
     return {
-      reference: data.reference || reference,
-      text: data.text.trim(),
+      reference: stripMarkup(data.reference || reference),
+      text: stripMarkup(data.text),
       translation: data.translation_name,
       verses: data.verses?.flatMap((verse) => {
-        const text = verse.text?.trim();
-        return text ? [{ reference: `${verse.book_name ?? ""} ${verse.chapter ?? ""}:${verse.verse ?? ""}`.trim(), text }] : [];
+        const text = stripMarkup(verse.text || "");
+        return text ? [{ reference: stripMarkup(`${verse.book_name ?? ""} ${verse.chapter ?? ""}:${verse.verse ?? ""}`), text }] : [];
       })
     };
   }
@@ -369,11 +370,12 @@ export const fetchScripture = async (payload: ScriptureFetchPayload): Promise<Sc
   };
   if (!data.text) throw new Error("Custom provider must return JSON containing text.");
   return {
-    reference: data.reference || reference,
-    text: data.text,
+    reference: stripMarkup(data.reference || reference),
+    text: stripMarkup(data.text),
     translation: data.translation,
-    verses: data.verses?.flatMap((verse) => verse.text?.trim()
-      ? [{ reference: verse.reference || reference, text: verse.text.trim() }]
-      : [])
+    verses: data.verses?.flatMap((verse) => {
+      const text = stripMarkup(verse.text || "");
+      return text ? [{ reference: stripMarkup(verse.reference || reference), text }] : [];
+    })
   };
 };

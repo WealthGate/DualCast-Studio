@@ -7,6 +7,14 @@ import bundledFfmpegPath from "ffmpeg-static";
 import log from "./logger";
 import { resolveFfmpegExecutablePath } from "./ffmpegPathService";
 import {
+  buildEncoderProbeArgs,
+  probedStreamingEncoders,
+  hasEncodedVideoFrame,
+  isHardwareEncoderStartupFailure,
+  mapStreamingEncoder,
+  resolveStreamingEncoder
+} from "./streamingEncoder";
+import {
   StreamDestinationInput,
   StreamStartPayload,
   StreamStartResult,
@@ -16,6 +24,7 @@ import {
   StreamingPreset,
   StreamingStatus
 } from "../../src/shared/types";
+import { buildRecoverableRtmpOutputArgs } from "../../src/shared/streamingOutputs";
 
 type StatusPublisher = (payload: StreamStatusPayload) => void;
 
@@ -26,13 +35,14 @@ type DestinationRuntime = {
   reconnectAttempt: number;
   reconnectTimer: NodeJS.Timeout | null;
   needsHeader: boolean;
+  encoder: StreamingEncoder;
+  encoderFallbackPending: boolean;
   lastError: string | null;
   stats: StreamStatusPayload["stats"];
 };
 
 const STOP_TIMEOUT_MS = 4000;
 const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
 const ffmpegPath = resolveFfmpegExecutablePath(bundledFfmpegPath);
 
 const presetConfig: Record<StreamingPreset, { maxWidth: number; videoBitrateKbps: number }> = {
@@ -51,6 +61,30 @@ let startedAt: number | null = null;
 let sessionLogPath: string | null = null;
 let logStream: fs.WriteStream | null = null;
 let cachedHeader: Buffer | null = null;
+let vaapiDevice: string | null = null;
+
+const resolveVaapiDevice = () => {
+  if (process.platform !== "linux") {
+    return null;
+  }
+  try {
+    return fs
+      .readdirSync("/dev/dri")
+      .filter((name) => /^renderD[0-9]+$/.test(name))
+      .sort()
+      .map((name) => path.join("/dev/dri", name))
+      .find((devicePath) => {
+        try {
+          fs.accessSync(devicePath, fs.constants.R_OK | fs.constants.W_OK);
+          return true;
+        } catch {
+          return false;
+        }
+      }) ?? null;
+  } catch {
+    return null;
+  }
+};
 
 const createSessionLogPath = () => {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -118,28 +152,29 @@ const detectEncoders = () => {
     const result = spawnSync(ffmpegPath, ["-hide_banner", "-encoders"], { encoding: "utf8" });
     const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     if (output.includes("libx264")) availableEncoders.add("x264");
-    if (output.includes("h264_nvenc")) availableEncoders.add("nvenc");
-    if (output.includes("h264_qsv")) availableEncoders.add("qsv");
-    if (output.includes("h264_amf")) availableEncoders.add("amf");
+    vaapiDevice = resolveVaapiDevice();
+    probedStreamingEncoders.forEach((encoder) => {
+      const ffmpegEncoder = mapStreamingEncoder(encoder);
+      if (!output.includes(ffmpegEncoder)) {
+        return;
+      }
+      if (encoder === "vaapi" && !vaapiDevice) {
+        return;
+      }
+      const probe = spawnSync(ffmpegPath, buildEncoderProbeArgs(encoder, { vaapiDevice }), {
+        encoding: "utf8",
+        timeout: 3000,
+        windowsHide: true
+      });
+      if (probe.status === 0 && !probe.error) {
+        availableEncoders.add(encoder);
+      } else {
+        log.info(`${ffmpegEncoder} is included in FFmpeg but unavailable on this PC; streaming will use a compatible encoder.`);
+      }
+    });
   } catch {
     // x264 remains the safe fallback.
   }
-};
-
-const resolveEncoder = (requested: StreamingEncoder) => {
-  if (requested !== "auto" && availableEncoders.has(requested)) {
-    return requested;
-  }
-  return (["nvenc", "qsv", "amf", "x264"] as StreamingEncoder[]).find((encoder) =>
-    availableEncoders.has(encoder)
-  ) ?? "x264";
-};
-
-const mapEncoder = (encoder: StreamingEncoder) => {
-  if (encoder === "nvenc") return "h264_nvenc";
-  if (encoder === "qsv") return "h264_qsv";
-  if (encoder === "amf") return "h264_amf";
-  return "libx264";
 };
 
 const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder) => {
@@ -155,23 +190,38 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     "-flags",
     "low_delay",
     "-max_delay",
-    "0",
+    "0"
+  ];
+
+  if (encoder === "vaapi" && vaapiDevice) {
+    args.push("-vaapi_device", vaapiDevice);
+  }
+
+  args.push(
     "-i",
     "pipe:0",
     "-map",
     "0:v:0",
     "-vf",
-    `scale='min(${preset.maxWidth},iw)':-2`,
+    encoder === "vaapi"
+      ? `scale='min(${preset.maxWidth},iw)':-2,format=nv12,hwupload`
+      : encoder === "mediafoundation"
+        ? `scale='min(${preset.maxWidth},iw)':-2,format=nv12`
+        : `scale='min(${preset.maxWidth},iw)':-2`,
     "-r",
     String(payload.fps),
     "-c:v",
-    mapEncoder(encoder)
-  ];
+    mapStreamingEncoder(encoder)
+  );
 
   if (encoder === "x264") {
     args.push("-preset", "veryfast", "-tune", "zerolatency");
   } else if (encoder === "nvenc") {
     args.push("-preset", "p4", "-tune", "ll");
+  } else if (encoder === "videotoolbox") {
+    args.push("-realtime", "1");
+  } else if (encoder === "mediafoundation") {
+    args.push("-hw_encoding", "1", "-scenario", "live_streaming", "-rate_control", "cbr");
   }
 
   args.push(
@@ -180,16 +230,25 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     "-maxrate",
     bitrate,
     "-bufsize",
-    `${preset.videoBitrateKbps * 2}k`,
-    "-pix_fmt",
-    "yuv420p",
+    `${preset.videoBitrateKbps * 2}k`
+  );
+
+  if (encoder !== "vaapi" && encoder !== "mediafoundation") {
+    args.push("-pix_fmt", "yuv420p");
+  }
+
+  args.push(
     "-g",
     String(gop),
     "-keyint_min",
-    String(gop),
-    "-sc_threshold",
-    "0"
+    String(gop)
   );
+
+  if (encoder === "x264") {
+    args.push("-sc_threshold", "0");
+  } else if (encoder === "vaapi") {
+    args.push("-bf", "0");
+  }
 
   if (payload.hasAudio) {
     args.push("-map", "0:a:0?", "-c:a", "aac", "-b:a", `${payload.audioBitrate}k`, "-ar", "44100");
@@ -197,7 +256,6 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     args.push("-an");
   }
 
-  args.push("-f", "flv");
   return args;
 };
 
@@ -252,30 +310,6 @@ const publishAggregateStatus = () => {
   statusPublisher?.(currentStatus);
 };
 
-const scheduleReconnect = (runtime: DestinationRuntime) => {
-  if (stopRequested || !lastStartPayload) {
-    return;
-  }
-  if (runtime.reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
-    runtime.status = "error";
-    runtime.lastError = runtime.lastError ?? "Reconnect limit reached.";
-    publishAggregateStatus();
-    return;
-  }
-
-  runtime.reconnectAttempt += 1;
-  runtime.status = "reconnecting";
-  const delay = RECONNECT_DELAYS_MS[Math.min(runtime.reconnectAttempt - 1, RECONNECT_DELAYS_MS.length - 1)];
-  publishAggregateStatus();
-
-  runtime.reconnectTimer = setTimeout(() => {
-    runtime.reconnectTimer = null;
-    if (!stopRequested) {
-      startDestination(runtime, true);
-    }
-  }, delay);
-};
-
 const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => {
   if (!ffmpegPath || !lastStartPayload) {
     runtime.status = "error";
@@ -284,13 +318,14 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     return;
   }
 
-  const encoder = resolveEncoder(lastStartPayload.encoder);
+  const encoder = runtime.encoder;
   const endpoint = `${runtime.destination.rtmpUrl.replace(/\/+$/, "")}/${runtime.destination.streamKey}`;
   const args = buildFfmpegArgs(lastStartPayload, encoder);
-  args.push(endpoint);
+  args.push(...buildRecoverableRtmpOutputArgs(endpoint));
 
   runtime.status = isReconnect ? "reconnecting" : "connecting";
   runtime.needsHeader = true;
+  runtime.encoderFallbackPending = false;
   runtime.lastError = null;
   publishAggregateStatus();
 
@@ -299,6 +334,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     windowsHide: true
   });
   runtime.process = process;
+  writeStreamLog(runtime.destination.name, `Starting FFmpeg with ${mapStreamingEncoder(encoder)}.`);
 
   process.stderr.setEncoding("utf8");
   process.stderr.on("data", (chunk: string) => {
@@ -314,9 +350,16 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
         if (line.toLowerCase().includes("error") || line.toLowerCase().includes("failed")) {
           runtime.lastError = sanitizeLogLine(line.trim());
         }
-        if ((runtime.status === "connecting" || runtime.status === "reconnecting") && line.includes("frame=")) {
+        if (isHardwareEncoderStartupFailure(runtime.encoder, line)) {
+          runtime.encoderFallbackPending = true;
+        }
+        if (
+          (runtime.status === "connecting" || runtime.status === "reconnecting") &&
+          hasEncodedVideoFrame(line)
+        ) {
           runtime.status = "live";
           runtime.reconnectAttempt = 0;
+          runtime.lastError = null;
           startedAt = startedAt ?? Date.now();
         }
         publishAggregateStatus();
@@ -341,7 +384,24 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     runtime.lastError =
       runtime.lastError ?? `FFmpeg exited (code ${code ?? "?"}, signal ${signal ?? "?"}).`;
     log.warn(`${runtime.destination.name} stopped unexpectedly.`);
-    scheduleReconnect(runtime);
+    if (runtime.encoderFallbackPending && runtime.encoder !== "x264") {
+      const failedEncoder = runtime.encoder;
+      availableEncoders.delete(failedEncoder);
+      runtime.encoder = resolveStreamingEncoder("auto", availableEncoders);
+      runtime.encoderFallbackPending = false;
+      runtime.reconnectAttempt = 0;
+      runtime.status = "reconnecting";
+      runtime.lastError = `${mapStreamingEncoder(failedEncoder)} is unavailable on this PC. Retrying with ${mapStreamingEncoder(runtime.encoder)}.`;
+      writeStreamLog(runtime.destination.name, runtime.lastError);
+      publishAggregateStatus();
+      startDestination(runtime, true);
+      return;
+    }
+    runtime.status = "error";
+    runtime.reconnectAttempt = MAX_RECONNECT_ATTEMPTS;
+    runtime.lastError = `${runtime.lastError ?? "The stream output stopped."} Automatic network recovery ended; stop and start streaming to create a fresh media input.`;
+    writeStreamLog(runtime.destination.name, runtime.lastError);
+    publishAggregateStatus();
   });
 };
 
@@ -425,6 +485,7 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   lastStartPayload = payload;
 
   destinations.forEach((destination) => {
+    const encoder = resolveStreamingEncoder(payload.encoder, availableEncoders);
     const runtime: DestinationRuntime = {
       destination,
       process: null,
@@ -432,6 +493,8 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
       reconnectAttempt: 0,
       reconnectTimer: null,
       needsHeader: true,
+      encoder,
+      encoderFallbackPending: false,
       lastError: null,
       stats: null
     };

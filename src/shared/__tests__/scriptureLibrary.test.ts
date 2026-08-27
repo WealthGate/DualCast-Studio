@@ -49,4 +49,12 @@ describe("Scripture library normalization", () => {
   it("rejects JSON without Scripture passages", () => {
     expect(() => normalizeScriptureLibrary({ name: "Empty" }, "Fallback")).toThrow("No Scripture passages were found");
   });
+
+  it("removes markup and stray wrapping characters from imported verses", () => {
+    const library = normalizeScriptureLibrary({
+      passages: [{ reference: "John 3:16", text: "<For <span>God</span> so loved the world.>" }]
+    }, "Imported Bible");
+
+    expect(library.passages[0].text).toBe("For God so loved the world.");
+  });
 });

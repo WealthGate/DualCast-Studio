@@ -67,6 +67,11 @@ export const IpcChannels = {
   downloadSong: "dualcast:download-song",
   removeSong: "dualcast:remove-song",
   authorizeStreaming: "dualcast:authorize-streaming",
+  getStreamingCredentialStatus: "dualcast:get-streaming-credential-status",
+  setStreamingCredentials: "dualcast:set-streaming-credentials",
+  clearStreamingCredentials: "dualcast:clear-streaming-credentials",
+  disconnectStreamingAccount: "dualcast:disconnect-streaming-account",
+  appCommand: "dualcast:app-command",
   downloadUserGuide: "dualcast:download-user-guide"
 } as const;
 

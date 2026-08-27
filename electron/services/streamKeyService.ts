@@ -8,6 +8,7 @@ type StreamKeyRecord =
 type SecretsStore = {
   streamKey?: string;
   streamKeys?: Record<string, string>;
+  secureSecrets?: Record<string, string>;
   localKey?: string;
 };
 
@@ -44,6 +45,39 @@ const removeLegacyLocalKeys = () => {
 };
 
 export const isEncryptionAvailable = () => safeStorage.isEncryptionAvailable();
+
+export const setSecureSecret = (key: string, value: string) => {
+  if (!key || !value || !safeStorage.isEncryptionAvailable()) return false;
+  const encrypted = safeStorage.encryptString(value).toString("base64");
+  const record: StreamKeyRecord = { mode: "safe", payload: encrypted };
+  const storeInstance = getStore();
+  const secureSecrets = storeInstance.get("secureSecrets") ?? {};
+  secureSecrets[key] = JSON.stringify(record);
+  storeInstance.set("secureSecrets", secureSecrets);
+  return true;
+};
+
+export const getSecureSecret = (key: string) => {
+  const stored = getStore().get("secureSecrets")?.[key];
+  if (!stored || !safeStorage.isEncryptionAvailable()) return null;
+  try {
+    const record = JSON.parse(stored) as StreamKeyRecord;
+    return record.mode === "safe"
+      ? safeStorage.decryptString(Buffer.from(record.payload, "base64"))
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+export const clearSecureSecret = (key: string) => {
+  const storeInstance = getStore();
+  const secureSecrets = storeInstance.get("secureSecrets") ?? {};
+  delete secureSecrets[key];
+  if (Object.keys(secureSecrets).length) storeInstance.set("secureSecrets", secureSecrets);
+  else storeInstance.delete("secureSecrets");
+  return true;
+};
 
 export const setStreamKey = (streamKey: string, destinationId = "primary") => {
   if (!streamKey || !safeStorage.isEncryptionAvailable()) {

@@ -7,6 +7,7 @@ import { initializeUpdater, stopUpdater } from "./services/updateService";
 import { cleanupRecordingSessions, cleanupStaleRecordingFiles } from "./services/recordingService";
 import { forceStopStreaming } from "./services/streamingService";
 import { cleanupEditorCommands } from "./services/editorService";
+import { installApplicationMenu } from "./services/menuService";
 
 
 const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -67,6 +68,7 @@ if (!hasSingleInstanceLock) {
     setupLogging();
     await cleanupStaleRecordingFiles();
     createMainWindow();
+    installApplicationMenu(() => mainWindow);
     registerIpcHandlers();
     registerHotkeys(() => mainWindow);
     initializeUpdater();

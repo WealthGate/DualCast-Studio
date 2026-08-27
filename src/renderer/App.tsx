@@ -15,6 +15,8 @@ import DockWorkspace, { DockPanelDefinition } from "./components/DockWorkspace";
 import UpdateBanner from "./components/UpdateBanner";
 import LowerThirdPanel from "./components/LowerThirdPanel";
 import ScripturePanel from "./components/ScripturePanel";
+import ProfileManager, { ProfileManagerIntent } from "./components/ProfileManager";
+import AutoConfigurationWizard from "./components/AutoConfigurationWizard";
 import { useAppStore } from "./store/useAppStore";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
 import { useProgramStreamer } from "./hooks/useProgramStreamer";
@@ -31,6 +33,10 @@ const App: React.FC = () => {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusPayload | null>(null);
   const [showUpdateStatus, setShowUpdateStatus] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
+  const [dockFocus, setDockFocus] = useState<{ panelId: string; token: number } | null>(null);
+  const [profileManagerIntent, setProfileManagerIntent] = useState<ProfileManagerIntent | null>(null);
+  const [showAutoConfiguration, setShowAutoConfiguration] = useState(false);
+  const [streamStartRequest, setStreamStartRequest] = useState(0);
 
   const {
     setSettings,
@@ -52,6 +58,18 @@ const App: React.FC = () => {
 
   const recorder = useProgramRecorder(programCanvasRef);
   const streamer = useProgramStreamer(programCanvasRef);
+
+  const focusDock = (panelId: string) => setDockFocus({ panelId, token: Date.now() + Math.random() });
+
+  useEffect(() => window.dualcast.onAppCommand((command) => {
+    if (command === "open-settings") focusDock("system");
+    else if (command === "open-stream-setup") focusDock("streaming");
+    else if (command === "open-auto-config") setShowAutoConfiguration(true);
+    else if (command === "profile-new") setProfileManagerIntent("new");
+    else if (command === "profile-duplicate") setProfileManagerIntent("duplicate");
+    else if (command === "profile-manage") setProfileManagerIntent("manage");
+    else if (command === "toggle-studio") setViewMode((current) => current === "studio" ? "program-focus" : "studio");
+  }), []);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
@@ -234,13 +252,20 @@ const App: React.FC = () => {
           onStartRecording={recorder.startRecording}
           onStopRecording={recorder.stopRecording}
           onOpenFolder={recorder.openRecordingFolder}
+          streamer={streamer}
+          studioModeActive={viewMode === "studio"}
+          onStartStreaming={() => { focusDock("streaming"); setStreamStartRequest((value) => value + 1); }}
+          onOpenStreamSetup={() => focusDock("streaming")}
+          onToggleStudioMode={() => setViewMode((current) => current === "studio" ? "program-focus" : "studio")}
+          onOpenSettings={() => focusDock("system")}
+          onOpenAutoConfiguration={() => setShowAutoConfiguration(true)}
         />
       )
     },
     {
       id: "streaming",
       title: "Live Streaming",
-      content: <StreamingPanel streamer={streamer} />
+      content: <StreamingPanel streamer={streamer} startRequest={streamStartRequest} />
     },
     { id: "venue", title: "Venue & Outputs", content: <VenuePanel /> },
     { id: "lower-third", title: "Lower Third Studio", content: <LowerThirdPanel /> },
@@ -253,9 +278,6 @@ const App: React.FC = () => {
   return (
     <div className={`app-shell ${viewMode}-mode`}>
       <Header
-        onStartRecording={recorder.startRecording}
-        onStopRecording={recorder.stopRecording}
-        onOpenFolder={recorder.openRecordingFolder}
         onOpenMultiview={() => window.dualcast.openMultiview()}
         onCheckForUpdates={handleCheckForUpdates}
         onDownloadUpdate={handleDownloadUpdate}
@@ -284,7 +306,10 @@ const App: React.FC = () => {
       <DockWorkspace
         panels={dockPanels}
         center={<PreviewProgram programCanvasRef={programCanvasRef} viewMode={viewMode} />}
+        focusRequest={dockFocus}
       />
+      {profileManagerIntent ? <ProfileManager intent={profileManagerIntent} onClose={() => setProfileManagerIntent(null)} /> : null}
+      {showAutoConfiguration ? <AutoConfigurationWizard onClose={() => setShowAutoConfiguration(false)} /> : null}
     </div>
   );
 };

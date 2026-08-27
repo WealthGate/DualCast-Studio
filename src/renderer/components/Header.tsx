@@ -11,9 +11,6 @@ const formatTimer = (seconds: number) => {
 };
 
 type HeaderProps = {
-  onStartRecording: () => void;
-  onStopRecording: () => void;
-  onOpenFolder: () => void;
   onOpenMultiview: () => void;
   onCheckForUpdates: () => void;
   onDownloadUpdate: () => void;
@@ -25,9 +22,6 @@ type HeaderProps = {
 };
 
 const Header: React.FC<HeaderProps> = ({
-  onStartRecording,
-  onStopRecording,
-  onOpenFolder,
   onOpenMultiview,
   onCheckForUpdates,
   onDownloadUpdate,
@@ -204,22 +198,6 @@ const Header: React.FC<HeaderProps> = ({
             <option value="none">Mute All</option>
           </select>
         </div>
-        <div className="control-group">
-          {isRecording ? (
-            <button className="btn btn-danger" onClick={onStopRecording}>
-              Stop
-            </button>
-          ) : (
-            <button className="btn btn-primary" onClick={onStartRecording}>
-              Record
-            </button>
-          )}
-        </div>
-        {recordingResult ? (
-          <button className="btn btn-outline" onClick={onOpenFolder}>
-            Open Folder
-          </button>
-        ) : null}
         {recordingError ? <span className="error-pill">{recordingError}</span> : null}
         {recordingResult?.usedFallback ? (
           <span className="warn-pill">Saved as WebM (FFmpeg fallback)</span>

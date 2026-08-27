@@ -14,6 +14,8 @@ import {
   StudioState,
   ThemePreference
 } from "../../src/shared/types";
+import { STREAMING_ENCODER_OPTIONS } from "../../src/shared/streamingEncoders";
+import { normalizeYouTubeBroadcastSettings } from "../../src/shared/streamingPlatforms";
 import { normalizeStudioState } from "../../src/shared/settings";
 
 let store: Store<Settings> | null = null;
@@ -24,7 +26,10 @@ const allowedAudio: AudioMode[] = ["system", "microphone", "both", "none"];
 const allowedStreamingPresets: StreamingPreset[] = ["low", "medium", "high"];
 const allowedStreamingFps: StreamingFps[] = [15, 24, 25, 30, 50, 60];
 const allowedStreamingAudio: StreamingAudioBitrate[] = [128, 192];
-const allowedStreamingEncoders: StreamingEncoder[] = ["auto", "x264", "nvenc", "qsv", "amf"];
+const allowedStreamingEncoders: StreamingEncoder[] = [
+  "auto",
+  ...STREAMING_ENCODER_OPTIONS.map((option) => option.id)
+];
 const allowedOperatorRoles = ["director", "graphics", "audio", "stream"];
 const allowedThemes: ThemePreference[] = ["system", "dark", "light", "high-contrast", "midnight", "warm"];
 const allowedLowerThirdAnimations = ["none", "fade", "slide-left", "slide-right", "slide-up", "zoom", "wipe"] as const;
@@ -109,7 +114,7 @@ const createStore = () => {
       streamAudioBitrate: 128,
       streamEncoder: "auto",
       rememberStreamKey: false,
-      streamDestinations: [{ id: "primary", name: "Primary Stream", rtmpUrl: "", enabled: true }],
+      streamDestinations: [{ id: "primary", name: "Primary Stream", rtmpUrl: "", enabled: true, platform: "custom" }],
       operatorStationName: "Main Director",
       operatorRole: "director",
       masterAudioGain: 1,
@@ -172,7 +177,11 @@ const normalizeDestinations = (value: unknown): Settings["streamDestinations"] =
       rtmpUrl: typeof destination.rtmpUrl === "string" ? destination.rtmpUrl.slice(0, 2_048) : "",
       enabled: destination.enabled !== false,
       platform: destination.platform === "youtube" || destination.platform === "facebook" ? destination.platform : "custom" as const,
-      authorizedAccount: typeof destination.authorizedAccount === "string" ? destination.authorizedAccount.slice(0, 160) : null
+      authorizedAccount: typeof destination.authorizedAccount === "string" ? destination.authorizedAccount.slice(0, 160) : null,
+      broadcast: normalizeYouTubeBroadcastSettings(destination.broadcast),
+      providerBroadcastId: typeof destination.providerBroadcastId === "string"
+        ? destination.providerBroadcastId.slice(0, 200)
+        : null
     }];
   }).slice(0, 12);
   return destinations.length ? destinations : [{ id: "primary", name: "Primary Stream", rtmpUrl: "", enabled: true, platform: "custom" }];

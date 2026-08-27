@@ -57,18 +57,24 @@ export const stopMediaStream = (stream: MediaStream | null) => {
   stream.getTracks().forEach((track) => track.stop());
 };
 
-export const pickRecorderMimeType = () => {
-  const preferred = [
+export const pickSupportedRecorderMimeType = (
+  preferred: string[],
+  isSupported: (mimeType: string) => boolean = (mimeType) => MediaRecorder.isTypeSupported(mimeType)
+) => {
+  for (const type of preferred) {
+    if (isSupported(type)) return type;
+  }
+  return "";
+};
+
+export const pickRecorderMimeType = () => pickSupportedRecorderMimeType([
     "video/webm;codecs=vp9,opus",
     "video/webm;codecs=vp8,opus",
     "video/webm"
-  ];
+  ]);
 
-  for (const type of preferred) {
-    if (MediaRecorder.isTypeSupported(type)) {
-      return type;
-    }
-  }
-
-  return "";
-};
+export const pickStreamingRecorderMimeType = () => pickSupportedRecorderMimeType([
+  "video/webm;codecs=vp8,opus",
+  "video/webm;codecs=vp9,opus",
+  "video/webm"
+]);

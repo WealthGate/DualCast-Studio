@@ -34,7 +34,11 @@ import {
   SongLibraryEntry,
   SongRemovePayload,
   StreamingAuthorizationPayload,
-  StreamingAuthorizationResult
+  StreamingAuthorizationResult,
+  StreamingCredentialInput,
+  StreamingCredentialProvider,
+  StreamingCredentialStatus,
+  AppCommand
 } from "../shared/types";
 
 declare global {
@@ -91,6 +95,10 @@ declare global {
       downloadSong: (payload: SongDownloadPayload) => Promise<SongLibraryEntry>;
       removeSong: (payload: SongRemovePayload) => Promise<boolean>;
       authorizeStreaming: (payload: StreamingAuthorizationPayload) => Promise<StreamingAuthorizationResult>;
+      getStreamingCredentialStatus: (provider: StreamingCredentialProvider) => Promise<StreamingCredentialStatus>;
+      setStreamingCredentials: (payload: StreamingCredentialInput) => Promise<StreamingCredentialStatus>;
+      clearStreamingCredentials: (provider: StreamingCredentialProvider) => Promise<StreamingCredentialStatus>;
+      disconnectStreamingAccount: (provider: StreamingCredentialProvider) => Promise<StreamingCredentialStatus>;
       downloadUserGuide: () => Promise<string | null>;
       onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => () => void;
       updateProgramState: (state: ProgramState) => void;
@@ -113,6 +121,7 @@ declare global {
       onUpdateStatus: (handler: (status: UpdateStatusPayload) => void) => () => void;
       onHotkey: (handler: (action: HotkeyAction) => void) => () => void;
       onRemoteOperatorAction: (handler: (action: RemoteOperatorAction) => void) => () => void;
+      onAppCommand: (handler: (command: AppCommand) => void) => () => void;
     };
   }
 }

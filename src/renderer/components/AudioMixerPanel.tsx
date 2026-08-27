@@ -36,7 +36,12 @@ const AudioMixerPanel: React.FC = () => {
     updateSettings,
     updateSource,
     toggleSourceAudio,
-    persistStudioState
+    persistStudioState,
+    programAudioStream,
+    isProgramAudioMonitoring,
+    programAudioMonitorGain,
+    setProgramAudioMonitoring,
+    setProgramAudioMonitorGain
   } = useAppStore();
   const [microphones, setMicrophones] = useState<MicrophoneDevice[]>([]);
   const audioSources = Object.values(sources).filter(supportsAudio);
@@ -111,6 +116,36 @@ const AudioMixerPanel: React.FC = () => {
           value={settings.masterAudioGain}
           onChange={(event) => updateSettings({ masterAudioGain: Number(event.target.value) })}
         />
+      </div>
+      <div className="mixer-monitor">
+        <button
+          type="button"
+          className={`monitor-toggle ${isProgramAudioMonitoring ? "active" : ""}`}
+          aria-pressed={isProgramAudioMonitoring}
+          onClick={() => setProgramAudioMonitoring(!isProgramAudioMonitoring)}
+        >
+          {isProgramAudioMonitoring ? "Stop Listening" : "Listen to Program"}
+        </button>
+        <label>
+          Monitor volume
+          <input
+            aria-label="Local Program monitor volume"
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={programAudioMonitorGain}
+            disabled={!isProgramAudioMonitoring}
+            onChange={(event) => setProgramAudioMonitorGain(Number(event.target.value))}
+          />
+          <span>{Math.round(programAudioMonitorGain * 100)}%</span>
+        </label>
+        <span className={`monitor-status ${programAudioStream ? "ready" : "waiting"}`}>
+          {programAudioStream ? "Program audio ready" : "Waiting for Program audio"}
+        </span>
+        <p>
+          Local monitoring does not change the recording or stream. Use headphones when the microphone is enabled to prevent feedback.
+        </p>
       </div>
       <div className="mixer-channels">
         <div className={`mixer-channel ${microphoneEnabled ? "active" : "muted"}`}>

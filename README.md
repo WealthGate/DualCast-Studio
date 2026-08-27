@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.6**.
+Current release: **v0.6.7**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -14,9 +14,20 @@ Current release: **v0.6.6**.
 
 The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper may therefore ask users to confirm that they trust the download.
 
-Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.6 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
+Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.7 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.6
+### What's new in v0.6.7
+
+- Consolidates streaming, recording, Stream Setup, TAKE, one highlighted Studio Mode toggle, Auto Configure, and Settings in the Controls dock.
+- Expands the desktop File menu and adds reusable Profiles for complete scene and settings arrangements without exporting protected secrets.
+- Adds guided YouTube and Facebook account setup inside System Settings, secure credential/token storage, account reuse, and an explicit Change Account path.
+- Creates and binds YouTube broadcasts with title, visibility, category, audience, schedule, latency, DVR, auto-start/stop, and embedding choices.
+- Adds an Auto-Configuration Wizard based on the venue upload speed and encoders that actually pass a local hardware test.
+- Sends lyric, Scripture, and Text sources directly to Program on double-click and removes API markup or stray angle brackets from Scripture.
+- Keeps one FFmpeg decoder alive through temporary RTMP output recovery, avoiding invalid mid-WebM decoder restart loops.
+- Adds direct-to-disk long-service recording, local Program audio monitoring, expanded encoder compatibility, and focused regression tests.
+
+### Included from v0.6.6
 
 - Fixes Windows live streaming repeatedly reconnecting with an `ffmpeg.exe ENOENT` error after installation.
 - Resolves the bundled FFmpeg executable from `app.asar.unpacked`, where Windows, macOS, and Linux can launch it safely.
@@ -100,11 +111,17 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Th
 - Supports operator station names and Director, Presentation, Streaming, Audio, and Viewer roles.
 
 ### Streaming and Audio
+- Consolidates Stream Start/Stop, Stream Setup, Recording, one highlighted Studio Mode toggle, Auto Configure, and Settings in the Controls dock.
+- Expands the native File menu with Recordings, Logs, Scripture Libraries, App Data, and Settings, and adds reusable create/duplicate/apply/import/export studio profiles without protected secrets.
+- Provides an auto-configuration wizard that uses venue upload headroom and locally tested encoders to recommend stream, FPS, audio, recording, and encoder settings.
 - Streams to multiple enabled RTMP/RTMPS destinations at the same time.
-- Opens official YouTube or Facebook authorization in the system browser and loads available account/stream details when provider permissions allow it.
+- Stores platform application credentials and reusable account tokens with operating-system encryption, opens the official account chooser in the system browser, and supports explicit Change Account / Disconnect actions.
+- Creates and binds YouTube broadcasts from the stream setup, including public, unlisted, or private visibility, category, made-for-kids audience, schedule, latency, DVR, auto-start/stop, and embedding choices.
+- Completes a manual Live Preview Blend at 100% and automatically resets its fader while preserving every intermediate blend position.
 - Stores stream keys per destination when the operator opts in.
 - Reports destination-level connecting, live, reconnecting, and error states.
-- Supports stream presets, encoder selection, audio bitrate controls, logs, and reconnect attempts.
+- Uses broadly compatible VP8 ingest and a persistent FFmpeg decoder with recoverable output queues, avoiding mid-WebM decoder respawn loops after temporary network failure.
+- Supports stream presets, encoder selection, audio bitrate controls, logs, and recovery reporting.
 - Mixes source-level volume controls into a master Program audio gain.
 - Routes microphones and audio sources per scene or persistently across all scenes, with dynamic mono/stereo meters and clipping warnings.
 - Falls back to video-only capture when an otherwise valid desktop source does not expose an audio track.
@@ -113,6 +130,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Th
 - Configures a local worship-song folder or Planning Center/custom song provider.
 - Configures API.Bible, Bible API, or a custom Scripture provider.
 - Fetches complete selected passages with their Book/Chapter/Verse reference and cues them to the lower third.
+- Sanitizes online, imported, downloaded, and saved Scripture so API markup, encoded entities, zero-width characters, and stray wrapping angle brackets never appear on Preview or Program.
 - Imports or securely downloads compatible licensed Scripture JSON libraries for offline lookup and display at lower-third, full, half, 3/4, or custom scene sizes.
 - Keeps provider credentials outside normal settings by referencing environment-variable names.
 - Configures OpenAI, Azure OpenAI, or a custom AI-compatible provider for future captions, summaries, and highlight suggestions.
@@ -170,7 +188,7 @@ npm test
 
 ## Provider Configuration
 
-Provider API keys are not saved in ordinary app settings. Enter the name of an environment variable in Venue, then set that variable before starting OpenChurch Broadcast Studio. Examples:
+Streaming OAuth application credentials are entered under **Settings > Streaming Accounts** and protected by the operating system; administrator-managed YouTube/Facebook environment variables remain supported as a fallback. Scripture and AI provider API keys are not saved in ordinary app settings. Enter the name of an environment variable in Venue, then set that variable before starting OpenChurch Broadcast Studio. Examples:
 
 ```powershell
 $env:OPENAI_API_KEY="your-key"
@@ -195,7 +213,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
-- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.6; the current controls only prepare provider settings for a future implementation.
+- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.7; the current controls only prepare provider settings for a future implementation.
 - The post-production editor currently provides trim/export rather than a multitrack timeline.
 - Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
 - Direct-to-disk recording still needs free space in the operating system's temporary directory and the selected save directory. A forced shutdown or power loss before Stop can leave the active recording incomplete; stale temporary sessions are removed when the app next starts.

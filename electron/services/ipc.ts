@@ -31,7 +31,9 @@ import {
   SaveRecordingPayload,
   SettingsUpdate,
   ProgramState,
-  StreamStartPayload
+  StreamStartPayload,
+  StreamingCredentialInput,
+  StreamingCredentialProvider
 } from "../../src/shared/types";
 import {
   closeLowerThirdWindow,
@@ -70,6 +72,12 @@ import {
 } from "./scriptureService";
 import { downloadSong, importSong, listSongs, removeSong } from "./songService";
 import { authorizeStreaming } from "./streamingAuthService";
+import {
+  clearStreamingCredentials,
+  disconnectStreamingAccount,
+  getStreamingCredentialStatus,
+  setStreamingCredentials
+} from "./streamingCredentialService";
 
 export const registerIpcHandlers = () => {
   setStreamStatusPublisher((payload) => {
@@ -205,6 +213,18 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IpcChannels.downloadSong, async (_event, payload) => downloadSong(payload));
   ipcMain.handle(IpcChannels.removeSong, async (_event, payload) => removeSong(payload));
   ipcMain.handle(IpcChannels.authorizeStreaming, async (_event, payload) => authorizeStreaming(payload));
+  ipcMain.handle(IpcChannels.getStreamingCredentialStatus, async (_event, provider: StreamingCredentialProvider) =>
+    getStreamingCredentialStatus(provider)
+  );
+  ipcMain.handle(IpcChannels.setStreamingCredentials, async (_event, payload: StreamingCredentialInput) =>
+    setStreamingCredentials(payload)
+  );
+  ipcMain.handle(IpcChannels.clearStreamingCredentials, async (_event, provider: StreamingCredentialProvider) =>
+    clearStreamingCredentials(provider)
+  );
+  ipcMain.handle(IpcChannels.disconnectStreamingAccount, async (_event, provider: StreamingCredentialProvider) =>
+    disconnectStreamingAccount(provider)
+  );
   ipcMain.handle(IpcChannels.downloadUserGuide, async () => {
     const owner = BrowserWindow.getFocusedWindow();
     const options: Electron.SaveDialogOptions = {

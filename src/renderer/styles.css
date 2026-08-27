@@ -2215,6 +2215,63 @@ body {
   background: #9a3240;
 }
 
+.mixer-monitor {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #414650;
+  background: #171a20;
+}
+
+.monitor-toggle {
+  border: 1px solid #586170;
+  border-radius: 2px;
+  padding: 6px 10px;
+  background: #303641;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.monitor-toggle.active {
+  border-color: #3d9a62;
+  background: #22643e;
+}
+
+.mixer-monitor label {
+  display: grid;
+  grid-template-columns: auto minmax(80px, 1fr) 36px;
+  align-items: center;
+  gap: 7px;
+  color: #d7dce5;
+  font-size: 10px;
+}
+
+.mixer-monitor label span {
+  color: #b6bdca;
+  text-align: right;
+}
+
+.monitor-status {
+  color: #e0b94d;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.monitor-status.ready {
+  color: #65cf87;
+}
+
+.mixer-monitor p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #aeb5c2;
+  font-size: 9px;
+}
+
 .mixer-master .mixer-meter {
   width: 24px;
   height: 38px;
@@ -2442,8 +2499,33 @@ body {
 }
 
 .production-controls-panel .control-record.active,
-.production-controls-panel .control-warning.active {
+.production-controls-panel .control-warning.active,
+.production-controls-panel .control-stream.active {
   background: #a73342;
+}
+
+.production-controls-panel .control-studio.active {
+  background: #365fc4;
+  border-color: #6f95f4;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.primary-control-grid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.control-status-line {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 24px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .dock-empty-state {
@@ -3055,10 +3137,246 @@ body {
   background: var(--panel-soft);
 }
 
+.youtube-broadcast-setup {
+  display: grid;
+  gap: 8px;
+  margin: 9px 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel-soft));
+}
+
+.youtube-broadcast-setup legend {
+  padding: 0 5px;
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.youtube-broadcast-setup textarea {
+  resize: vertical;
+}
+
+.youtube-broadcast-grid,
+.youtube-option-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.youtube-option-grid label {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.broadcast-ready-note {
+  border-left: 3px solid #22c55e;
+  padding: 7px 9px;
+  background: color-mix(in srgb, #22c55e 10%, var(--panel-soft));
+  color: var(--text);
+  font-size: 10px;
+  word-break: break-word;
+}
+
+@media (max-width: 760px) {
+  .youtube-broadcast-grid,
+  .youtube-option-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 :root[data-theme="high-contrast"] button:focus-visible,
 :root[data-theme="high-contrast"] input:focus-visible,
 :root[data-theme="high-contrast"] select:focus-visible,
 :root[data-theme="high-contrast"] textarea:focus-visible {
   outline: 3px solid #ffff00;
   outline-offset: 2px;
+}
+
+.settings-panel h3 {
+  margin: 16px 0 10px;
+  color: var(--accent-2);
+  font-size: 13px;
+}
+
+.settings-section {
+  margin: 16px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: var(--panel-soft);
+}
+
+.settings-section > summary {
+  cursor: pointer;
+  color: var(--accent-2);
+  font-weight: 800;
+}
+
+.settings-path {
+  margin: 10px 0;
+  border-left: 3px solid var(--accent);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.credential-card {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: var(--panel);
+}
+
+.credential-card legend {
+  padding: 0 6px;
+  font-weight: 800;
+}
+
+.credential-status-row,
+.button-row,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.setup-steps {
+  margin: 12px 0 0;
+  padding-left: 22px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.studio-modal {
+  width: min(880px, 96vw);
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.studio-modal .panel-header {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.studio-modal h2,
+.studio-modal h3,
+.studio-modal p {
+  margin-top: 0;
+}
+
+.profile-manager-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.4fr);
+  gap: 16px;
+}
+
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+  text-align: left;
+}
+
+.profile-list button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel-soft));
+}
+
+.profile-list span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.button-grid,
+.configuration-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.profile-message,
+.wizard-result {
+  margin-top: 12px;
+  border-left: 3px solid var(--accent);
+  padding: 10px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel-soft));
+  color: var(--text);
+  font-size: 11px;
+}
+
+.wizard-options fieldset {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  padding: 10px;
+}
+
+.wizard-options fieldset label {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.configuration-summary span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--border);
+  padding: 9px;
+  background: var(--panel);
+  font-size: 11px;
+}
+
+.modal-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+@media (max-width: 760px) {
+  .profile-manager-grid,
+  .button-grid,
+  .configuration-summary {
+    grid-template-columns: 1fr;
+  }
 }

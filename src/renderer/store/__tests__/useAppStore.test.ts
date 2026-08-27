@@ -26,6 +26,7 @@ describe("Preview and Program isolation", () => {
   });
 
   beforeEach(() => {
+    useAppStore.setState({ isProgramAudioMonitoring: false, programAudioMonitorGain: 0.8 });
     useAppStore.getState().setStudioState(studioState);
     const settings = useAppStore.getState().settings;
     useAppStore.getState().setSettings({
@@ -124,6 +125,19 @@ describe("Preview and Program isolation", () => {
     expect(useAppStore.getState().programSceneSnapshot).toBe(originalProgramSnapshot);
   });
 
+  it("keeps local Program monitoring opt-in and clamps its session volume", () => {
+    expect(useAppStore.getState().isProgramAudioMonitoring).toBe(false);
+
+    useAppStore.getState().setProgramAudioMonitoring(true);
+    useAppStore.getState().setProgramAudioMonitorGain(3);
+
+    expect(useAppStore.getState().isProgramAudioMonitoring).toBe(true);
+    expect(useAppStore.getState().programAudioMonitorGain).toBe(1);
+
+    useAppStore.getState().setProgramAudioMonitorGain(-1);
+    expect(useAppStore.getState().programAudioMonitorGain).toBe(0);
+  });
+
   it("holds a manual blend until the operator completes Preview to Program", () => {
     useAppStore.getState().setStudioState({
       ...studioState,
@@ -145,9 +159,27 @@ describe("Preview and Program isolation", () => {
     expect(useAppStore.getState().programTransitionMode).toBe("none");
   });
 
-  it("clamps manual blend values and clears them on a direct Program scene change", () => {
-    useAppStore.getState().setManualBlend(2);
+  it("completes Preview to Program and resets a full manual blend", () => {
+    useAppStore.getState().setStudioState({
+      ...studioState,
+      scenes: [
+        ...studioState.scenes,
+        { id: "scene-b", name: "Lyrics", sourceIds: [] }
+      ],
+      previewSceneId: "scene-b",
+      programSceneId: "scene-a"
+    });
+
+    useAppStore.getState().setManualBlend(1);
     expect(useAppStore.getState().manualBlend).toBe(1);
+    useAppStore.getState().completeManualBlend();
+    expect(useAppStore.getState().programSceneId).toBe("scene-b");
+    expect(useAppStore.getState().manualBlend).toBe(0);
+  });
+
+  it("clears a held manual blend on a direct Program scene change", () => {
+    useAppStore.getState().setManualBlend(0.75);
+    expect(useAppStore.getState().manualBlend).toBe(0.75);
 
     useAppStore.getState().setProgramScene("scene-a");
     expect(useAppStore.getState().manualBlend).toBe(0);

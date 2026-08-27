@@ -7,11 +7,20 @@ import {
   StreamingEncoder,
   StreamingFps,
   StreamingPreset,
-  StreamPlatform
+  StreamPlatform,
+  YouTubeBroadcastSettings
 } from "../../shared/types";
+import { STREAMING_ENCODER_OPTIONS } from "../../shared/streamingEncoders";
+import {
+  DEFAULT_YOUTUBE_BROADCAST_SETTINGS,
+  normalizeYouTubeBroadcastSettings,
+  validateYouTubeBroadcastSettings,
+  YOUTUBE_VIDEO_CATEGORIES
+} from "../../shared/streamingPlatforms";
 
 type StreamingPanelProps = {
   streamer: ProgramStreamerController;
+  startRequest?: number;
 };
 
 const formatEndpoint = (rtmpUrl: string, streamKey: string) => {
@@ -22,7 +31,7 @@ const formatEndpoint = (rtmpUrl: string, streamKey: string) => {
   return streamKey ? `${trimmed}/${streamKey}` : trimmed;
 };
 
-const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
+const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest = 0 }) => {
   const {
     status,
     statusMessage,
@@ -43,6 +52,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
   const [logContent, setLogContent] = useState("");
   const [logLoading, setLogLoading] = useState(false);
   const [authorizingId, setAuthorizingId] = useState<string | null>(null);
+  const [handledStartRequest, setHandledStartRequest] = useState(startRequest);
   const destinationIds = settings.streamDestinations.map((destination) => destination.id).join("|");
 
   useEffect(() => {
@@ -91,6 +101,13 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
 
   const handleStart = async () => {
     setLocalMessage(null);
+    const unpreparedYouTube = settings.streamDestinations.find(
+      (destination) => destination.enabled && destination.platform === "youtube" && !destination.providerBroadcastId
+    );
+    if (unpreparedYouTube) {
+      setLocalMessage(`Use Connect & Create YouTube Broadcast for ${unpreparedYouTube.name} before starting.`);
+      return;
+    }
     const destinations = settings.streamDestinations.map((destination) => ({
       ...destination,
       rtmpUrl: destination.rtmpUrl.trim(),
@@ -140,7 +157,14 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
     await updateSettings({
       streamDestinations: [
         ...settings.streamDestinations,
-        { id, name: `Destination ${settings.streamDestinations.length + 1}`, rtmpUrl: "", enabled: true, platform: "custom" }
+        {
+          id,
+          name: `Destination ${settings.streamDestinations.length + 1}`,
+          rtmpUrl: "",
+          enabled: true,
+          platform: "custom",
+          broadcast: DEFAULT_YOUTUBE_BROADCAST_SETTINGS
+        }
       ]
     });
   };
@@ -178,17 +202,64 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
     await updateSettings({ streamEncoder: value });
   };
 
-  const authorizeDestination = async (destination: StreamDestinationConfig) => {
+  useEffect(() => {
+    if (startRequest <= handledStartRequest) return;
+    setHandledStartRequest(startRequest);
+    void handleStart();
+  }, [startRequest]);
+
+  const updateYouTubeBroadcast = async (
+    destination: StreamDestinationConfig,
+    update: Partial<YouTubeBroadcastSettings>
+  ) => {
+    if (destination.providerBroadcastId) {
+      await window.dualcast.clearStoredStreamKey({ destinationId: destination.id });
+      setStreamKeys((current) => {
+        const next = { ...current };
+        delete next[destination.id];
+        return next;
+      });
+    }
+    await updateDestination(destination.id, {
+      broadcast: {
+        ...normalizeYouTubeBroadcastSettings(destination.broadcast),
+        ...update
+      },
+      providerBroadcastId: null,
+      rtmpUrl: destination.providerBroadcastId ? "" : destination.rtmpUrl
+    });
+  };
+
+  const authorizeDestination = async (destination: StreamDestinationConfig, forceAccountSelection = false) => {
     if (destination.platform !== "youtube" && destination.platform !== "facebook") return;
+    if (destination.platform === "youtube") {
+      const validationError = validateYouTubeBroadcastSettings(
+        normalizeYouTubeBroadcastSettings(destination.broadcast)
+      );
+      if (validationError) {
+        setLocalMessage(validationError);
+        return;
+      }
+    }
     setAuthorizingId(destination.id);
     setLocalMessage("Opening secure authorization in your browser...");
     try {
-      const result = await window.dualcast.authorizeStreaming({ provider: destination.platform, destinationId: destination.id });
+      const result = await window.dualcast.authorizeStreaming({
+        provider: destination.platform,
+        destinationId: destination.id,
+        broadcast: destination.platform === "youtube"
+          ? normalizeYouTubeBroadcastSettings(destination.broadcast)
+          : undefined,
+        preset: settings.streamPreset,
+        fps: settings.streamFps,
+        forceAccountSelection
+      });
       setLocalMessage(result.message);
       if (!result.ok) return;
       await updateDestination(destination.id, {
         authorizedAccount: result.account ?? destination.authorizedAccount,
-        rtmpUrl: result.rtmpUrl ?? destination.rtmpUrl
+        rtmpUrl: result.rtmpUrl ?? destination.rtmpUrl,
+        providerBroadcastId: result.broadcastId ?? destination.providerBroadcastId
       });
       if (result.streamKey) {
         setStreamKeys((current) => ({ ...current, [destination.id]: result.streamKey as string }));
@@ -276,7 +347,11 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
               <select
                 id={`destination-platform-${index}`}
                 value={destination.platform ?? "custom"}
-                onChange={(event) => updateDestination(destination.id, { platform: event.target.value as StreamPlatform, authorizedAccount: null })}
+                onChange={(event) => updateDestination(destination.id, {
+                  platform: event.target.value as StreamPlatform,
+                  authorizedAccount: null,
+                  providerBroadcastId: null
+                })}
                 disabled={isActive}
               >
                 <option value="custom">Custom RTMP</option>
@@ -284,11 +359,125 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
                 <option value="facebook">Facebook Live</option>
               </select>
             </div>
+            {destination.platform === "youtube" ? (() => {
+              const broadcast = normalizeYouTubeBroadcastSettings(destination.broadcast);
+              return (
+                <fieldset className="youtube-broadcast-setup" disabled={isActive || authorizingId === destination.id}>
+                  <legend>YouTube Broadcast Setup</legend>
+                  <p className="field-help">
+                    These settings are applied when OpenChurch creates the broadcast. Connect again only when you intentionally want a new broadcast.
+                  </p>
+                  <div className="field">
+                    <label htmlFor={`youtube-title-${index}`}>Broadcast Title *</label>
+                    <input
+                      id={`youtube-title-${index}`}
+                      maxLength={100}
+                      placeholder="Sunday Worship Service"
+                      value={broadcast.title}
+                      onChange={(event) => updateYouTubeBroadcast(destination, { title: event.target.value })}
+                    />
+                    <span className="field-help">{broadcast.title.length}/100 characters</span>
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`youtube-description-${index}`}>Description</label>
+                    <textarea
+                      id={`youtube-description-${index}`}
+                      maxLength={5000}
+                      rows={3}
+                      placeholder="Service details, speakers, links, and contact information"
+                      value={broadcast.description}
+                      onChange={(event) => updateYouTubeBroadcast(destination, { description: event.target.value })}
+                    />
+                  </div>
+                  <div className="youtube-broadcast-grid">
+                    <div className="field">
+                      <label htmlFor={`youtube-visibility-${index}`}>Visibility</label>
+                      <select
+                        id={`youtube-visibility-${index}`}
+                        value={broadcast.visibility}
+                        onChange={(event) => updateYouTubeBroadcast(destination, {
+                          visibility: event.target.value as YouTubeBroadcastSettings["visibility"]
+                        })}
+                      >
+                        <option value="public">Public (listed and searchable)</option>
+                        <option value="unlisted">Unlisted (anyone with the link)</option>
+                        <option value="private">Private (hidden)</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`youtube-category-${index}`}>Category</label>
+                      <select
+                        id={`youtube-category-${index}`}
+                        value={broadcast.categoryId}
+                        onChange={(event) => updateYouTubeBroadcast(destination, { categoryId: event.target.value })}
+                      >
+                        {YOUTUBE_VIDEO_CATEGORIES.map((category) => (
+                          <option key={category.id || "default"} value={category.id}>{category.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`youtube-audience-${index}`}>Audience</label>
+                      <select
+                        id={`youtube-audience-${index}`}
+                        value={broadcast.madeForKids ? "kids" : "not-kids"}
+                        onChange={(event) => updateYouTubeBroadcast(destination, {
+                          madeForKids: event.target.value === "kids"
+                        })}
+                      >
+                        <option value="not-kids">No, not made for kids</option>
+                        <option value="kids">Yes, made for kids</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`youtube-scheduled-${index}`}>Scheduled Start</label>
+                      <input
+                        id={`youtube-scheduled-${index}`}
+                        type="datetime-local"
+                        value={broadcast.scheduledStartTime}
+                        onChange={(event) => updateYouTubeBroadcast(destination, { scheduledStartTime: event.target.value })}
+                      />
+                      <span className="field-help">Leave blank to schedule five minutes from creation.</span>
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`youtube-latency-${index}`}>Latency</label>
+                      <select
+                        id={`youtube-latency-${index}`}
+                        value={broadcast.latencyPreference}
+                        onChange={(event) => updateYouTubeBroadcast(destination, {
+                          latencyPreference: event.target.value as YouTubeBroadcastSettings["latencyPreference"]
+                        })}
+                      >
+                        <option value="normal">Normal (most reliable)</option>
+                        <option value="low">Low (balanced)</option>
+                        <option value="ultraLow">Ultra low (fast interaction)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="youtube-option-grid">
+                    <label><input type="checkbox" checked={broadcast.enableDvr} onChange={(event) => updateYouTubeBroadcast(destination, { enableDvr: event.target.checked })} /> Enable viewer DVR</label>
+                    <label><input type="checkbox" checked={broadcast.enableAutoStart} onChange={(event) => updateYouTubeBroadcast(destination, { enableAutoStart: event.target.checked })} /> Auto-start on signal</label>
+                    <label><input type="checkbox" checked={broadcast.enableAutoStop} onChange={(event) => updateYouTubeBroadcast(destination, { enableAutoStop: event.target.checked })} /> Auto-stop after signal ends</label>
+                    <label><input type="checkbox" checked={broadcast.enableEmbed} onChange={(event) => updateYouTubeBroadcast(destination, { enableEmbed: event.target.checked })} /> Allow embedding</label>
+                  </div>
+                  {destination.providerBroadcastId ? (
+                    <div className="broadcast-ready-note">Broadcast ready: {destination.providerBroadcastId}</div>
+                  ) : null}
+                </fieldset>
+              );
+            })() : null}
             {destination.platform === "youtube" || destination.platform === "facebook" ? (
               <div className="stream-authorization">
                 <button className="btn btn-outline" onClick={() => authorizeDestination(destination)} disabled={isActive || authorizingId === destination.id}>
-                  {authorizingId === destination.id ? "Connecting..." : `Connect ${destination.platform === "youtube" ? "YouTube" : "Facebook"} Account`}
+                  {authorizingId === destination.id
+                    ? "Connecting..."
+                    : destination.platform === "youtube"
+                      ? destination.authorizedAccount ? destination.providerBroadcastId ? "Create Another YouTube Broadcast" : "Create YouTube Broadcast" : "Connect & Create YouTube Broadcast"
+                      : destination.authorizedAccount ? "Use Connected Facebook Account" : "Connect Facebook Account"}
                 </button>
+                {destination.authorizedAccount ? (
+                  <button className="btn btn-outline" onClick={() => authorizeDestination(destination, true)} disabled={isActive || authorizingId === destination.id}>Change Account</button>
+                ) : null}
                 <span className={destination.authorizedAccount ? "tag" : "field-help"}>{destination.authorizedAccount ? `Connected: ${destination.authorizedAccount}` : "Sign in with the account used by this streaming platform."}</span>
               </div>
             ) : null}
@@ -376,18 +565,19 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
           value={settings.streamEncoder}
           onChange={(event) => handleEncoderChange(event.target.value as StreamingEncoder)}
         >
-          <option value="auto">Auto</option>
-          <option value="x264">x264 (CPU)</option>
-          <option value="nvenc" disabled={!availableEncoders.includes("nvenc")}>
-            NVENC {availableEncoders.includes("nvenc") ? "" : "(Unavailable)"}
-          </option>
-          <option value="qsv" disabled={!availableEncoders.includes("qsv")}>
-            QSV {availableEncoders.includes("qsv") ? "" : "(Unavailable)"}
-          </option>
-          <option value="amf" disabled={!availableEncoders.includes("amf")}>
-            AMF {availableEncoders.includes("amf") ? "" : "(Unavailable)"}
-          </option>
+          <option value="auto">Auto (best tested encoder)</option>
+          {STREAMING_ENCODER_OPTIONS.map((option) => {
+            const available = availableEncoders.includes(option.id);
+            return (
+              <option key={option.id} value={option.id} disabled={!available}>
+                {option.label} {available ? "" : "(Unavailable)"}
+              </option>
+            );
+          })}
         </select>
+        <span className="field-help">
+          Hardware options are enabled only after a real local encoding test. Auto falls through to the next working encoder and always keeps software x264 as a fallback.
+        </span>
       </div>
       <div className="streaming-status-row">
         <div className="streaming-status">
@@ -425,6 +615,9 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer }) => {
             !settings.streamDestinations.some(
               (destination) =>
                 destination.enabled && destination.rtmpUrl && (streamKeys[destination.id] ?? "")
+            ) ||
+            settings.streamDestinations.some(
+              (destination) => destination.enabled && destination.platform === "youtube" && !destination.providerBroadcastId
             )
           }
         >

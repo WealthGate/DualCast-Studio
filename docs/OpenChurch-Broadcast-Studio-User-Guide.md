@@ -1,4 +1,4 @@
-# OpenChurch Broadcast Studio v0.6.6 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.7 - Complete User Guide
 
 This guide is written for volunteers, media teams, pastors, and technical operators. You do not need previous broadcast-software experience.
 
@@ -39,7 +39,7 @@ Do not begin a live service until the test recording contains both picture and c
 1. Open the project's GitHub Releases page.
 2. Download the newest Windows installer, or download the portable ZIP if installation is not permitted.
 3. Run the installer. If using the ZIP, extract it before running the app.
-4. Confirm the version beside the product name is **v0.6.6**.
+4. Confirm the version beside the product name is **v0.6.7**.
 5. Find the always-visible update button in the top header. It reads **Check for Updates** and shows the installed version below it.
 6. Select **Check for Updates**. The button is disabled while checking, and the banner confirms the installed version.
 7. If the app is current, dismiss the confirmation. If a newer release exists, select **Update to v[version]** to download that exact version.
@@ -77,6 +77,43 @@ To change modes:
 
 The app remembers the selected view for the next launch. The header remains visible in Full Program Only mode so you cannot become trapped in that view.
 
+### Use the Controls dock
+
+The Controls dock is the main place for live actions:
+
+- **Start Streaming / Stop Streaming** controls the configured live destinations. If setup is incomplete, the Live Streaming dock opens and shows the exact missing item.
+- **Stream Setup** opens the Live Streaming dock for title, description, privacy, category, audience, schedule, account, endpoint, quality, and encoder choices.
+- **TAKE**, Cut to Black, and Freeze remain grouped with the live controls.
+- **Start Recording / Stop Recording** controls the local service recording. Open Recordings appears after a file is available.
+- **Studio Mode** is one toggle button. It is blue/highlighted while Preview and Program are both visible. Click it again to enter Program Focus; the highlight turns off. Click it again to restore Studio Mode.
+- **Auto Configure** opens the guided performance setup.
+- **Settings** opens System Settings directly.
+
+### Use the File and Profile menus
+
+The desktop **File** menu includes Open Recordings Folder, Open Stream Logs Folder, Open Scripture Libraries Folder, Open Application Data Folder, Settings, and Exit. Use these commands instead of searching hidden Windows folders.
+
+The desktop **Profile** menu stores complete settings and scene arrangements for different services or venues:
+
+1. Arrange the scenes and settings for a service.
+2. Choose **Profile > New from Current Settings**.
+3. Enter a clear name, such as `Sunday 1080p` or `Midweek Hall`.
+4. Choose **Save Current to Profile** after later changes.
+5. Select another profile and choose **Apply Profile** to load it.
+6. Use Duplicate Selected as a safe starting point for a similar service.
+7. Use Export for a backup or transfer and Import to add a profile file on another computer.
+
+Profiles do not contain stream keys, OAuth tokens, client secrets, or account passwords. Applying a profile changes the studio settings and scenes but does not silently expose or move protected credentials.
+
+### Run Auto-Configuration Wizard
+
+1. Choose **Controls > Auto Configure** or **Tools > Auto-Configuration Wizard**.
+2. Select whether streaming, recording, or both are the priority.
+3. Enter a conservative wired upload speed measured at the venue.
+4. Choose normal or high movement.
+5. Review the recommended resolution preset, frame rate, audio bitrate, recording quality, and the hardware encoder that passed the local test.
+6. Choose **Apply Recommended Settings**. Run a private test stream before the service.
+
 ## 5. Scenes: Building the Service
 
 A scene is one complete arrangement, such as Sermon Camera, Worship Lyrics, Scripture, Announcement Video, or Closing Slide.
@@ -105,8 +142,8 @@ TAKE remains available as a separate control. It uses the most recently selected
 1. Stay in **Studio Mode** and prepare the next scene in Preview.
 2. Open **Scene Transitions** and find **Live Preview Blend**.
 3. Move the fader slowly from Program toward Preview. The projector, recording, stream, and network output immediately see the selected mixture.
-4. Pause anywhere between 0% and 100% when the audience should see both scenes blended together.
-5. Choose **Reset to Program** to cancel the blend safely, or choose **Complete to Preview** to make Preview the new Program scene.
+4. Pause anywhere between 1% and 99% when the audience should see both scenes blended together. The fader stays at that intermediate position.
+5. Drag the fader fully to 100% to make Preview the new Program scene. The fader automatically returns to 0% after the change is completed. You can also choose **Complete to Preview** without dragging to the end, or **Reset to Program** to cancel the blend safely.
 
 Program audio remains active during the blend and switches only when **Complete to Preview** is chosen. Cut, Fade, and Crossfade immediately send Preview live; TAKE uses the last selected transition. Automatic transition duration can be set from 100 milliseconds up to 15 seconds.
 
@@ -373,6 +410,8 @@ The Scripture dock can use the configured online provider, individual passages s
 6. Read the complete returned passage and reference.
 7. Correct the text manually if your licensed source requires it.
 
+OpenChurch removes provider HTML, encoded entities, zero-width characters, and stray wrapping `<` or `>` characters before Scripture is displayed or saved. The Verse Text box therefore contains the readable passage rather than API formatting. If a source includes publisher footnotes as ordinary words, review them manually before going live.
+
 Expand **Type a reference instead** when a reference is faster to type or has a format that is not convenient in the selector.
 
 ### Save one passage for offline use
@@ -411,6 +450,8 @@ Libraries may contain `passages` or `verses` with `reference` and `text` fields,
 5. Choose **Create Slides in Preview**.
 6. Inspect each verse with Previous and Next. Scripture navigation stays inside that passage deck.
 7. Press TAKE to send the scene and Scripture together, or choose Take Text Live in Lower Third Studio to change only the text.
+
+A single click on a lyric or Scripture slide stages it in Preview. A double-click sends that slide directly to Program. Double-clicking the loaded Verse Text also creates the configured Scripture slides and sends the first slide live. Use double-click only when an immediate live change is intended. Double-clicking a Text source in Sources or on the Preview canvas sends its scene and text to Program in every workspace mode.
 
 Scripture slides use all lower-third functions: font, alignment, opacity, background image, Bible-specific image, line limit, entrance animation, and exit animation. Moving to the next verse automatically runs the configured slide transition.
 
@@ -465,7 +506,7 @@ Never choose a higher frame rate only because the number is larger. A stable 30 
 2. Choose the save directory, quality, and frame rate.
 3. TAKE the scene you want to record.
 4. Confirm Program picture and Audio Mixer levels.
-5. Press Record in the header or Controls dock.
+5. Press **Start Recording** in the Controls dock.
 6. Confirm the red recording state and timer.
 7. Press Stop at the end.
 8. Choose Open Folder.
@@ -475,18 +516,56 @@ During recording, the app writes each short WebM chunk through an ordered direct
 
 ## 14. Live Streaming
 
+### Create the required Google Desktop OAuth identity
+
+YouTube account connection requires a Google Desktop OAuth application because Google must know which installed application is requesting access. OpenChurch no longer requires hidden Windows environment-variable setup.
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/) in a browser and sign in with the Google account that will manage the application setup.
+2. Use the project selector at the top to create a project such as **OpenChurch Streaming**, or select an existing project.
+3. Open **APIs & Services > Library**, search for **YouTube Data API v3**, open it, and choose **Enable**.
+4. Open **Google Auth Platform**. If Google shows **Get Started**, enter an app name such as OpenChurch Broadcast Studio, choose a support email, and finish the initial registration.
+5. Open **Audience**. For a personal Gmail or non-Workspace church account, choose **External**. While the app remains in Testing, add every Google account that may connect under **Test users**. A Google Workspace administrator may choose Internal when appropriate.
+6. Open **Clients**, choose **Create client**, set **Application type** to **Desktop app**, name it **OpenChurch Broadcast Studio**, and choose **Create**.
+7. Copy the displayed **Client ID**. If Google displays a Client Secret, copy it at creation time as well; Google may not show it again. Do not create an API key or a Web application client for this step.
+
+### Enter the Desktop OAuth identity inside OpenChurch
+
+1. Open OpenChurch Broadcast Studio.
+2. In the bottom-right **Controls** dock, choose **Settings**.
+3. The **System Settings** dock opens. Find and expand **Streaming Accounts** if it is collapsed.
+4. In the **YouTube Live** card, paste the Google value ending in `.apps.googleusercontent.com` into **Desktop OAuth Client ID**.
+5. Paste **Client Secret** only if Google supplied one. It is optional for the Desktop application flow.
+6. Choose **Save Securely**. The fields clear after saving and the card changes from **Setup required** to **Configured (secure)**. OpenChurch never displays the saved secret again.
+7. Return to the **Controls** dock and choose **Stream Setup**.
+8. In Live Streaming, set **Platform** to **YouTube Live**, enter the title and broadcast choices, then choose **Connect & Create YouTube Broadcast**.
+9. The system browser opens Google's account chooser. Click the correct church email/channel and approve the requested YouTube permission.
+10. OpenChurch protects the authorization with the operating system and reuses that account for later broadcasts. Choose **Change Account** only when another Google account is intended. Choose **Settings > Streaming Accounts > Disconnect Account** to require sign-in again while keeping the Desktop Client ID.
+
+If **Save Securely** stays unavailable, check that the complete Desktop Client ID was pasted. Facebook is different: its App ID and App Secret are both required.
+
+For Facebook, enter the Meta App ID and App Secret in the matching Settings card. Facebook permissions and Page access depend on the church's Meta developer-app approval. OpenChurch can remember the authorized account, but platform-only Page/event choices may still need Facebook Live Producer.
+
 1. Open Live Streaming.
 2. Add one destination card for each service destination.
 3. Enable only destinations needed for this broadcast.
 4. For Custom RTMP, enter the exact RTMP/RTMPS server URL and stream key.
-5. For YouTube or Facebook, use Connect Account when the church's developer-app configuration is available.
-6. Select encoder, preset, FPS, and audio bitrate.
-7. TAKE the correct scene and confirm Program audio.
-8. Start the stream.
-9. Watch each destination status, bitrate, FPS, dropped frames, and error messages.
-10. Stop the stream after the service and confirm the platform ended correctly.
+5. For YouTube, choose **YouTube Live** and complete **YouTube Broadcast Setup** before connecting the account.
+6. Enter a title. Add an optional description and scheduled start time. If the start time is blank, OpenChurch schedules the event five minutes after it is created.
+7. Choose one visibility option: **Public** is listed and searchable, **Unlisted** is available to anyone with the link, and **Private** is hidden.
+8. Choose the most accurate category and explicitly select whether the content is made for kids. Do not guess the audience setting.
+9. Choose Normal, Low, or Ultra Low latency. Then review viewer DVR, auto-start, auto-stop, and embedding.
+10. Select encoder, preset, FPS, and audio bitrate before creating the YouTube endpoint; these settings help OpenChurch request a compatible reusable stream endpoint.
+11. Choose **Connect & Create YouTube Broadcast**, sign in, review Google's requested permissions, and approve only the intended church channel. OpenChurch creates the event, creates a reusable stream endpoint, binds them, and fills the RTMP URL and stream key.
+12. If the button says **Create Another YouTube Broadcast**, use it only when you intentionally need a separate event. Changing a broadcast field marks the current setup as needing a new event.
+13. For Facebook, connect the account when the church's developer-app configuration is available, then use Facebook Live Producer to choose the Page/event and any platform-only audience controls before entering its Server URL and Stream Key.
+14. TAKE the correct scene and confirm Program audio.
+15. Start the stream.
+16. Watch each destination status, bitrate, FPS, dropped frames, and error messages.
+17. Stop the stream after the service and confirm the platform ended correctly.
 
-Manual YouTube RTMP streaming does not require OAuth environment variables: enter `rtmp://a.rtmp.youtube.com/live2` as the RTMP URL and paste the stream key from YouTube Studio. The optional Connect YouTube Account button uses `OPENCHURCH_YOUTUBE_CLIENT_ID` and `OPENCHURCH_YOUTUBE_CLIENT_SECRET`. Facebook authorization uses `OPENCHURCH_FACEBOOK_APP_ID` and `OPENCHURCH_FACEBOOK_APP_SECRET`. Stream keys are stored only with protected operating-system credential storage and only when Remember Stream Key is enabled. If protected storage is unavailable, the checkbox is disabled and keys remain in memory only for the current app session.
+Manual YouTube RTMP streaming does not require OAuth credentials: enter `rtmp://a.rtmp.youtube.com/live2` as the RTMP URL and paste the stream key from YouTube Studio. Manual RTMP does not apply the OpenChurch broadcast metadata fields; configure the event in YouTube Studio first. Existing `OPENCHURCH_YOUTUBE_CLIENT_ID`, `OPENCHURCH_YOUTUBE_CLIENT_SECRET`, `OPENCHURCH_FACEBOOK_APP_ID`, and `OPENCHURCH_FACEBOOK_APP_SECRET` environment variables remain supported as an administrator-managed fallback, but in-app protected credentials take priority. Stream keys are stored only with protected operating-system credential storage and only when Remember Stream Key is enabled. If protected storage is unavailable, the checkbox is disabled and keys remain in memory only for the current app session.
+
+Live ingest prefers VP8 WebM for broad FFmpeg decoder compatibility. Each destination keeps one decoder alive and uses a recoverable output queue for temporary network loss. This avoids restarting a decoder with an incomplete mid-stream WebM fragment. If the encoder process itself ends after going live, OpenChurch reports a terminal error and requires Stop Streaming followed by Start Streaming to create a clean media input.
 
 ## 15. Sanctuary, Lower-Third, Network, and Multiview Outputs
 
@@ -570,12 +649,16 @@ Complete this checklist before every service.
 - **Text layout moved the wrong video:** group the intended Text and visual source, then apply the layout again.
 - **Stream cannot start:** enable at least one destination, verify the RTMP/RTMPS URL and key, and inspect the status message.
 - **Scripture fetch fails:** check provider URL, Bible ID, internet access, and API-key environment variable; manual text entry remains available.
+- **Scripture shows `<`, `>`, or web formatting:** reload the passage in this version. New online, imported, downloaded, and saved passages are sanitized before display. Correct any old manually saved passage once and save it again.
 - **Offline library will not import:** confirm it is valid JSON, 25 MB or smaller, and uses supported passage/verse or book/chapter structures.
 - **Downloaded library is rejected:** use an HTTPS direct JSON address rather than a normal web page, and confirm the source permits download.
 - **Offline reference is missing:** select the correct library and use a complete reference such as John 3:16-18.
 - **Only Program is visible in the app:** choose View > Switch to Studio Mode.
 - **Computer is overloaded:** use 30 or 25/24 fps, close Multiview and unused browser apps, and disable or remove unused active sources.
 - **Remember Stream Key is disabled:** the operating system did not provide protected credential storage. Enter keys for this session; the app intentionally will not save them insecurely.
+- **YouTube says application credentials are missing:** open Settings > Streaming Accounts, follow the four Google setup steps, and save a Desktop OAuth client. A user email/password is not entered into these fields.
+- **The wrong Google account opens:** in Stream Setup choose Change Account. Google opens the external account chooser; click the intended church email/channel.
+- **A VP9 decoder error repeats while reconnecting:** stop the stream and start it once to create a clean input. This version prefers VP8 ingest and keeps the decoder alive during recoverable network retries, preventing the old incomplete-fragment reconnect loop.
 - **Stop was pressed but the file is not ready:** keep the app open while FFmpeg finishes the final MP4. Very long services take longer and need free disk space.
 - **Streaming repeatedly shows Reconnecting and `ffmpeg.exe ENOENT`:** install v0.6.6 or later from the in-app update button or the latest GitHub release. v0.6.6 launches the bundled executable from the installed `app.asar.unpacked` resources instead of trying to run it inside the application archive.
 - **FFmpeg is reported missing after installing v0.6.6 or later:** stop streaming, reinstall the current release, and allow antivirus or endpoint-protection software to keep the bundled FFmpeg executable. Then restart the app and make a private test stream.
@@ -586,7 +669,7 @@ Complete this checklist before every service.
 - Do not capture private browser tabs, passwords, counseling notes, member records, or financial information.
 - Use a separate browser profile for services.
 - Keep stream keys and API credentials off screen.
-- Store API credentials in environment variables where supported.
+- Store streaming application credentials only through Settings > Streaming Accounts or administrator-managed environment variables. The in-app fields use operating-system encryption and never reveal the saved secret again.
 - Use a trusted network and a strong operator PIN.
 - Rotate a stream key immediately if it appears in Preview, Program, a screenshot, or a recording.
 - Confirm permission to display Bible translations, song lyrics, videos, and images.
@@ -598,6 +681,8 @@ Complete this checklist before every service.
 - Final MP4 conversion begins after recording stops. Long services take longer to convert and may temporarily require space for both the WebM capture and MP4 output.
 - If FFmpeg conversion is unavailable or fails, the app preserves the recording as WebM and identifies it as a fallback.
 - The Post Editor currently trims and exports one completed recording; it is not yet a multitrack editor.
+- Facebook Page/event creation and some audience controls depend on Meta app review and Page permissions; Facebook Live Producer may still be required even after account connection.
+- Profiles are stored on the local computer. Export profile files deliberately for backup, and remember that they contain scene names, source URLs, and studio settings even though protected secrets are excluded.
 
 ## 22. Glossary
 

@@ -1,5 +1,6 @@
 import React from "react";
 import { useAppStore } from "../store/useAppStore";
+import { applyManualBlendInput } from "../utils/transitions";
 
 type TransitionsPanelProps = {
   canBlend?: boolean;
@@ -65,10 +66,20 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
           step={1}
           value={Math.round(manualBlend * 100)}
           disabled={!canBlend || !previewSceneId}
-          onChange={(event) => setManualBlend(Number(event.target.value) / 100)}
+          onInput={(event) => {
+            const input = event.currentTarget;
+            applyManualBlendInput(
+              Number(input.value) / 100,
+              setManualBlend,
+              () => {
+                completeManualBlend();
+                input.value = "0";
+              }
+            );
+          }}
         />
         <div className="blend-scale"><span>Program</span><span>Preview</span></div>
-        <p>Move slowly to hold any live mixture. Program audio stays live until you complete the blend.</p>
+        <p>Move slowly to hold any live mixture. At 100%, Preview goes to Program and the control automatically returns to 0%. Program audio stays live until completion.</p>
         <div className="quick-transition-buttons blend-actions">
           <button onClick={() => setManualBlend(0)} disabled={manualBlend === 0}>Reset to Program</button>
           <button onClick={completeManualBlend} disabled={manualBlend === 0 || !previewSceneId}>Complete to Preview</button>

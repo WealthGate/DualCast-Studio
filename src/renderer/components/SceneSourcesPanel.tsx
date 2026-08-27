@@ -51,6 +51,7 @@ const SceneSourcesPanel: React.FC = () => {
     setSourceMediaPaused,
     restartSourceMedia,
     setSelectedSourceId,
+    setProgramScene,
     persistStudioState
   } = useAppStore();
 
@@ -479,6 +480,13 @@ const SceneSourcesPanel: React.FC = () => {
             key={source.id}
             className={`source-row ${selectedSourceId === source.id ? "selected" : ""}`}
             onClick={() => setSelectedSourceId(source.id)}
+            onDoubleClick={() => {
+              if (source.type === "text" && activeScene) {
+                setProgramScene(activeScene.id);
+                void persistStudioState();
+              }
+            }}
+            title={source.type === "text" ? "Double-click to send this scene and text to Program" : undefined}
             onContextMenu={(event) => {
               event.preventDefault();
               event.stopPropagation();

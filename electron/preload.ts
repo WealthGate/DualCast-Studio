@@ -36,7 +36,11 @@ import {
   SongLibraryEntry,
   SongRemovePayload,
   StreamingAuthorizationPayload,
-  StreamingAuthorizationResult
+  StreamingAuthorizationResult,
+  StreamingCredentialInput,
+  StreamingCredentialProvider,
+  StreamingCredentialStatus,
+  AppCommand
 } from "../src/shared/types";
 
 const api = {
@@ -114,6 +118,14 @@ const api = {
     ipcRenderer.invoke(IpcChannels.removeSong, payload),
   authorizeStreaming: (payload: StreamingAuthorizationPayload): Promise<StreamingAuthorizationResult> =>
     ipcRenderer.invoke(IpcChannels.authorizeStreaming, payload),
+  getStreamingCredentialStatus: (provider: StreamingCredentialProvider): Promise<StreamingCredentialStatus> =>
+    ipcRenderer.invoke(IpcChannels.getStreamingCredentialStatus, provider),
+  setStreamingCredentials: (payload: StreamingCredentialInput): Promise<StreamingCredentialStatus> =>
+    ipcRenderer.invoke(IpcChannels.setStreamingCredentials, payload),
+  clearStreamingCredentials: (provider: StreamingCredentialProvider): Promise<StreamingCredentialStatus> =>
+    ipcRenderer.invoke(IpcChannels.clearStreamingCredentials, provider),
+  disconnectStreamingAccount: (provider: StreamingCredentialProvider): Promise<StreamingCredentialStatus> =>
+    ipcRenderer.invoke(IpcChannels.disconnectStreamingAccount, provider),
   downloadUserGuide: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.downloadUserGuide),
   updateProgramState: (state: ProgramState) => ipcRenderer.send(IpcChannels.updateProgramState, state),
   sendProgramFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.programFrame, dataUrl),
@@ -199,6 +211,11 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, action: RemoteOperatorAction) => handler(action);
     ipcRenderer.on(IpcChannels.remoteOperatorAction, listener);
     return () => ipcRenderer.removeListener(IpcChannels.remoteOperatorAction, listener);
+  },
+  onAppCommand: (handler: (command: AppCommand) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, command: AppCommand) => handler(command);
+    ipcRenderer.on(IpcChannels.appCommand, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.appCommand, listener);
   }
 };
 

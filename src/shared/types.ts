@@ -5,13 +5,39 @@ export type FrameRatePreset = 15 | 24 | 25 | 30 | 50 | 60;
 export type StreamingPreset = "low" | "medium" | "high";
 export type StreamingFps = 15 | 24 | 25 | 30 | 50 | 60;
 export type StreamingAudioBitrate = 128 | 192;
-export type StreamingEncoder = "auto" | "x264" | "nvenc" | "qsv" | "amf";
+export type StreamingEncoder =
+  | "auto"
+  | "x264"
+  | "nvenc"
+  | "qsv"
+  | "amf"
+  | "mediafoundation"
+  | "videotoolbox"
+  | "vaapi"
+  | "v4l2m2m";
 export type OperatorRole = "director" | "graphics" | "audio" | "stream";
 export type TextSourceRole = "standard" | "lower-third" | "presentation";
 export type ThemePreference = "system" | "dark" | "light" | "high-contrast" | "midnight" | "warm";
 export type LowerThirdAnimation = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "zoom" | "wipe";
 export type WorkspaceViewMode = "studio" | "program-focus" | "program-only";
 export type StreamPlatform = "custom" | "youtube" | "facebook";
+export type StreamingCredentialProvider = "youtube" | "facebook";
+export type StreamVisibility = "public" | "unlisted" | "private";
+export type YouTubeLatencyPreference = "normal" | "low" | "ultraLow";
+
+export type YouTubeBroadcastSettings = {
+  title: string;
+  description: string;
+  visibility: StreamVisibility;
+  categoryId: string;
+  madeForKids: boolean;
+  scheduledStartTime: string;
+  latencyPreference: YouTubeLatencyPreference;
+  enableDvr: boolean;
+  enableAutoStart: boolean;
+  enableAutoStop: boolean;
+  enableEmbed: boolean;
+};
 
 export type CaptureSourceType = "screen" | "window";
 
@@ -111,6 +137,8 @@ export type StreamDestinationConfig = {
   enabled: boolean;
   platform?: StreamPlatform;
   authorizedAccount?: string | null;
+  broadcast?: YouTubeBroadcastSettings;
+  providerBroadcastId?: string | null;
 };
 
 export type StreamDestinationInput = StreamDestinationConfig & {
@@ -416,6 +444,10 @@ export type SongRemovePayload = {
 export type StreamingAuthorizationPayload = {
   provider: "youtube" | "facebook";
   destinationId: string;
+  broadcast?: YouTubeBroadcastSettings;
+  preset?: StreamingPreset;
+  fps?: StreamingFps;
+  forceAccountSelection?: boolean;
 };
 
 export type StreamingAuthorizationResult = {
@@ -424,4 +456,29 @@ export type StreamingAuthorizationResult = {
   account?: string;
   rtmpUrl?: string;
   streamKey?: string;
+  broadcastId?: string;
+  broadcastUrl?: string;
 };
+
+export type StreamingCredentialInput = {
+  provider: StreamingCredentialProvider;
+  clientId: string;
+  clientSecret?: string;
+};
+
+export type StreamingCredentialStatus = {
+  provider: StreamingCredentialProvider;
+  configured: boolean;
+  source: "secure" | "environment" | "none";
+  clientIdHint?: string;
+  account?: string | null;
+};
+
+export type AppCommand =
+  | "open-settings"
+  | "open-stream-setup"
+  | "open-auto-config"
+  | "profile-new"
+  | "profile-duplicate"
+  | "profile-manage"
+  | "toggle-studio";

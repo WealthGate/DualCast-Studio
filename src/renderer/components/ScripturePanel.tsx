@@ -3,6 +3,7 @@ import { LowerThirdAnimation, ScriptureFetchResult, ScriptureLibraryCatalog, Scr
 import { useAppStore } from "../store/useAppStore";
 import { maximumBibleVerseNumber, standardBibleBooks } from "../utils/bibleBooks";
 import { createScriptureSlides } from "../utils/presentationSlides";
+import { sanitizeScriptureText } from "../../shared/scriptureText";
 
 const createId = () => crypto.randomUUID?.() ?? `scripture-${Date.now()}`;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -42,6 +43,7 @@ const ScripturePanel: React.FC = () => {
     previewSceneId,
     updateSettings,
     stageLowerThird,
+    takeLowerThirdToProgram,
     addPresentationSourceToScene,
     updateSourceRect,
     persistStudioState
@@ -156,7 +158,7 @@ const ScripturePanel: React.FC = () => {
   };
 
   const sendToLowerThird = async () => {
-    const text = verseText.trim();
+    const text = sanitizeScriptureText(verseText);
     if (!text) return;
     const displayReference = resolvedReference.trim() || reference.trim();
     const deckId = createId();
@@ -175,6 +177,23 @@ const ScripturePanel: React.FC = () => {
     if (!slides.length) return;
     await stageLowerThird([...settings.lowerThird.slides, ...slides], slides[0].id);
     setMessage(`${slides.length} Scripture slide${slides.length === 1 ? "" : "s"} staged in Preview. Press TAKE or Take Text Live after checking the layout.`);
+  };
+
+  const showScriptureLive = async () => {
+    const text = sanitizeScriptureText(verseText);
+    if (!text) return;
+    const displayReference = resolvedReference.trim() || reference.trim();
+    const slides = createScriptureSlides({ reference: displayReference, text, translation, verses: loadedVerses }, {
+      mode: splitMode,
+      linesPerSlide,
+      deckId: createId(),
+      deckTitle: `${displayReference}${translation ? ` - ${translation}` : ""}`,
+      createId
+    });
+    if (!slides.length) return;
+    await stageLowerThird([...settings.lowerThird.slides, ...slides], slides[0].id);
+    await takeLowerThirdToProgram();
+    setMessage("Scripture sent directly to Program. Single-click Create Slides in Preview when you want to check it before going live.");
   };
 
   const sceneRects = () => {
@@ -202,7 +221,7 @@ const ScripturePanel: React.FC = () => {
   };
 
   const addToPreviewScene = async () => {
-    const text = verseText.trim();
+    const text = sanitizeScriptureText(verseText);
     if (!text || !activeScene) return;
     if (activeScene.locked) {
       setMessage("Unlock the Preview scene before adding Scripture text.");
@@ -246,7 +265,7 @@ const ScripturePanel: React.FC = () => {
     try {
       await window.dualcast.saveScripturePassage({
         reference: resolvedReference.trim() || reference.trim(),
-        text: verseText.trim(),
+        text: sanitizeScriptureText(verseText),
         translation
       });
       await refreshLibraries();
@@ -378,7 +397,7 @@ const ScripturePanel: React.FC = () => {
         </div>
       </details>
       <div className="field"><label htmlFor="resolvedReference">Displayed Reference</label><input id="resolvedReference" value={resolvedReference} onChange={(event) => setResolvedReference(event.target.value)} placeholder="Reference appears with the verse" /></div>
-      <div className="field"><label htmlFor="scriptureText">Verse Text</label><textarea id="scriptureText" className="scripture-text" value={verseText} onChange={(event) => setVerseText(event.target.value)} placeholder="Fetched, offline, or manually pasted licensed Scripture text appears here." /></div>
+      <div className="field"><label htmlFor="scriptureText">Verse Text</label><textarea id="scriptureText" className="scripture-text" value={verseText} onChange={(event) => setVerseText(event.target.value)} onDoubleClick={() => void showScriptureLive()} title="Double-click to send this Scripture directly to Program" placeholder="Fetched, offline, or manually pasted licensed Scripture text appears here." /><span className="field-help">Double-click the loaded Scripture to send its first slide directly to Program.</span></div>
       <div className="field">
         <label htmlFor="scriptureLines">Lower-Third Line Limit</label>
         <input id="scriptureLines" type="number" min={0} max={20} value={settings.lowerThird.maxLines} onChange={(event) => updateSettings({ lowerThird: { ...settings.lowerThird, maxLines: Number(event.target.value) } })} />

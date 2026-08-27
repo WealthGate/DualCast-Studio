@@ -5,6 +5,7 @@ import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/med
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
 import { LowerThirdAnimation, LowerThirdSlide, Scene, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
 import { AudioMeterSnapshot, publishAudioMeters } from "../audioMeterBus";
+import { createProgramAudioMonitor, updateProgramAudioMonitor } from "../utils/audioMonitoring";
 
 type PreviewProgramProps = {
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
@@ -108,8 +109,11 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     isLowerThirdProjecting,
     updateSourceRect,
     setSelectedSourceId,
+    takeToProgram,
     persistStudioState,
     setProgramAudioStream,
+    isProgramAudioMonitoring,
+    programAudioMonitorGain,
     setIsProjecting,
     setIsLowerThirdProjecting,
     transitionType,
@@ -145,6 +149,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const bibleImageRef = useRef<HTMLImageElement | null>(null);
   const lowerThirdBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const programAudioMonitorGainRef = useRef<GainNode | null>(null);
   const previewLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
   const programLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
 
@@ -572,6 +577,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const masterGain = audioContext.createGain();
     masterGain.gain.value = clamp(settings.masterAudioGain ?? 1, 0, 2);
     masterGain.connect(destination);
+    const monitorGain = createProgramAudioMonitor(
+      audioContext,
+      masterGain,
+      isProgramAudioMonitoring,
+      programAudioMonitorGain
+    );
+    programAudioMonitorGainRef.current = monitorGain;
     let connectedSources = 0;
 
     type MeterTap = {
@@ -679,6 +691,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       window.clearInterval(meterTimer);
       publishAudioMeters({});
       setProgramAudioStream(null);
+      if (programAudioMonitorGainRef.current === monitorGain) {
+        programAudioMonitorGainRef.current = null;
+      }
       audioContext.close().catch(() => undefined);
     };
   }, [
@@ -692,6 +707,14 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     setProgramAudioStream,
     sources
   ]);
+
+  useEffect(() => {
+    updateProgramAudioMonitor(
+      programAudioMonitorGainRef.current,
+      isProgramAudioMonitoring,
+      programAudioMonitorGain
+    );
+  }, [isProgramAudioMonitoring, programAudioMonitorGain]);
 
   const drawSource = (
     ctx: CanvasRenderingContext2D,
@@ -1476,6 +1499,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
                           } ${source.locked ? "locked" : ""}`}
                           style={style}
                           onPointerDown={(event) => handlePointerDrag(event, source.id, "move")}
+                          onDoubleClick={(event) => {
+                            if (source.type === "text") {
+                              event.stopPropagation();
+                              takeToProgram();
+                            }
+                          }}
+                          title={source.type === "text" ? "Double-click to send this text and scene to Program" : undefined}
                         >
                           <span className="source-title">{source.name}</span>
                           {!source.locked ? (

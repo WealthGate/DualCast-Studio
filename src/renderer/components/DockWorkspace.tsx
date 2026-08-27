@@ -222,9 +222,10 @@ export const closeDockPanel = (current: DockLayout, panelId: string) => {
 type DockWorkspaceProps = {
   panels: DockPanelDefinition[];
   center: ReactNode;
+  focusRequest?: { panelId: string; token: number } | null;
 };
 
-const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center }) => {
+const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequest }) => {
   const workspaceRef = useRef<HTMLDivElement>(null);
   const contentRefs = useRef(new Map<string, HTMLDivElement>());
   const panelMap = useMemo(() => new Map(panels.map((panel) => [panel.id, panel])), [panels]);
@@ -233,6 +234,31 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center }) => {
   const [sizes, setSizes] = useState<DockSizes>(loadSizes);
   const [draggingPanelId, setDraggingPanelId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<DockContextMenu | null>(null);
+
+  useEffect(() => {
+    if (!focusRequest || !panelMap.has(focusRequest.panelId)) return;
+    setLayout((current) => {
+      const next = cloneLayout(current);
+      for (const zoneId of zoneIds) {
+        const group = next[zoneId].find((entry) => entry.panelIds.includes(focusRequest.panelId));
+        if (group) {
+          group.activePanelId = focusRequest.panelId;
+          return next;
+        }
+      }
+      const target = next.right[0];
+      if (target) {
+        target.panelIds.push(focusRequest.panelId);
+        target.activePanelId = focusRequest.panelId;
+      } else {
+        next.right.push({ id: `dock-right-focus-${focusRequest.panelId}`, panelIds: [focusRequest.panelId], activePanelId: focusRequest.panelId });
+      }
+      return next;
+    });
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-dock-panel-id="${focusRequest.panelId}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  }, [focusRequest?.token, panelMap]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { pickRecorderMimeType, stopMediaStream } from "../utils/media";
+import { pickStreamingRecorderMimeType, stopMediaStream } from "../utils/media";
 import { StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "../../shared/types";
 
 const presetBitrateMap: Record<string, number> = {
@@ -183,7 +183,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       }
 
       try {
-        const mimeType = pickRecorderMimeType();
+        const mimeType = pickStreamingRecorderMimeType();
         const bitrate = presetBitrateMap[settings.streamPreset] ?? presetBitrateMap.medium;
         const recorder = new MediaRecorder(outputStream, {
           mimeType: mimeType || undefined,

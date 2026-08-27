@@ -36,7 +36,7 @@ const defaultSettings: Settings = {
   streamAudioBitrate: 128,
   streamEncoder: "auto",
   rememberStreamKey: false,
-  streamDestinations: [{ id: "primary", name: "Primary Stream", rtmpUrl: "", enabled: true }],
+  streamDestinations: [{ id: "primary", name: "Primary Stream", rtmpUrl: "", enabled: true, platform: "custom" }],
   operatorStationName: "Main Director",
   operatorRole: "director",
   masterAudioGain: 1,
@@ -143,6 +143,8 @@ type AppState = {
   programRevision: number;
   selectedSourceId: string | null;
   programAudioStream: MediaStream | null;
+  isProgramAudioMonitoring: boolean;
+  programAudioMonitorGain: number;
   isProjecting: boolean;
   isLowerThirdProjecting: boolean;
   projectionTargetIds: string[];
@@ -193,6 +195,8 @@ type AppState = {
   restartSourceMedia: (sourceId: string) => void;
   setSelectedSourceId: (sourceId: string | null) => void;
   setProgramAudioStream: (stream: MediaStream | null) => void;
+  setProgramAudioMonitoring: (enabled: boolean) => void;
+  setProgramAudioMonitorGain: (gain: number) => void;
   setIsProjecting: (value: boolean) => void;
   setIsLowerThirdProjecting: (value: boolean) => void;
   setProjectionTargetIds: (displayIds: string[]) => void;
@@ -219,6 +223,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   programRevision: 0,
   selectedSourceId: null,
   programAudioStream: null,
+  isProgramAudioMonitoring: false,
+  programAudioMonitorGain: 0.8,
   isProjecting: false,
   isLowerThirdProjecting: false,
   projectionTargetIds: [],
@@ -648,6 +654,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   setSelectedSourceId: (sourceId) => set({ selectedSourceId: sourceId }),
   setProgramAudioStream: (stream) => set({ programAudioStream: stream }),
+  setProgramAudioMonitoring: (isProgramAudioMonitoring) => set({ isProgramAudioMonitoring }),
+  setProgramAudioMonitorGain: (gain) => set({
+    programAudioMonitorGain: Math.min(1, Math.max(0, Number.isFinite(gain) ? gain : 0.8))
+  }),
   setIsProjecting: (isProjecting) => set({ isProjecting }),
   setIsLowerThirdProjecting: (isLowerThirdProjecting) => set({ isLowerThirdProjecting }),
   setProjectionTargetIds: (projectionTargetIds) => set({ projectionTargetIds }),

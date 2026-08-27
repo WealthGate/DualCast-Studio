@@ -71,6 +71,11 @@ const LowerThirdPanel: React.FC = () => {
 
   const activateSlide = (slideId: string | null) => stageLowerThird(lowerThird.slides, slideId);
 
+  const showSlideLive = async (slideId: string) => {
+    await stageLowerThird(lowerThird.slides, slideId);
+    await takeLowerThirdToProgram();
+  };
+
   const moveSlide = (direction: -1 | 1) => {
     if (navigationSlides.length === 0) {
       return;
@@ -388,7 +393,7 @@ const LowerThirdPanel: React.FC = () => {
                 <span className="field-help">Each Line → Slide keeps the first line here and inserts every remaining non-empty line directly after it.</span>
               </div>
             ) : (
-              <button className="lower-third-slide-cue" onClick={() => void activateSlide(slide.id)}>
+              <button className="lower-third-slide-cue" onClick={() => void activateSlide(slide.id)} onDoubleClick={() => void showSlideLive(slide.id)} title="Click for Preview; double-click to send this text directly to Program">
                 <span>{index + 1}</span>
                 <strong>{slide.text}</strong>
                 {slide.reference ? <small>{slide.reference}</small> : null}
