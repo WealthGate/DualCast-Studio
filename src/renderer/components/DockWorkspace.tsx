@@ -17,6 +17,8 @@ export type DockGroup = {
 
 export type DockLayout = Record<DockZoneId, DockGroup[]>;
 
+export type DockSplitPosition = "before" | "after";
+
 type DockSizes = {
   left: number;
   right: number;
@@ -226,6 +228,34 @@ export const moveDockPanel = (
   return next;
 };
 
+export const splitDockPanel = (
+  current: DockLayout,
+  panelId: string,
+  zoneId: DockZoneId,
+  targetGroupId: string,
+  position: DockSplitPosition
+) => {
+  const next = cloneLayout(current);
+  const originalTarget = next[zoneId].find((group) => group.id === targetGroupId);
+  if (!originalTarget || (originalTarget.panelIds.length === 1 && originalTarget.panelIds[0] === panelId)) {
+    return next;
+  }
+
+  removePanelFromLayout(next, panelId);
+  const targetIndex = next[zoneId].findIndex((group) => group.id === targetGroupId);
+  if (targetIndex < 0) {
+    return cloneLayout(current);
+  }
+
+  const insertionIndex = position === "before" ? targetIndex : targetIndex + 1;
+  next[zoneId].splice(insertionIndex, 0, {
+    id: `dock-${zoneId}-${Date.now()}-${panelId}`,
+    panelIds: [panelId],
+    activePanelId: panelId
+  });
+  return next;
+};
+
 export const closeDockPanel = (current: DockLayout, panelId: string) => {
   const next = cloneLayout(current);
   removePanelFromLayout(next, panelId);
@@ -292,6 +322,20 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
       return;
     }
     setLayout((current) => moveDockPanel(current, panelId, zoneId, groupId));
+    setDraggingPanelId(null);
+    setContextMenu(null);
+  };
+
+  const splitPanel = (
+    panelId: string,
+    zoneId: DockZoneId,
+    targetGroupId: string,
+    position: DockSplitPosition
+  ) => {
+    if (!panelMap.has(panelId)) {
+      return;
+    }
+    setLayout((current) => splitDockPanel(current, panelId, zoneId, targetGroupId, position));
     setDraggingPanelId(null);
     setContextMenu(null);
   };
@@ -404,6 +448,11 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
               ? { width: groupSize, flexBasis: groupSize }
               : { height: groupSize, flexBasis: groupSize })
             : undefined;
+          const canMergeDraggedPanel = Boolean(draggingPanelId && !group.panelIds.includes(draggingPanelId));
+          const canSplitDraggedPanel = Boolean(
+            draggingPanelId && (canMergeDraggedPanel || group.panelIds.length > 1)
+          );
+          const horizontalZone = zoneId === "top" || zoneId === "bottom";
           return (
             <React.Fragment key={group.id}>
               {index > 0 ? (
@@ -415,10 +464,10 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                 />
               ) : null}
               <div
-                className={`dock-group ${draggingPanelId ? "dock-group-drop-ready" : ""}`}
+                className={`dock-group ${canSplitDraggedPanel ? "dock-group-drop-ready" : ""}`}
                 style={groupStyle}
                 onDragOver={(event) => {
-                  if (draggingPanelId && !group.panelIds.includes(draggingPanelId)) {
+                  if (canMergeDraggedPanel) {
                     event.preventDefault();
                     event.dataTransfer.dropEffect = "move";
                   }
@@ -491,8 +540,56 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                     );
                   })}
                 </div>
-                {draggingPanelId && !group.panelIds.includes(draggingPanelId) ? (
-                  <div className="dock-merge-preview">Merge here as a tab</div>
+                {canSplitDraggedPanel ? (
+                  <div className={`dock-group-drop-overlay ${horizontalZone ? "horizontal" : "vertical"}`}>
+                    <div
+                      className="dock-group-split-target before"
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (draggingPanelId) splitPanel(draggingPanelId, zoneId, group.id, "before");
+                      }}
+                    >
+                      {horizontalZone ? "Dock left" : "Dock above"}
+                    </div>
+                    {canMergeDraggedPanel ? (
+                      <div
+                        className="dock-group-merge-target"
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          event.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (draggingPanelId) movePanel(draggingPanelId, zoneId, group.id);
+                        }}
+                      >
+                        Tab here
+                      </div>
+                    ) : <div className="dock-group-merge-target unavailable">Current tab</div>}
+                    <div
+                      className="dock-group-split-target after"
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (draggingPanelId) splitPanel(draggingPanelId, zoneId, group.id, "after");
+                      }}
+                    >
+                      {horizontalZone ? "Dock right" : "Dock below"}
+                    </div>
+                  </div>
                 ) : null}
               </div>
             </React.Fragment>
@@ -515,7 +612,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
       >
         <div>
           <strong>Studio Workspace</strong>
-          <span>Drag tabs to dock · drag boundaries to resize · right-click for menus</span>
+          <span>Drag tabs to an edge to split or the center to tab · drag boundaries to resize</span>
         </div>
       </div>
 

@@ -2011,18 +2011,58 @@ body {
   padding: 8px;
 }
 
-.dock-merge-preview {
+.dock-group-drop-overlay {
   position: absolute;
   inset: 34px 8px 8px;
   z-index: 40;
   display: grid;
-  place-items: center;
-  border: 2px solid #6f98ff;
-  background: rgba(44, 86, 181, 0.68);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
+  gap: 5px;
+  padding: 5px;
+  background: rgba(12, 17, 28, 0.48);
   pointer-events: none;
+}
+
+.dock-group-drop-overlay.horizontal {
+  grid-template-columns: minmax(54px, 1fr) minmax(72px, 1.4fr) minmax(54px, 1fr);
+}
+
+.dock-group-drop-overlay.vertical {
+  grid-template-rows: minmax(40px, 1fr) minmax(52px, 1.4fr) minmax(40px, 1fr);
+}
+
+.dock-group-split-target,
+.dock-group-merge-target {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  border: 2px solid #7da0ff;
+  border-radius: 3px;
+  background: rgba(39, 76, 163, 0.86);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  pointer-events: auto;
+}
+
+.dock-group-merge-target {
+  border-color: #91b0ff;
+  background: rgba(53, 92, 183, 0.92);
+}
+
+.dock-group-merge-target.unavailable {
+  border-color: #596273;
+  background: rgba(49, 54, 65, 0.82);
+  color: #aeb6c5;
+  pointer-events: none;
+}
+
+.dock-group-split-target:hover,
+.dock-group-merge-target:hover {
+  border-color: #fff;
+  background: rgba(61, 109, 219, 0.96);
 }
 
 .dock-drop-layer {

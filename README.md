@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.8**.
+Current release: **v0.6.9**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -14,9 +14,15 @@ Current release: **v0.6.8**.
 
 The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper may therefore ask users to confirm that they trust the download.
 
-Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.8 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
+Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.8
+### What's new in v0.6.9
+
+- Adds directional drop targets that split docks into separately resizable neighboring panels.
+- Keeps center drops as persistent tabs and allows an existing tab to be pulled into its own panel.
+- Preserves the top-left application menu as a non-dockable area and clarifies the docking guidance in the workspace.
+
+### Included from v0.6.8
 
 - Removes unused media and streaming exports identified by a whole-source redundancy audit.
 - Replaces duplicated recording/stream timers and RTMP URL validation with single shared implementations.
@@ -90,7 +96,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Th
 - Separates Scenes and Sources into independent docks; selecting a scene shows only its attached sources.
 - Lets operators drag docks to the top, bottom, left, or right of the workspace.
 - Resizes dock columns, rows, and adjacent panels by dragging their visible boundaries.
-- Merges panels dropped on another dock into persistent tabs and previews the target before docking.
+- Merges panels dropped in another dock's center into persistent tabs, or splits them into separately resizable neighboring panels when dropped on a highlighted edge.
 - Reveals dock, scene, and source actions only from right-click context menus to preserve workspace space.
 - Saves each operator's dock arrangement and sizes locally, with hide, restore, and Reset Workspace Layout controls.
 - Provides a Preview-first Lower Third Studio for manually typed messages, downloaded/imported songs, and pasted lyrics, with automatic wrapping, selectable lines per slide, add-after, and per-line slide creation.
@@ -220,7 +226,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
-- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.8; the current controls only prepare provider settings for a future implementation.
+- AI live captions, sermon summaries, and highlight detection are not executed in v0.6.9; the current controls only prepare provider settings for a future implementation.
 - The post-production editor currently provides trim/export rather than a multitrack timeline.
 - Wireless receivers must support a browser or be connected through streaming software; native casting protocols are future extensions.
 - Direct-to-disk recording still needs free space in the operating system's temporary directory and the selected save directory. A forced shutdown or power loss before Stop can leave the active recording incomplete; stale temporary sessions are removed when the app next starts.

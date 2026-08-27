@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeDockPanel, DockLayout, migrateDockLayout, moveDockPanel } from "../DockWorkspace";
+import { closeDockPanel, DockLayout, migrateDockLayout, moveDockPanel, splitDockPanel } from "../DockWorkspace";
 
 const layout = (): DockLayout => ({
   top: [],
@@ -29,6 +29,25 @@ describe("dock layout", () => {
     const next = closeDockPanel(layout(), "scenes");
 
     expect(next.left).toEqual([]);
+  });
+
+  it("splits a panel into a separate group beside the target", () => {
+    const next = splitDockPanel(layout(), "streaming", "bottom", "controls-group", "before");
+
+    expect(next.right[0].panelIds).toEqual(["venue"]);
+    expect(next.bottom.map((group) => group.panelIds)).toEqual([["streaming"], ["controls"]]);
+  });
+
+  it("can split one tab out of its current group", () => {
+    const next = splitDockPanel(layout(), "venue", "right", "live-group", "after");
+
+    expect(next.right.map((group) => group.panelIds)).toEqual([["streaming"], ["venue"]]);
+  });
+
+  it("does not split a group's only panel relative to itself", () => {
+    const next = splitDockPanel(layout(), "controls", "bottom", "controls-group", "after");
+
+    expect(next).toEqual(layout());
   });
 
   it("adds new production docks once when upgrading an older layout", () => {
