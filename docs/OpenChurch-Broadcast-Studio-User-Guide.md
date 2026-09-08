@@ -1,4 +1,4 @@
-# OpenChurch Broadcast Studio v0.6.9 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.10 - Complete User Guide
 
 This guide is written for volunteers, media teams, pastors, and technical operators. You do not need previous broadcast-software experience.
 
@@ -39,7 +39,7 @@ Do not begin a live service until the test recording contains both picture and c
 1. Open the project's GitHub Releases page.
 2. Download the newest Windows installer, or download the portable ZIP if installation is not permitted.
 3. Run the installer. If using the ZIP, extract it before running the app.
-4. Confirm the version beside the product name is **v0.6.9**.
+4. Confirm the version beside the product name is **v0.6.10**.
 5. Find the always-visible update button in the top header. It reads **Check for Updates** and shows the installed version below it.
 6. Select **Check for Updates**. The button is disabled while checking, and the banner confirms the installed version.
 7. If the app is current, dismiss the confirmation. If a newer release exists, select **Update to v[version]** to download that exact version.

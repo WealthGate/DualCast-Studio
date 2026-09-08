@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.9**.
+Current release: **v0.6.10**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -16,7 +16,14 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.9
+### What's new in v0.6.10
+
+- Detects projection monitors directly and refreshes the list when screens are connected or removed.
+- Adds a Refresh button in Sanctuary Displays.
+- Adds scene and source visibility, lock, edit, and remove icons, plus source ordering and audio controls.
+- Preserves scene visibility through saved settings and the Preview/TAKE workflow.
+
+### Included from v0.6.9
 
 - Adds directional drop targets that split docks into separately resizable neighboring panels.
 - Keeps center drops as persistent tabs and allows an existing tab to be pulled into its own panel.
