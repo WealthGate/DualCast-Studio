@@ -1,21 +1,35 @@
 {
-  "name": "dualcast-studio",
-  "version": "0.1.0",
+  "name": "openchurch-broadcast-studio",
+  "version": "0.6.11",
   "private": true,
-  "description": "DualCast Studio Phase 1",
+  "description": "Open church production, presentation, recording, and multi-destination streaming studio",
+  "author": {
+    "name": "WealthGate",
+    "email": "50961398+WealthGate@users.noreply.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WealthGate/DualCast-Studio.git"
+  },
+  "homepage": "https://github.com/WealthGate/DualCast-Studio",
   "main": "dist-electron/main.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
-    "dev:renderer": "vite",
+    "dev:renderer": "vite --port 5173 --strictPort",
     "dev:main": "tsup --watch",
     "dev:electron": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 nodemon --watch dist-electron --exec \"electron .\"",
-    "build": "tsup && vite build",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && tsup && vite build",
     "package": "npm run build && electron-builder",
     "test": "vitest run"
   },
   "dependencies": {
     "electron-log": "^5.1.2",
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.2.0",
     "fluent-ffmpeg": "^2.1.2",
     "react": "^18.2.0",
@@ -23,33 +37,48 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@types/fluent-ffmpeg": "^2.1.28",
     "@types/node": "^20.11.30",
     "@types/react": "^18.2.61",
     "@types/react-dom": "^18.2.19",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "^6.0.5",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "^29.1.1",
-    "electron-builder": "^24.13.3",
+    "electron": "41.10.6",
+    "electron-builder": "^26.15.3",
     "nodemon": "^3.1.0",
     "tsup": "^8.0.2",
     "typescript": "^5.4.2",
-    "vite": "^5.2.2",
-    "vitest": "^1.4.0"
+    "vite": "^8.2.1",
+    "vitest": "^4.1.11"
   },
   "build": {
     "appId": "com.dualcast.studio",
-    "productName": "DualCast Studio",
+    "productName": "OpenChurch Broadcast Studio",
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
     "files": [
       "dist-electron/**",
       "dist/renderer/**",
+      "assets/icon.png",
+      "assets/OpenChurch-Broadcast-Studio-User-Guide.pdf",
       "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "WealthGate",
+        "repo": "DualCast-Studio"
+      }
     ],
     "directories": {
       "buildResources": "assets",
       "output": "release"
     },
     "mac": {
+      "icon": "assets/icon.png",
       "target": [
         "dmg",
         "zip"
@@ -59,12 +88,14 @@
       "entitlementsInherit": "assets/entitlements.mac.plist"
     },
     "win": {
+      "icon": "assets/icon.png",
       "target": [
         "nsis",
         "zip"
       ]
     },
     "linux": {
+      "icon": "assets/icon.png",
       "target": [
         "AppImage",
         "deb"

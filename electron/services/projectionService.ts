@@ -1,10 +1,12 @@
-import { BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 import path from "path";
 import { ProgramState } from "../../src/shared/types";
 import { IpcChannels } from "../../src/shared/ipc";
 
-let projectionWindow: BrowserWindow | null = null;
+const programWindows = new Map<string, BrowserWindow>();
+const lowerThirdWindows = new Map<string, BrowserWindow>();
 let lastProgramState: ProgramState | null = null;
+export const getProgramState = () => lastProgramState;
 
 const getDisplayBounds = (displayId?: string | null) => {
   if (displayId) {
@@ -16,97 +18,146 @@ const getDisplayBounds = (displayId?: string | null) => {
   return screen.getPrimaryDisplay().bounds;
 };
 
-const buildProjectionUrl = () => {
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+const buildProjectionUrl = (mode: "program" | "lower-third") => {
+  const devServerUrl = app.isPackaged ? null : process.env.VITE_DEV_SERVER_URL;
   if (devServerUrl) {
-    return `${devServerUrl}?projection=1`;
+    return `${devServerUrl}?projection=${mode}`;
   }
   return null;
 };
 
-const applyBounds = (window: BrowserWindow, displayId?: string | null) => {
-  const bounds = getDisplayBounds(displayId);
-  window.setBounds(bounds);
+const isOutputWindow = (window: BrowserWindow) =>
+  Array.from(programWindows.values()).includes(window) || Array.from(lowerThirdWindows.values()).includes(window);
+
+const notifyMainWindows = (channel: string) => {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    if (!isOutputWindow(window)) {
+      window.webContents.send(channel);
+    }
+  });
 };
 
-export const openProjectionWindow = async (displayId?: string | null) => {
-  if (projectionWindow && !projectionWindow.isDestroyed()) {
-    applyBounds(projectionWindow, displayId);
-    projectionWindow.show();
-    projectionWindow.focus();
-    return;
+const createOutputWindow = async (
+  displayId: string,
+  mode: "program" | "lower-third",
+  collection: Map<string, BrowserWindow>
+) => {
+  const existing = collection.get(displayId);
+  if (existing && !existing.isDestroyed()) {
+    existing.setBounds(getDisplayBounds(displayId));
+    existing.show();
+    return existing;
   }
 
-  projectionWindow = new BrowserWindow({
+  const outputWindow = new BrowserWindow({
     show: false,
     frame: false,
-    backgroundColor: "#000000",
+    backgroundColor: mode === "lower-third" ? "#00000000" : "#000000",
+    transparent: mode === "lower-third",
     skipTaskbar: true,
     fullscreenable: false,
     alwaysOnTop: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, "preload.js")
+      preload: path.join(__dirname, "preload.js"),
+      backgroundThrottling: false
     }
   });
 
-  applyBounds(projectionWindow, displayId);
+  collection.set(displayId, outputWindow);
+  outputWindow.setBounds(getDisplayBounds(displayId));
 
-  const devUrl = buildProjectionUrl();
-  if (devUrl) {
-    await projectionWindow.loadURL(devUrl);
-  } else {
-    await projectionWindow.loadFile(path.join(__dirname, "../renderer/index.html"), {
-      query: { projection: "1" }
+  outputWindow.once("ready-to-show", () => outputWindow.show());
+  outputWindow.on("closed", () => {
+    collection.delete(displayId);
+    if (collection.size === 0) {
+      notifyMainWindows(mode === "program" ? IpcChannels.projectionClosed : IpcChannels.lowerThirdClosed);
+    }
+  });
+
+  const devUrl = buildProjectionUrl(mode);
+  const loadFile = () =>
+    outputWindow.loadFile(path.join(__dirname, "../dist/renderer/index.html"), {
+      query: { projection: mode }
     });
+
+  if (devUrl) {
+    try {
+      await outputWindow.loadURL(devUrl);
+    } catch {
+      await loadFile();
+    }
+  } else {
+    await loadFile();
   }
 
-  projectionWindow.once("ready-to-show", () => projectionWindow?.show());
-  projectionWindow.on("closed", () => {
-    notifyProjectionClosed();
-    projectionWindow = null;
-  });
-  projectionWindow.webContents.on("did-finish-load", () => {
     if (lastProgramState) {
-      projectionWindow?.webContents.send(IpcChannels.programState, lastProgramState);
+      outputWindow.webContents.send(IpcChannels.programState, lastProgramState);
     }
-    notifyProjectionOpened();
+    notifyMainWindows(mode === "program" ? IpcChannels.projectionOpened : IpcChannels.lowerThirdOpened);
+  outputWindow.show();
+
+  return outputWindow;
+};
+
+export const openProjectionWindows = async (displayIds: string[]) => {
+  const targets = Array.from(new Set(displayIds.filter(Boolean)));
+  await Promise.all(targets.map((displayId) => createOutputWindow(displayId, "program", programWindows)));
+
+  Array.from(programWindows.entries()).forEach(([displayId, window]) => {
+    if (!targets.includes(displayId) && !window.isDestroyed()) {
+      window.close();
+    }
   });
 };
 
-export const closeProjectionWindow = async () => {
-  if (!projectionWindow || projectionWindow.isDestroyed()) {
-    return;
-  }
-  projectionWindow.close();
+export const closeProjectionWindows = async () => {
+  Array.from(programWindows.values()).forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.close();
+    }
+  });
+};
+
+export const openLowerThirdWindow = async (displayId: string) => {
+  Array.from(lowerThirdWindows.entries()).forEach(([currentId, window]) => {
+    if (currentId !== displayId && !window.isDestroyed()) {
+      window.close();
+    }
+  });
+  await createOutputWindow(displayId, "lower-third", lowerThirdWindows);
+};
+
+export const closeLowerThirdWindow = async () => {
+  Array.from(lowerThirdWindows.values()).forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.close();
+    }
+  });
 };
 
 export const setProgramState = (state: ProgramState) => {
   lastProgramState = state;
-  if (projectionWindow && !projectionWindow.isDestroyed()) {
-    projectionWindow.webContents.send(IpcChannels.programState, state);
-  }
-};
-
-export const forwardProgramFrame = (dataUrl: string) => {
-  if (projectionWindow && !projectionWindow.isDestroyed()) {
-    projectionWindow.webContents.send(IpcChannels.programFrame, dataUrl);
-  }
-};
-
-export const notifyProjectionOpened = () => {
-  BrowserWindow.getAllWindows().forEach((window) => {
-    if (window !== projectionWindow) {
-      window.webContents.send(IpcChannels.projectionOpened);
+  [...programWindows.values(), ...lowerThirdWindows.values()].forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send(IpcChannels.programState, state);
     }
   });
 };
 
-export const notifyProjectionClosed = () => {
-  BrowserWindow.getAllWindows().forEach((window) => {
-    if (window !== projectionWindow) {
-      window.webContents.send(IpcChannels.projectionClosed);
+export const forwardProgramFrame = (dataUrl: string) => {
+  programWindows.forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send(IpcChannels.programFrame, dataUrl);
+    }
+  });
+};
+
+export const forwardLowerThirdFrame = (dataUrl: string) => {
+  lowerThirdWindows.forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send(IpcChannels.lowerThirdFrame, dataUrl);
     }
   });
 };

@@ -1,16 +1,14 @@
 import { useCallback, useRef } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { getDisplayStream, pickRecorderMimeType, stopMediaStream } from "../utils/media";
-import { AudioMode } from "../../shared/types";
+import { pickRecorderMimeType, stopMediaStream } from "../utils/media";
 import { getQualityProfile } from "../../shared/recording";
-
-const shouldIncludeSystem = (mode: AudioMode) => mode === "system" || mode === "both";
-const shouldIncludeMic = (mode: AudioMode) => mode === "microphone" || mode === "both";
 
 export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const {
-    programSourceId,
+    programSceneId,
+    programSceneSnapshot,
     settings,
+    programAudioStream,
     setRecordingState,
     setRecordingSeconds,
     setRecordingResult,
@@ -19,11 +17,12 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
   } = useAppStore();
 
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const systemStreamRef = useRef<MediaStream | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const writeErrorRef = useRef<string | null>(null);
+  const hasProgramSources = Boolean(programSceneSnapshot?.sourceIds.length);
 
   const clearTimer = () => {
     if (timerRef.current) {
@@ -38,8 +37,8 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
       return;
     }
 
-    if (!programSourceId) {
-      setRecordingError("Select a display and TAKE it to Program before recording.");
+    if (!programSceneId || !hasProgramSources) {
+      setRecordingError("Select a scene and TAKE it to Program before recording.");
       return;
     }
 
@@ -54,36 +53,17 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
     const canvasStream = canvasRef.current.captureStream(settings.frameRate);
     const tracks = [...canvasStream.getVideoTracks()];
 
-    const audioMode = settings.audioMode;
-    const captureAudio = shouldIncludeSystem(audioMode) || shouldIncludeMic(audioMode);
+    const captureAudio = settings.audioMode !== "none" && Boolean(programAudioStream?.getAudioTracks().length);
     const audioContext = captureAudio ? new AudioContext() : null;
     const destination = audioContext ? audioContext.createMediaStreamDestination() : null;
     audioContextRef.current = audioContext;
 
-    if (shouldIncludeSystem(audioMode)) {
+    if (programAudioStream && audioContext && destination && programAudioStream.getAudioTracks().length > 0) {
       try {
-        const systemStream = await getDisplayStream(programSourceId, true);
-        systemStreamRef.current = systemStream;
-        if (audioContext && destination && systemStream.getAudioTracks().length > 0) {
-          const source = audioContext.createMediaStreamSource(systemStream);
-          source.connect(destination);
-        }
-        systemStream.getVideoTracks().forEach((track) => track.stop());
-      } catch (error) {
-        setRecordingError("System audio is unavailable for this display.");
-      }
-    }
-
-    if (shouldIncludeMic(audioMode)) {
-      try {
-        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        micStreamRef.current = micStream;
-        if (audioContext && destination && micStream.getAudioTracks().length > 0) {
-          const source = audioContext.createMediaStreamSource(micStream);
-          source.connect(destination);
-        }
-      } catch (error) {
-        setRecordingError("Microphone access was denied or unavailable.");
+        const source = audioContext.createMediaStreamSource(programAudioStream);
+        source.connect(destination);
+      } catch {
+        setRecordingError("Program audio is unavailable for this scene.");
       }
     }
 
@@ -95,48 +75,110 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
     const mimeType = pickRecorderMimeType();
     const { videoBitsPerSecond } = getQualityProfile(settings.qualityPreset);
 
-    const recorder = new MediaRecorder(outputStream, {
-      mimeType: mimeType || undefined,
-      videoBitsPerSecond
-    });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(outputStream, {
+        mimeType: mimeType || undefined,
+        videoBitsPerSecond
+      });
+    } catch {
+      stopMediaStream(canvasStream);
+      audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      setRecordingError("Unable to start the recording encoder.");
+      return;
+    }
 
     recorderRef.current = recorder;
-    chunksRef.current = [];
+    writeQueueRef.current = Promise.resolve();
+    writeErrorRef.current = null;
+
+    try {
+      const session = await window.dualcast.beginRecording();
+      sessionIdRef.current = session.sessionId;
+    } catch (error) {
+      recorderRef.current = null;
+      stopMediaStream(canvasStream);
+      audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      setRecordingError(error instanceof Error ? error.message : "Unable to prepare the recording file.");
+      return;
+    }
 
     recorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) {
-        chunksRef.current.push(event.data);
+        const chunk = event.data;
+        const sessionId = sessionIdRef.current;
+        if (!sessionId) return;
+        writeQueueRef.current = writeQueueRef.current
+          .then(() => chunk.arrayBuffer())
+          .then((buffer) => window.dualcast.appendRecordingChunk({ sessionId, data: new Uint8Array(buffer) }))
+          .then(() => undefined)
+          .catch((error) => {
+            writeErrorRef.current = error instanceof Error ? error.message : "Unable to write recording data.";
+            setRecordingError(writeErrorRef.current);
+            if (recorder.state !== "inactive") recorder.stop();
+          });
       }
     };
 
     recorder.onstop = async () => {
       clearTimer();
       setRecordingState(false);
-
-      const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-      const buffer = new Uint8Array(await blob.arrayBuffer());
+      const sessionId = sessionIdRef.current;
+      sessionIdRef.current = null;
 
       try {
-        const result = await window.dualcast.saveRecording({ data: buffer });
-        setRecordingResult(result);
+        await writeQueueRef.current;
+        if (!sessionId) throw new Error("The recording file session was lost.");
+        if (writeErrorRef.current) {
+          await window.dualcast.cancelRecording({ sessionId });
+          throw new Error(writeErrorRef.current);
+        }
+        setRecordingResult(await window.dualcast.finishRecording({ sessionId }));
       } catch (error) {
-        setRecordingError("Failed to save recording.");
+        if (sessionId) await window.dualcast.cancelRecording({ sessionId }).catch(() => undefined);
+        const message = error instanceof Error ? error.message : "Failed to save recording.";
+        setRecordingError(message);
+      } finally {
+        stopMediaStream(canvasStream);
+        audioContextRef.current?.close().catch(() => undefined);
+        audioContextRef.current = null;
+        recorderRef.current = null;
       }
-
-      stopMediaStream(canvasStream);
-      stopMediaStream(systemStreamRef.current);
-      stopMediaStream(micStreamRef.current);
-      audioContextRef.current?.close();
-      recorderRef.current = null;
     };
 
-    recorder.start(1000);
+    try {
+      recorder.start(1000);
+    } catch {
+      const sessionId = sessionIdRef.current;
+      sessionIdRef.current = null;
+      recorderRef.current = null;
+      stopMediaStream(canvasStream);
+      audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      if (sessionId) await window.dualcast.cancelRecording({ sessionId }).catch(() => undefined);
+      setRecordingError("Unable to start the recording encoder.");
+      return;
+    }
     setRecordingState(true);
 
     timerRef.current = window.setInterval(() => {
       setRecordingSeconds((prev) => prev + 1);
     }, 1000);
-  }, [canvasRef, programSourceId, setRecordingError, setRecordingResult, setRecordingSeconds, setRecordingState, settings.audioMode, settings.frameRate, settings.qualityPreset]);
+  }, [
+    canvasRef,
+    programSceneId,
+    hasProgramSources,
+    programAudioStream,
+    setRecordingError,
+    setRecordingResult,
+    setRecordingSeconds,
+    setRecordingState,
+    settings.audioMode,
+    settings.frameRate,
+    settings.qualityPreset
+  ]);
 
   const stopRecording = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== "inactive") {

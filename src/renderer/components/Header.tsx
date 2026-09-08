@@ -1,20 +1,31 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { AudioMode } from "../../shared/types";
-
-const formatTimer = (seconds: number) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-};
+import { AudioMode, UpdateStatusPayload, WorkspaceViewMode } from "../../shared/types";
+import packageJson from "../../../package.json";
+import { getUpdateControlView, normalizeVersion } from "../utils/updateControl";
+import { formatElapsedTimer } from "../utils/time";
 
 type HeaderProps = {
-  onStartRecording: () => void;
-  onStopRecording: () => void;
-  onOpenFolder: () => void;
+  onOpenMultiview: () => void;
+  onCheckForUpdates: () => void;
+  onDownloadUpdate: () => void;
+  onInstallUpdate: () => void;
+  onDownloadUserGuide: () => void;
+  updateStatus: UpdateStatusPayload | null;
+  viewMode: WorkspaceViewMode;
+  onChangeViewMode: (mode: WorkspaceViewMode) => void;
 };
 
-const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOpenFolder }) => {
+const Header: React.FC<HeaderProps> = ({
+  onOpenMultiview,
+  onCheckForUpdates,
+  onDownloadUpdate,
+  onInstallUpdate,
+  onDownloadUserGuide,
+  updateStatus,
+  viewMode,
+  onChangeViewMode
+}) => {
   const {
     isRecording,
     recordingSeconds,
@@ -23,11 +34,13 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
     settings,
     updateSettings
   } = useAppStore();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<"menu" | "view" | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const updateControl = getUpdateControlView(updateStatus, packageJson.version);
+  const installedVersion = normalizeVersion(updateStatus?.currentVersion ?? packageJson.version);
 
   useEffect(() => {
-    if (!menuOpen) {
+    if (!openMenu) {
       return;
     }
 
@@ -36,7 +49,7 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
         return;
       }
       if (!menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
+        setOpenMenu(null);
       }
     };
 
@@ -44,65 +57,142 @@ const Header: React.FC<HeaderProps> = ({ onStartRecording, onStopRecording, onOp
     return () => {
       document.removeEventListener("mousedown", handleClick);
     };
-  }, [menuOpen]);
+  }, [openMenu]);
 
   const handleAudioChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     updateSettings({ audioMode: event.target.value as AudioMode });
   };
 
+  const handleUpdateAction = () => {
+    if (updateControl.action === "download") {
+      onDownloadUpdate();
+      return;
+    }
+    if (updateControl.action === "install") {
+      onInstallUpdate();
+      return;
+    }
+    if (updateControl.action === "check") {
+      onCheckForUpdates();
+    }
+  };
+
   return (
     <header className="app-header">
       <div className="brand">
-        <div className="menu" ref={menuRef}>
-          <button className="btn btn-outline btn-compact" onClick={() => setMenuOpen((open) => !open)}>
-            Menu
-          </button>
-          {menuOpen ? (
-            <div className="menu-panel">
-              <div className="menu-title">Hotkeys</div>
-              <div className="menu-item">Record: Ctrl/Cmd + Shift + R</div>
-              <div className="menu-item">TAKE: Ctrl/Cmd + Enter</div>
-              <div className="menu-item">Cut to Black: Ctrl/Cmd + B</div>
-            </div>
-          ) : null}
+        <div className="menu-bar" ref={menuRef}>
+          <div className="menu">
+            <button className="btn btn-outline btn-compact" onClick={() => setOpenMenu((value) => value === "menu" ? null : "menu")}>
+              Menu
+            </button>
+            {openMenu === "menu" ? (
+              <div className="menu-panel">
+                <div className="menu-title">Hotkeys</div>
+                <div className="menu-item">Record: Ctrl/Cmd + Shift + R</div>
+                <div className="menu-item">TAKE: Ctrl/Cmd + Enter</div>
+                <div className="menu-item">Cut to Black: Ctrl/Cmd + B</div>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onCheckForUpdates();
+                  }}
+                >
+                  Check for Updates
+                  <span>Installed v{installedVersion}</span>
+                </button>
+                <button className="menu-command" onClick={() => { setOpenMenu(null); onDownloadUserGuide(); }}>
+                  Download User Guide
+                  <span>Complete PDF manual</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <div className="menu">
+            <button className="btn btn-outline btn-compact" onClick={() => setOpenMenu((value) => value === "view" ? null : "view")}>
+              View
+            </button>
+            {openMenu === "view" ? (
+              <div className="menu-panel">
+                <div className="menu-title">Workspace View</div>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onChangeViewMode("studio");
+                  }}
+                  aria-pressed={viewMode === "studio"}
+                >
+                  Studio Mode
+                  <span>Preview + Program + operating docks</span>
+                </button>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onChangeViewMode("program-focus");
+                  }}
+                  aria-pressed={viewMode === "program-focus"}
+                >
+                  Program Focus
+                  <span>Program fills the center; docks remain and scene clicks go live</span>
+                </button>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onChangeViewMode("program-only");
+                  }}
+                  aria-pressed={viewMode === "program-only"}
+                >
+                  Full Program Only
+                  <span>Program fills the entire app; operating docks are hidden</span>
+                </button>
+                <button
+                  className="menu-command"
+                  onClick={() => {
+                    setOpenMenu(null);
+                    onOpenMultiview();
+                  }}
+                >
+                  Open Multiview Window
+                  <span>Scenes + Cameras</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
         <span className="brand-dot" />
         <div>
-          <h1>DualCast Studio</h1>
-          <p>Phase 2b - Streaming Hardened</p>
+          <h1>OpenChurch Broadcast Studio</h1>
+          <p>Open Church Production · v{packageJson.version}</p>
         </div>
       </div>
       <div className="header-controls">
+        <button
+          className={`btn header-update-button state-${updateStatus?.state ?? "idle"} ${updateControl.emphasis === "primary" ? "btn-primary" : "btn-outline"}`}
+          type="button"
+          onClick={handleUpdateAction}
+          disabled={updateControl.disabled}
+          aria-label={`${updateControl.label}. ${updateControl.detail}`}
+        >
+          <span>{updateControl.label}</span>
+          <small>{updateControl.detail}</small>
+        </button>
         <div className="recording-status">
           <span className={isRecording ? "indicator live" : "indicator"} />
           <span>{isRecording ? "Recording" : "Idle"}</span>
-          <span className="timer">{formatTimer(recordingSeconds)}</span>
+          <span className="timer">{formatElapsedTimer(recordingSeconds)}</span>
         </div>
         <div className="control-group">
           <label htmlFor="audioMode">Audio</label>
           <select id="audioMode" value={settings.audioMode} onChange={handleAudioChange}>
-            <option value="system">System</option>
-            <option value="microphone">Microphone</option>
-            <option value="both">System + Mic</option>
-            <option value="none">None</option>
+            <option value="system">Scene Sources</option>
+            <option value="microphone">Mic (All Scenes)</option>
+            <option value="both">Sources + Mic</option>
+            <option value="none">Mute All</option>
           </select>
         </div>
-        <div className="control-group">
-          {isRecording ? (
-            <button className="btn btn-danger" onClick={onStopRecording}>
-              Stop
-            </button>
-          ) : (
-            <button className="btn btn-primary" onClick={onStartRecording}>
-              Record
-            </button>
-          )}
-        </div>
-        {recordingResult ? (
-          <button className="btn btn-outline" onClick={onOpenFolder}>
-            Open Folder
-          </button>
-        ) : null}
         {recordingError ? <span className="error-pill">{recordingError}</span> : null}
         {recordingResult?.usedFallback ? (
           <span className="warn-pill">Saved as WebM (FFmpeg fallback)</span>
