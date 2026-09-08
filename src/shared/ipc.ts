@@ -30,6 +30,7 @@ export const IpcChannels = {
   updateStatus: "dualcast:update-status",
   updateProgramState: "dualcast:update-program-state",
   programState: "dualcast:program-state",
+  getProgramState: "dualcast:get-program-state",
   projectionClosed: "dualcast:projection-closed",
   projectionOpened: "dualcast:projection-opened",
   programFrame: "dualcast:program-frame",

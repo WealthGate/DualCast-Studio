@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
+import { createFrameEncoder } from "../utils/frameEncoder";
 import { isPresentationTextSource, visiblePresentationSourceIds } from "../utils/presentationText";
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
@@ -1256,28 +1257,21 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       return;
     }
 
+    const encoder = createFrameEncoder((frame) => window.dualcast.sendProgramFrame(frame));
     const sendFrame = () => {
       const canvas = programCanvasRef.current;
       if (!canvas) {
         return;
       }
-      try {
-        const dataUrl = canvas.toDataURL("image/webp", 0.8);
-        window.dualcast.sendProgramFrame(dataUrl);
-      } catch {
-        const dataUrl = canvas.toDataURL("image/png");
-        window.dualcast.sendProgramFrame(dataUrl);
-      }
+      encoder.encode(canvas);
     };
 
     sendFrame();
-    if (isFrozen) {
-      return;
-    }
-    const interval = window.setInterval(sendFrame, 1000 / Math.min(30, settings.frameRate));
+    const interval = window.setInterval(sendFrame, isFrozen ? 1000 : 1000 / Math.min(30, settings.frameRate));
 
     return () => {
       window.clearInterval(interval);
+      encoder.stop();
     };
   }, [isFrozen, isProjecting, programCanvasRef, settings.frameRate, settings.networkOutput.enabled]);
 

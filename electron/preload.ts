@@ -45,6 +45,7 @@ import {
 } from "../src/shared/types";
 
 const api = {
+  getProgramState: (): Promise<ProgramState | null> => ipcRenderer.invoke(IpcChannels.getProgramState),
   listDisplays: (): Promise<DisplaySource[]> => ipcRenderer.invoke(IpcChannels.listDisplays),
   listProjectionDisplays: (): Promise<ProjectionDisplay[]> => ipcRenderer.invoke(IpcChannels.listProjectionDisplays),
   getSettings: (): Promise<Settings> => ipcRenderer.invoke(IpcChannels.getSettings),

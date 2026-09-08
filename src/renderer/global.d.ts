@@ -45,6 +45,7 @@ import {
 declare global {
   interface Window {
     dualcast: {
+      getProgramState: () => Promise<ProgramState | null>;
       listDisplays: () => Promise<DisplaySource[]>;
       listProjectionDisplays: () => Promise<ProjectionDisplay[]>;
       getSettings: () => Promise<Settings>;

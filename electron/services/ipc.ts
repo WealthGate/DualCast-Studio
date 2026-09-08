@@ -44,6 +44,7 @@ import {
   openProjectionWindows,
   setProgramState
 } from "./projectionService";
+import { getProgramState } from "./projectionService";
 import { createBrowserSource, destroyBrowserSource, updateBrowserSource } from "./browserSourceService";
 import {
   getNetworkOutputStatus,
@@ -80,6 +81,7 @@ import {
 } from "./streamingCredentialService";
 
 export const registerIpcHandlers = () => {
+  ipcMain.handle(IpcChannels.getProgramState, () => getProgramState());
   setStreamStatusPublisher((payload) => {
     BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(IpcChannels.streamStatus, payload));
   });

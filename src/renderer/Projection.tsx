@@ -28,8 +28,17 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   }, [mode]);
 
   useEffect(() => {
-    const unsubscribe = window.dualcast.onProgramState((state) => setProgramState(state));
+    let active = true;
+    let receivedUpdate = false;
+    const unsubscribe = window.dualcast.onProgramState((state) => {
+      receivedUpdate = true;
+      setProgramState(state);
+    });
+    void window.dualcast.getProgramState().then((state) => {
+      if (active && !receivedUpdate && state) setProgramState(state);
+    }).catch(() => undefined);
     return () => {
+      active = false;
       unsubscribe();
     };
   }, []);

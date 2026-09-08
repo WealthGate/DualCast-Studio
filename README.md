@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.10**.
+Current release: **v0.6.11**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -16,7 +16,14 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.10
+### What's new in v0.6.11
+
+- Fixes projection startup losing its initial Program state and remaining black.
+- Registers output window lifecycle handlers before loading the output page.
+- Encodes Program projection frames asynchronously, with one frame in flight to limit CPU work on slower PCs.
+- Refreshes frozen output periodically so newly opened projectors receive a frame.
+
+### Included from v0.6.10
 
 - Detects projection monitors directly and refreshes the list when screens are connected or removed.
 - Adds a Refresh button in Sanctuary Displays.

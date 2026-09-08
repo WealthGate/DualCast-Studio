@@ -18,6 +18,7 @@ export const installDevelopmentBridge = () => {
   }
 
   window.dualcast = {
+    getProgramState: async () => null,
     listDisplays: async () => [],
     listProjectionDisplays: async () => [
       { id: "demo-primary", name: "Primary display", isPrimary: true, size: { width: 1920, height: 1080 } },

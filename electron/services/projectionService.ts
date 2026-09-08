@@ -6,6 +6,7 @@ import { IpcChannels } from "../../src/shared/ipc";
 const programWindows = new Map<string, BrowserWindow>();
 const lowerThirdWindows = new Map<string, BrowserWindow>();
 let lastProgramState: ProgramState | null = null;
+export const getProgramState = () => lastProgramState;
 
 const getDisplayBounds = (displayId?: string | null) => {
   if (displayId) {
@@ -67,6 +68,14 @@ const createOutputWindow = async (
   collection.set(displayId, outputWindow);
   outputWindow.setBounds(getDisplayBounds(displayId));
 
+  outputWindow.once("ready-to-show", () => outputWindow.show());
+  outputWindow.on("closed", () => {
+    collection.delete(displayId);
+    if (collection.size === 0) {
+      notifyMainWindows(mode === "program" ? IpcChannels.projectionClosed : IpcChannels.lowerThirdClosed);
+    }
+  });
+
   const devUrl = buildProjectionUrl(mode);
   const loadFile = () =>
     outputWindow.loadFile(path.join(__dirname, "../dist/renderer/index.html"), {
@@ -83,19 +92,11 @@ const createOutputWindow = async (
     await loadFile();
   }
 
-  outputWindow.once("ready-to-show", () => outputWindow.show());
-  outputWindow.on("closed", () => {
-    collection.delete(displayId);
-    if (collection.size === 0) {
-      notifyMainWindows(mode === "program" ? IpcChannels.projectionClosed : IpcChannels.lowerThirdClosed);
-    }
-  });
-  outputWindow.webContents.on("did-finish-load", () => {
     if (lastProgramState) {
       outputWindow.webContents.send(IpcChannels.programState, lastProgramState);
     }
     notifyMainWindows(mode === "program" ? IpcChannels.projectionOpened : IpcChannels.lowerThirdOpened);
-  });
+  outputWindow.show();
 
   return outputWindow;
 };
