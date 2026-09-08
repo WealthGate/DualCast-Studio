@@ -572,9 +572,10 @@ Live ingest prefers VP8 WebM for broad FFmpeg decoder compatibility. Each destin
 ### Program display
 
 1. Open Sanctuary Displays.
-2. Select one or more connected projectors/displays.
-3. Open Program output.
-4. Confirm that the output is on the intended screen before the congregation enters.
+2. Confirm that each connected projector/display appears under **Connected displays**. If a cable was connected or Windows display settings changed after the studio opened, choose **Refresh**.
+3. Select one or more connected projectors/displays. The app prefers an external display when one is available; the computer's main screen is labeled **Primary**.
+4. Open Program output.
+5. Confirm that the output is on the intended screen before the congregation enters.
 
 ### Independent lower-third display
 

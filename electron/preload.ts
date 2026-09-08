@@ -5,6 +5,7 @@ import {
   RecordingChunkPayload,
   RecordingSessionPayload,
   DisplaySource,
+  ProjectionDisplay,
   Settings,
   SaveRecordingResult,
   SettingsUpdate,
@@ -45,6 +46,7 @@ import {
 
 const api = {
   listDisplays: (): Promise<DisplaySource[]> => ipcRenderer.invoke(IpcChannels.listDisplays),
+  listProjectionDisplays: (): Promise<ProjectionDisplay[]> => ipcRenderer.invoke(IpcChannels.listProjectionDisplays),
   getSettings: (): Promise<Settings> => ipcRenderer.invoke(IpcChannels.getSettings),
   updateSettings: (update: SettingsUpdate): Promise<Settings> => ipcRenderer.invoke(IpcChannels.updateSettings, update),
   selectSaveDirectory: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.selectSaveDirectory),
@@ -211,6 +213,11 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, action: RemoteOperatorAction) => handler(action);
     ipcRenderer.on(IpcChannels.remoteOperatorAction, listener);
     return () => ipcRenderer.removeListener(IpcChannels.remoteOperatorAction, listener);
+  },
+  onProjectionDisplaysChanged: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on(IpcChannels.projectionDisplaysChanged, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.projectionDisplaysChanged, listener);
   },
   onAppCommand: (handler: (command: AppCommand) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, command: AppCommand) => handler(command);

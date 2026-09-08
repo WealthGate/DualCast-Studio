@@ -116,7 +116,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Th
 
 ### Large-Venue Outputs
 - Sends the same Program feed to multiple selected sanctuary projectors or displays.
-- Provides Sanctuary Displays as a movable, tab-capable dock.
+- Provides Sanctuary Displays as a movable, tab-capable dock with direct monitor discovery, automatic hot-plug updates, and manual refresh.
 - Provides a separate lower-third output for confidence monitors, broadcast graphics, or dedicated screens.
 - Configures lower-third position, height, background, and target display.
 - Publishes Program to browser-capable displays and OBS Browser Sources over the local network.

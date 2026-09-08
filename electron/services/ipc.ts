@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { pathToFileURL } from "url";
 import { IpcChannels } from "../../src/shared/ipc";
-import { listDisplays } from "./displayService";
+import { listDisplays, listProjectionDisplays } from "./displayService";
 import { getSettings, updateSettings } from "./settingsService";
 import {
   appendRecordingChunk,
@@ -85,6 +85,7 @@ export const registerIpcHandlers = () => {
   });
 
   ipcMain.handle(IpcChannels.listDisplays, async () => listDisplays());
+  ipcMain.handle(IpcChannels.listProjectionDisplays, () => listProjectionDisplays());
 
   ipcMain.handle(IpcChannels.getSettings, () => getSettings());
 

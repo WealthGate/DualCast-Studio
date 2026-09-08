@@ -167,6 +167,7 @@ type AppState = {
   renameScene: (sceneId: string, name: string) => void;
   removeScene: (sceneId: string) => void;
   toggleSceneLocked: (sceneId: string) => void;
+  toggleSceneEnabled: (sceneId: string) => void;
   selectPreviewScene: (sceneId: string) => void;
   setProgramScene: (sceneId: string) => void;
   takeToProgram: () => void;
@@ -280,6 +281,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { scenes, previewSceneId };
     });
   },
+  toggleSceneEnabled: (sceneId) => set((state) => ({
+    scenes: state.scenes.map((scene) => scene.id === sceneId && !scene.locked ? { ...scene, enabled: scene.enabled === false } : scene)
+  })),
   toggleSceneLocked: (sceneId) =>
     set((state) => ({
       scenes: state.scenes.map((scene) =>

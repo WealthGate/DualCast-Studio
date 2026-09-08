@@ -1,5 +1,7 @@
 export const IpcChannels = {
   listDisplays: "dualcast:list-displays",
+  listProjectionDisplays: "dualcast:list-projection-displays",
+  projectionDisplaysChanged: "dualcast:projection-displays-changed",
   getSettings: "dualcast:get-settings",
   updateSettings: "dualcast:update-settings",
   selectSaveDirectory: "dualcast:select-save-directory",

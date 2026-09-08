@@ -120,7 +120,7 @@ export const normalizeStudioState = (value: unknown): StudioState => {
     const sourceIds = Array.isArray(scene.sourceIds)
       ? Array.from(new Set(scene.sourceIds.filter((sourceId): sourceId is string => typeof sourceId === "string" && Boolean(sources[sourceId]))))
       : [];
-    return [{ id, name: cleanString(scene.name, "Scene", 160) || "Scene", sourceIds, locked: scene.locked === true }];
+    return [{ id, name: cleanString(scene.name, "Scene", 160) || "Scene", sourceIds, locked: scene.locked === true, enabled: scene.enabled !== false }];
   });
   if (scenes.length === 0) {
     scenes.push({ id: "scene-1", name: "Scene 1", sourceIds: [] });

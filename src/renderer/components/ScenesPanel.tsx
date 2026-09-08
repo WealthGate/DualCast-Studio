@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import ContextMenu from "./ContextMenu";
+import RowAction from "./RowAction";
 
 type ScenesPanelProps = {
   directToProgram?: boolean;
@@ -21,6 +22,7 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
     renameScene,
     removeScene,
     toggleSceneLocked,
+    toggleSceneEnabled,
     selectPreviewScene,
     setProgramScene,
     persistStudioState
@@ -84,14 +86,12 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
         setMenu({ x: event.clientX, y: event.clientY });
       }}
     >
-      <div className="scene-list" role="listbox" aria-label="Scenes">
+      <RowAction icon="+" label="Add Scene" onClick={handleAdd} />
+      <div className="scene-list" aria-label="Scenes">
         {scenes.map((scene) => (
-          <button
+          <div
             key={scene.id}
             className={`scene-list-item ${scene.id === selectedSceneId ? "active" : ""} ${directToProgram && scene.id === programSceneId ? "program-live" : ""}`}
-            role="option"
-            aria-selected={scene.id === selectedSceneId}
-            onClick={() => handleSelect(scene.id)}
             onContextMenu={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -100,10 +100,16 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
               setMenu({ x: event.clientX, y: event.clientY, sceneId: scene.id });
             }}
           >
-            <span>{scene.name}</span>
+            <button type="button" className="scene-select" aria-pressed={scene.id === selectedSceneId} onClick={() => handleSelect(scene.id)}>{scene.name}</button>
             {directToProgram && scene.id === programSceneId ? <span className="scene-live-label">LIVE</span> : null}
             {scene.locked ? <span className="scene-lock" aria-label="Locked">◆</span> : null}
-          </button>
+            <div className="row-actions">
+              <RowAction icon={scene.enabled !== false ? "◉" : "⊘"} label={scene.enabled !== false ? "Hide Scene" : "Show Scene"} disabled={scene.locked} onClick={() => { toggleSceneEnabled(scene.id); persist(); }} />
+              <RowAction icon={scene.locked ? "🔒" : "🔓"} label={scene.locked ? "Unlock Scene" : "Lock Scene"} onClick={() => { toggleSceneLocked(scene.id); persist(); }} />
+              <RowAction icon="✎" label="Rename Scene" disabled={scene.locked} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setRenameValue(scene.name); setMenu({ x: rect.left, y: rect.bottom, sceneId: scene.id }); }} />
+              <RowAction icon="×" label="Delete Scene" disabled={scene.locked || scene.id === programSceneId || scenes.length <= 1} onClick={() => { removeScene(scene.id); persist(); }} />
+            </div>
+          </div>
         ))}
       </div>
       <div className="panel-context-hint">{directToProgram ? "Program Focus: one click sends a scene directly live. Right-click for options." : "Right-click a scene or empty space for options."}</div>

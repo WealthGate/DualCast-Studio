@@ -1,5 +1,6 @@
 import {
   DisplaySource,
+  ProjectionDisplay,
   SaveRecordingPayload,
   RecordingChunkPayload,
   RecordingSessionPayload,
@@ -45,6 +46,7 @@ declare global {
   interface Window {
     dualcast: {
       listDisplays: () => Promise<DisplaySource[]>;
+      listProjectionDisplays: () => Promise<ProjectionDisplay[]>;
       getSettings: () => Promise<Settings>;
       updateSettings: (update: SettingsUpdate) => Promise<Settings>;
       selectSaveDirectory: () => Promise<string | null>;
@@ -111,6 +113,7 @@ declare global {
       onLowerThirdFrame: (handler: (dataUrl: string) => void) => () => void;
       onProgramState: (handler: (state: ProgramState) => void) => () => void;
       onProjectionOpened: (handler: () => void) => () => void;
+      onProjectionDisplaysChanged: (handler: () => void) => () => void;
       onProjectionClosed: (handler: () => void) => () => void;
       onLowerThirdOpened: (handler: () => void) => () => void;
       onLowerThirdClosed: (handler: () => void) => () => void;

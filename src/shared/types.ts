@@ -64,6 +64,7 @@ export type SourceGroup = {
 };
 
 export type Scene = {
+  enabled?: boolean;
   id: string;
   name: string;
   sourceIds: string[];
@@ -128,6 +129,16 @@ export type DisplaySource = {
   };
   thumbnailUrl: string;
   appIconUrl?: string | null;
+};
+
+export type ProjectionDisplay = {
+  id: string;
+  name: string;
+  isPrimary: boolean;
+  size: {
+    width: number;
+    height: number;
+  };
 };
 
 export type StreamDestinationConfig = {

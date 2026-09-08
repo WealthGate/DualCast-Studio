@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 import path from "path";
 import { registerIpcHandlers } from "./services/ipc";
 import { setupLogging } from "./services/logger";
@@ -8,6 +8,7 @@ import { cleanupRecordingSessions, cleanupStaleRecordingFiles } from "./services
 import { forceStopStreaming } from "./services/streamingService";
 import { cleanupEditorCommands } from "./services/editorService";
 import { installApplicationMenu } from "./services/menuService";
+import { IpcChannels } from "../src/shared/ipc";
 
 
 const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -70,6 +71,14 @@ if (!hasSingleInstanceLock) {
     createMainWindow();
     installApplicationMenu(() => mainWindow);
     registerIpcHandlers();
+    const notifyProjectionDisplaysChanged = () => {
+      BrowserWindow.getAllWindows().forEach((window) => {
+        if (!window.isDestroyed()) window.webContents.send(IpcChannels.projectionDisplaysChanged);
+      });
+    };
+    screen.on("display-added", notifyProjectionDisplaysChanged);
+    screen.on("display-removed", notifyProjectionDisplaysChanged);
+    screen.on("display-metrics-changed", notifyProjectionDisplaysChanged);
     registerHotkeys(() => mainWindow);
     initializeUpdater();
 

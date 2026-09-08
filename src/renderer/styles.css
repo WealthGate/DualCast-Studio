@@ -2827,6 +2827,25 @@ body {
   max-height: none;
 }
 
+.row-actions { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+.row-action { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 2px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); background: var(--panel-soft); cursor: pointer; }
+.row-action:hover:not(:disabled), .row-action:focus-visible { background: var(--accent); color: white; }
+.row-action:disabled { opacity: .35; cursor: default; }
+.scene-select { flex: 1; min-width: 60px; background: transparent; color: inherit; border: 0; text-align: left; overflow-wrap: anywhere; cursor: pointer; padding: 4px 0; }
+.scene-list-item { flex-wrap: wrap; gap: 4px; }
+.source-row { flex-wrap: wrap; gap: 5px; }
+.source-labels { min-width: 0; overflow-wrap: anywhere; }
+
+.display-target-toolbar {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #dce2ed;
+  font-size: 11px;
+}
+
 .lower-third-dock-section {
   display: flex;
   flex-direction: column;

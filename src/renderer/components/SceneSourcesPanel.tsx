@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { Source, SourceCrop, SourceRect, SourceType } from "../../shared/types";
 import ContextMenu from "./ContextMenu";
+import RowAction from "./RowAction";
 
 type CameraDevice = {
   deviceId: string;
@@ -474,8 +475,12 @@ const SceneSourcesPanel: React.FC = () => {
       }}
     >
       <div className="sources-list">
+        <div className="row-actions">
+          <RowAction icon="+" label="Add Source" disabled={!activeScene || activeSceneLocked} onClick={() => setToolOverlay("add")} />
+          <RowAction icon="▤" label="Manage Groups" onClick={() => setToolOverlay("groups")} />
+        </div>
         {sceneSources.length === 0 ? <div className="empty-hint">No sources in {activeScene?.name ?? "this scene"}.</div> : null}
-        {sceneSources.map((source) => (
+        {sceneSources.map((source, index) => (
           <div
             key={source.id}
             className={`source-row ${selectedSourceId === source.id ? "selected" : ""}`}
@@ -501,6 +506,15 @@ const SceneSourcesPanel: React.FC = () => {
                 <span className="source-meta">Group: {groupMap.get(source.groupId)?.name}</span>
               ) : null}
               {source.locked ? <span className="source-meta">Locked</span> : null}
+            </div>
+            <div className="row-actions">
+              <RowAction icon={source.enabled ? "◉" : "⊘"} label={source.enabled ? "Hide Source" : "Show Source"} disabled={activeSceneLocked} onClick={() => void handleToggleEnabled(source.id)} />
+              {hasAudioToggle(source.type) ? <RowAction icon={source.audioEnabled ? "♪" : "♩"} label={source.audioEnabled ? "Mute Source" : "Enable Audio"} disabled={activeSceneLocked} onClick={() => void handleToggleAudio(source.id)} /> : null}
+              <RowAction icon={source.locked ? "🔒" : "🔓"} label={source.locked ? "Unlock Source" : "Lock Source"} disabled={activeSceneLocked} onClick={() => void handleToggleSourceLock(source.id)} />
+              <RowAction icon="↑" label="Move Source Up" disabled={index === 0 || activeSceneLocked || source.locked} onClick={() => void handleMove(source.id, -1)} />
+              <RowAction icon="↓" label="Move Source Down" disabled={index === sceneSources.length - 1 || activeSceneLocked || source.locked} onClick={() => void handleMove(source.id, 1)} />
+              <RowAction icon="✎" label="Source Properties" onClick={() => { setSelectedSourceId(source.id); setToolOverlay("properties"); }} />
+              <RowAction icon="×" label="Remove Source" disabled={activeSceneLocked || source.locked} onClick={() => void handleRemoveSource(source.id)} />
             </div>
           </div>
         ))}

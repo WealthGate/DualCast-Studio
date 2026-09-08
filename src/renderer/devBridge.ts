@@ -19,6 +19,10 @@ export const installDevelopmentBridge = () => {
 
   window.dualcast = {
     listDisplays: async () => [],
+    listProjectionDisplays: async () => [
+      { id: "demo-primary", name: "Primary display", isPrimary: true, size: { width: 1920, height: 1080 } },
+      { id: "demo-sanctuary", name: "Sanctuary projector", isPrimary: false, size: { width: 1920, height: 1080 } }
+    ],
     getSettings: async () => useAppStore.getState().settings,
     updateSettings: async (update) => ({ ...useAppStore.getState().settings, ...update }),
     selectSaveDirectory: async () => null,
@@ -89,6 +93,7 @@ export const installDevelopmentBridge = () => {
     onLowerThirdFrame: () => noopUnsubscribe,
     onProgramState: () => noopUnsubscribe,
     onProjectionOpened: () => noopUnsubscribe,
+    onProjectionDisplaysChanged: () => noopUnsubscribe,
     onProjectionClosed: () => noopUnsubscribe,
     onLowerThirdOpened: () => noopUnsubscribe,
     onLowerThirdClosed: () => noopUnsubscribe,

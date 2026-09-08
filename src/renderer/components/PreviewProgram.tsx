@@ -546,7 +546,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   useEffect(() => {
     const includeSceneAudio = settings.audioMode === "system" || settings.audioMode === "both";
     const includeMicrophone = settings.audioMode === "microphone" || settings.audioMode === "both";
-    const sceneAudioSources = includeSceneAudio
+    const sceneAudioSources = includeSceneAudio && programScene?.enabled !== false
       ? (programScene?.sourceIds ?? [])
           .map((id) => programSources[id])
           .filter((source): source is Source => Boolean(
@@ -841,7 +841,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     canvasHeight: number,
     configuredSlideId: string | null = null
   ) => {
-    if (!scene) {
+    if (!scene || scene.enabled === false) {
       return;
     }
     const visiblePresentationIds = visiblePresentationSourceIds(
@@ -1296,7 +1296,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
     const sendLowerThirdFrame = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (!isCutToBlack && programScene) {
+      if (!isCutToBlack && programScene && programScene.enabled !== false) {
         const visiblePresentationIds = visiblePresentationSourceIds(
           programScene,
           programSources,

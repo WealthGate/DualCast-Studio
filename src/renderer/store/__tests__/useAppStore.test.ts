@@ -21,6 +21,21 @@ const studioState: StudioState = {
 };
 
 describe("Preview and Program isolation", () => {
+  it("keeps scene visibility edits in Preview until committed and respects scene locks", () => {
+    const store = useAppStore.getState();
+    store.setStudioState(studioState);
+    store.toggleSceneEnabled("scene-a");
+    expect(useAppStore.getState().scenes[0].enabled).toBe(false);
+    expect(useAppStore.getState().programSceneSnapshot?.enabled).not.toBe(false);
+    store.setProgramScene("scene-a");
+    expect(useAppStore.getState().programSceneSnapshot?.enabled).toBe(false);
+    store.toggleSceneLocked("scene-a");
+    store.toggleSceneEnabled("scene-a");
+    expect(useAppStore.getState().scenes[0].enabled).toBe(false);
+    store.toggleSceneLocked("scene-a");
+    store.toggleSceneEnabled("scene-a");
+    expect(useAppStore.getState().scenes[0].enabled).toBe(true);
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });
