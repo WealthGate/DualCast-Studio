@@ -22,8 +22,11 @@ const decodeEntity = (_match: string, value: string) => {
 const scriptureMarkupTags = /<\/?(?:a|b|br|div|em|i|p|q|s|small|span|strong|sup|sub|u|v|verse|wj|w)\b[^>]*>/gi;
 
 export const sanitizeScriptureText = (value: string) => value
-  .replace(scriptureMarkupTags, " ")
   .replace(/&([a-z]+|#\d+|#x[0-9a-f]+);/gi, decodeEntity)
+  .replace(/<(?:script|style|sup)\b[^>]*>[\s\S]*?<\/(?:script|style|sup)>/gi, " ")
+  .replace(scriptureMarkupTags, " ")
+  .replace(/<\/?[a-z][\w:-]*(?:\s+[\w:-]+=(?:"[^"]*"|'[^']*'))*\s*\/?>/gi, " ")
+  .replace(/\[(?:\d+|[a-z])\]/gi, "")
   .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
   .replace(/^\s*[<>]+\s*/, "")
   .replace(/\s*[<>]+\s*$/, "")

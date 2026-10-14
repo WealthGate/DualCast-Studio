@@ -72,8 +72,7 @@ const LowerThirdPanel: React.FC = () => {
   const activateSlide = (slideId: string | null) => stageLowerThird(lowerThird.slides, slideId);
 
   const showSlideLive = async (slideId: string) => {
-    await stageLowerThird(lowerThird.slides, slideId);
-    await takeLowerThirdToProgram();
+    await stageLowerThird(useAppStore.getState().settings.lowerThird.slides, slideId, true);
   };
 
   const moveSlide = (direction: -1 | 1) => {
@@ -85,14 +84,16 @@ const LowerThirdPanel: React.FC = () => {
     void activateSlide(navigationSlides[nextIndex].id);
   };
 
-  const addManualSlide = () => {
+  const addManualSlide = (live = false) => {
     const text = manualText.trim();
     if (!text) {
       return;
     }
     const deckId = createId();
     const slide: LowerThirdSlide = { id: createId(), text, kind: "text", deckId, deckTitle: "Manual Text" };
-    void stageLowerThird([...lowerThird.slides, slide], slide.id);
+    const current = useAppStore.getState().settings.lowerThird;
+    if (live) void stageLowerThird([...current.slides, slide], slide.id, true);
+    else void updateSettings({ lowerThird: { ...current, slides: [...current.slides, slide] } });
     setManualText("");
   };
 
@@ -185,7 +186,7 @@ const LowerThirdPanel: React.FC = () => {
     setEditingText(slide.text);
   };
 
-  const saveEditedSlide = () => {
+  const saveEditedSlide = (live = false) => {
     const text = editingText.trim();
     if (!editingSlideId || !text) return;
     const current = lowerThird.slides.find((slide) => slide.id === editingSlideId);
@@ -193,11 +194,12 @@ const LowerThirdPanel: React.FC = () => {
 
     if (current.id === lowerThird.programSlideId) {
       const previewCopy = { ...current, id: createId(), text };
-      void stageLowerThird(insertSlideAfter(lowerThird.slides, current.id, previewCopy), previewCopy.id);
+      void stageLowerThird(insertSlideAfter(lowerThird.slides, current.id, previewCopy), previewCopy.id, live);
     } else {
       void stageLowerThird(
         lowerThird.slides.map((slide) => slide.id === editingSlideId ? { ...slide, text } : slide),
-        editingSlideId
+        editingSlideId,
+        live
       );
     }
     setEditingSlideId(null);
@@ -274,6 +276,12 @@ const LowerThirdPanel: React.FC = () => {
       ref={panelRef}
       tabIndex={0}
       onKeyDown={(event) => {
+        if (event.defaultPrevented || event.nativeEvent.isComposing || event.repeat) return;
+        if (event.key === "Enter" && !event.shiftKey && event.target === event.currentTarget && activeSlide) {
+          event.preventDefault();
+          void showSlideLive(activeSlide.id);
+          return;
+        }
         if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) {
           return;
         }
@@ -303,7 +311,7 @@ const LowerThirdPanel: React.FC = () => {
           />
           Allow more than one text presentation on screen
         </label>
-        <span className="field-help">When off, staging lyrics or Scripture removes the previous managed text from Preview. Program changes only when you TAKE or use Take Text Live.</span>
+        <span className="field-help">When off, new presentation text replaces previous managed text. Enter or Show Live sends it to Preview and Program together.</span>
       </div>
 
       <div className="field">
@@ -312,9 +320,19 @@ const LowerThirdPanel: React.FC = () => {
           id="manualLowerThird"
           value={manualText}
           onChange={(event) => setManualText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              if (!event.repeat) addManualSlide(true);
+            }
+          }}
           placeholder="Type a name, announcement, title, or message"
         />
-        <button className="btn btn-primary" onClick={addManualSlide} disabled={!manualText.trim()}>Add and Show</button>
+        <div className="field-row">
+          <button className="btn btn-primary" onClick={() => addManualSlide(true)} disabled={!manualText.trim()}>Show Live (Enter)</button>
+          <button className="btn btn-outline" onClick={() => addManualSlide()} disabled={!manualText.trim()}>Add to Queue</button>
+        </div>
+        <span className="field-help">Enter shows text in Preview and Program. Shift+Enter adds a new line. Add to Queue saves it for later.</span>
       </div>
 
       <div className="field">
@@ -375,7 +393,7 @@ const LowerThirdPanel: React.FC = () => {
         <button className="btn btn-primary" onClick={() => void takeLowerThirdToProgram()} disabled={lowerThird.activeSlideId === lowerThird.programSlideId}>Take Text Live</button>
         <button className="btn btn-danger" onClick={() => void clearProgramText()} disabled={!lowerThird.programSlideId}>Clear Program Text</button>
       </div>
-      <div className="field-help">Preview is private. TAKE sends the scene and staged text together; Take Text Live changes only the text. Arrow keys move within the selected song or Scripture deck.</div>
+      <div className="field-help">Click a slide to cue it, then Enter to show it in Preview and Program. Arrow keys move within the selected deck. Program text reaches connected projection and streaming outputs.</div>
 
       <div className="lower-third-slide-list">
         {lowerThird.slides.map((slide, index) => (
@@ -383,9 +401,14 @@ const LowerThirdPanel: React.FC = () => {
             {editingSlideId === slide.id ? (
               <div className="lower-third-slide-editor">
                 <label htmlFor={`edit-slide-${slide.id}`}>Edit slide {index + 1}</label>
-                <textarea id={`edit-slide-${slide.id}`} value={editingText} onChange={(event) => setEditingText(event.target.value)} autoFocus />
+                <textarea id={`edit-slide-${slide.id}`} value={editingText} onChange={(event) => setEditingText(event.target.value)} autoFocus onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    if (!event.repeat) saveEditedSlide(true);
+                  }
+                }} />
                 <div className="field-row">
-                  <button className="btn btn-primary btn-compact" onClick={saveEditedSlide} disabled={!editingText.trim()}>Save &amp; Show</button>
+                  <button className="btn btn-primary btn-compact" onClick={() => saveEditedSlide(true)} disabled={!editingText.trim()}>Show Live (Enter)</button>
                   <button className="btn btn-outline btn-compact" onClick={addSlideAfterEditing} disabled={!editingText.trim()}>Add Slide After</button>
                   <button className="btn btn-outline btn-compact" onClick={splitEditedSlide} disabled={splitSlideLines(editingText).length < 2}>Each Line → Slide</button>
                   <button className="btn btn-outline btn-compact" onClick={cancelSlideEdit}>Cancel</button>
@@ -393,7 +416,14 @@ const LowerThirdPanel: React.FC = () => {
                 <span className="field-help">Each Line → Slide keeps the first line here and inserts every remaining non-empty line directly after it.</span>
               </div>
             ) : (
-              <button className="lower-third-slide-cue" onClick={() => void activateSlide(slide.id)} onDoubleClick={() => void showSlideLive(slide.id)} title="Click for Preview; double-click to send this text directly to Program">
+              <button className="lower-third-slide-cue" onClick={() => void activateSlide(slide.id)} onDoubleClick={() => void showSlideLive(slide.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!event.repeat) void showSlideLive(slide.id);
+                  }
+                }} title="Click to cue; Enter shows this text in Preview and Program">
                 <span>{index + 1}</span>
                 <strong>{slide.text}</strong>
                 {slide.reference ? <small>{slide.reference}</small> : null}

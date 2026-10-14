@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SettingsUpdate, StudioState } from "../../../shared/types";
+import { Settings, SettingsUpdate, StudioState } from "../../../shared/types";
 import { useAppStore } from "../useAppStore";
 
 const studioState: StudioState = {
@@ -21,6 +21,17 @@ const studioState: StudioState = {
 };
 
 describe("Preview and Program isolation", () => {
+  it("publishes text to Preview and Program together without waiting for persistence", async () => {
+    let finish: (value: Settings) => void = () => undefined;
+    vi.stubGlobal("window", { dualcast: { updateSettings: vi.fn(() => new Promise((resolve) => { finish = resolve; })) } });
+    const pending = useAppStore.getState().stageLowerThird([{ id: "quick-text", text: "Welcome", kind: "text" }], "quick-text", true);
+    const settings = useAppStore.getState().settings;
+    expect(settings.lowerThird.activeSlideId).toBe("quick-text");
+    expect(settings.lowerThird.programSlideId).toBe("quick-text");
+    expect(settings.lowerThird.showOnProgram).toBe(true);
+    finish(settings);
+    await pending;
+  });
   it("keeps scene visibility edits in Preview until committed and respects scene locks", () => {
     const store = useAppStore.getState();
     store.setStudioState(studioState);

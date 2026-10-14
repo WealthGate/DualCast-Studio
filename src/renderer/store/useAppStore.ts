@@ -171,7 +171,7 @@ type AppState = {
   selectPreviewScene: (sceneId: string) => void;
   setProgramScene: (sceneId: string) => void;
   takeToProgram: () => void;
-  stageLowerThird: (slides: LowerThirdSlide[], activeSlideId: string | null) => Promise<void>;
+  stageLowerThird: (slides: LowerThirdSlide[], activeSlideId: string | null, live?: boolean) => Promise<void>;
   takeLowerThirdToProgram: () => Promise<void>;
   clearProgramText: () => Promise<void>;
   addPresentationSourceToScene: (sceneId: string, source: Omit<Source, "id">) => Promise<void>;
@@ -348,9 +348,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);
     }
   },
-  stageLowerThird: async (slides, activeSlideId) => {
+  stageLowerThird: async (slides, activeSlideId, live = false) => {
     const state = get();
-    const lowerThird = { ...state.settings.lowerThird, slides, activeSlideId };
+    const lowerThird = { ...state.settings.lowerThird, slides, activeSlideId,
+      ...(live ? { programSlideId: activeSlideId, showOnProgram: true } : {}) };
     let scenes = state.scenes;
     let sources = state.sources;
     if (activeSlideId && !lowerThird.allowMultipleTextLayers && state.previewSceneId) {

@@ -1,4 +1,5 @@
 import { LowerThirdSlide, ScriptureFetchResult } from "../../shared/types";
+import { sanitizeScriptureText } from "../../shared/scriptureText";
 
 export type TextSlideOptions = {
   linesPerSlide: number;
@@ -53,10 +54,10 @@ export const createScriptureSlides = (
 ): LowerThirdSlide[] => {
   if (options.mode === "verse" && result.verses?.length) {
     return result.verses
-      .filter((verse) => verse.text.trim())
+      .filter((verse) => sanitizeScriptureText(verse.text))
       .map((verse) => ({
         id: options.createId(),
-        text: verse.text.trim(),
+        text: sanitizeScriptureText(verse.text),
         reference: verse.reference.trim() || result.reference,
         kind: "scripture",
         deckId: options.deckId,
@@ -64,8 +65,8 @@ export const createScriptureSlides = (
       }));
   }
   const texts = options.mode === "passage"
-    ? [result.text.trim()]
-    : splitTextIntoSlides(result.text, { linesPerSlide: options.linesPerSlide });
+    ? [sanitizeScriptureText(result.text)]
+    : splitTextIntoSlides(sanitizeScriptureText(result.text), { linesPerSlide: options.linesPerSlide });
   return texts.filter(Boolean).map((text, index) => ({
     id: options.createId(),
     text,
