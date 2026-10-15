@@ -6,7 +6,7 @@ OpenChurch Broadcast Studio is an open desktop production suite for churches and
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.14**.
+Current release: **v0.6.15**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -16,7 +16,11 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.14
+### What's new in v0.6.15
+
+- Hide Scripture beside Show Live clears the displayed Scripture from Preview, Program, and connected outputs while retaining the passage and slides for reuse.
+
+### Included from v0.6.14
 
 - Replace the Scripture start/end range selectors with a Jump to verse field for the current chapter.
 - Press Enter or Show Live to display the entered verse immediately in Preview and Program.

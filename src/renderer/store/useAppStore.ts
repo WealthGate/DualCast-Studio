@@ -174,6 +174,7 @@ type AppState = {
   stageLowerThird: (slides: LowerThirdSlide[], activeSlideId: string | null, live?: boolean) => Promise<void>;
   takeLowerThirdToProgram: () => Promise<void>;
   clearProgramText: () => Promise<void>;
+  hideScripture: () => Promise<void>;
   addPresentationSourceToScene: (sceneId: string, source: Omit<Source, "id">) => Promise<void>;
   addSourceToScene: (sceneId: string, source: Omit<Source, "id">) => void;
   removeSourceFromScene: (sceneId: string, sourceId: string) => void;
@@ -377,6 +378,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   takeLowerThirdToProgram: async () => {
     const state = get();
     const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
+    set({ settings: { ...state.settings, lowerThird } });
+    if (typeof window === "undefined" || !window.dualcast) return;
+    const settings = await window.dualcast.updateSettings({ lowerThird });
+    set({ settings });
+  },
+  hideScripture: async () => {
+    const state = get();
+    const current = state.settings.lowerThird;
+    const isScripture = (id: string | null) => current.slides.some(slide => slide.id === id && slide.kind === "scripture");
+    const lowerThird = {
+      ...current,
+      activeSlideId: isScripture(current.activeSlideId) ? null : current.activeSlideId,
+      programSlideId: isScripture(current.programSlideId) ? null : current.programSlideId
+    };
     set({ settings: { ...state.settings, lowerThird } });
     if (typeof window === "undefined" || !window.dualcast) return;
     const settings = await window.dualcast.updateSettings({ lowerThird });

@@ -8,7 +8,7 @@ describe("Scripture controls", () => {
   it("places live, navigation, slide and offline actions beside the reference picker", () => {
     const html = renderToStaticMarkup(React.createElement(ScripturePanel));
     const picker = html.slice(html.indexOf('class="scripture-reference-picker"'), html.indexOf('class="scripture-direct-reference"'));
-    for (const label of ["Show Live (Enter)", "Previous Verse", "Next Verse", "Create Slides in Preview", "Save Passage Offline"]) {
+    for (const label of ["Show Live (Enter)", "Hide Scripture", "Previous Verse", "Next Verse", "Create Slides in Preview", "Save Passage Offline"]) {
       expect(picker).toContain(label);
     }
     expect(picker).toContain("Jump to verse");

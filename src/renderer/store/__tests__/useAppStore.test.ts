@@ -32,6 +32,28 @@ describe("Preview and Program isolation", () => {
     finish(settings);
     await pending;
   });
+  it("hides Scripture in both views immediately while preserving slides and the scene", async () => {
+    await useAppStore.getState().stageLowerThird([{ id: "verse", text: "For God so loved", kind: "scripture" }], "verse", true);
+    const before = useAppStore.getState();
+    let finish: (value: Settings) => void = () => undefined;
+    vi.stubGlobal("window", { dualcast: { updateSettings: vi.fn(() => new Promise(resolve => { finish = resolve; })) } });
+    const pending = before.hideScripture();
+    const hidden = useAppStore.getState();
+    expect(hidden.settings.lowerThird.activeSlideId).toBeNull();
+    expect(hidden.settings.lowerThird.programSlideId).toBeNull();
+    expect(hidden.settings.lowerThird.slides).toEqual(before.settings.lowerThird.slides);
+    expect(hidden.programSceneSnapshot).toEqual(before.programSceneSnapshot);
+    finish(hidden.settings);
+    await pending;
+  });
+  it("hides only Scripture when another kind of text is in the other view", async () => {
+    await useAppStore.getState().stageLowerThird([{ id: "verse", text: "Scripture", kind: "scripture" }, { id: "song", text: "Song", kind: "song" }], "verse", true);
+    const settings = useAppStore.getState().settings;
+    useAppStore.getState().setSettings({ ...settings, lowerThird: { ...settings.lowerThird, activeSlideId: "song" } });
+    await useAppStore.getState().hideScripture();
+    expect(useAppStore.getState().settings.lowerThird.activeSlideId).toBe("song");
+    expect(useAppStore.getState().settings.lowerThird.programSlideId).toBeNull();
+  });
   it("keeps scene visibility edits in Preview until committed and respects scene locks", () => {
     const store = useAppStore.getState();
     store.setStudioState(studioState);

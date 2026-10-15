@@ -44,6 +44,7 @@ const ScripturePanel: React.FC = () => {
     previewSceneId,
     updateSettings,
     stageLowerThird,
+    hideScripture,
     addPresentationSourceToScene,
     updateSourceRect,
     persistStudioState
@@ -395,6 +396,9 @@ const ScripturePanel: React.FC = () => {
           <button className="btn btn-primary" onClick={() => void jumpToVerse()} disabled={loading}>
             {loading ? "Working..." : "Show Live (Enter)"}
           </button>
+          <button className="btn btn-outline" disabled={loading} onClick={() => {
+            void hideScripture().then(() => setMessage("Scripture hidden from Preview, Program and connected viewing outputs."), error => setMessage(String(error)));
+          }}>Hide Scripture</button>
           <button className="btn btn-outline" onClick={() => void navigateVerse(-1)} disabled={loading || startVerse <= verseOptions[0]}>Previous Verse</button>
           <button className="btn btn-outline" onClick={() => void navigateVerse(1)} disabled={loading || startVerse >= verseOptions[verseOptions.length - 1]}>Next Verse</button>
           <button className="btn btn-primary" onClick={() => void sendToLowerThird()} disabled={loading || !verseText.trim()}>Create Slides in Preview</button>
