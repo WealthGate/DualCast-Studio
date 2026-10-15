@@ -35,6 +35,7 @@ const Header: React.FC<HeaderProps> = ({
     updateSettings
   } = useAppStore();
   const [openMenu, setOpenMenu] = useState<"menu" | "view" | null>(null);
+  const [hotkeyError, setHotkeyError] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
   const updateControl = getUpdateControlView(updateStatus, packageJson.version);
   const installedVersion = normalizeVersion(updateStatus?.currentVersion ?? packageJson.version);
@@ -88,9 +89,27 @@ const Header: React.FC<HeaderProps> = ({
             {openMenu === "menu" ? (
               <div className="menu-panel">
                 <div className="menu-title">Hotkeys</div>
-                <div className="menu-item">Record: Ctrl/Cmd + Shift + R</div>
-                <div className="menu-item">TAKE: Ctrl/Cmd + Enter</div>
-                <div className="menu-item">Cut to Black: Ctrl/Cmd + B</div>
+                {([['toggle-record', 'Record'], ['take', 'Transition / TAKE'], ['cut-black', 'Cut to Black']] as const).map(([action, label]) => (
+                  <label className="field" key={action}>{label}
+                    <input aria-label={`${label} hotkey`} placeholder="Press shortcut (Backspace clears)"
+                      value={(settings.hotkeys ?? { 'toggle-record': 'CommandOrControl+Shift+R', take: 'CommandOrControl+Enter', 'cut-black': 'CommandOrControl+B' })[action]}
+                      onKeyDown={event => {
+                        event.preventDefault(); event.stopPropagation();
+                        if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key) || event.repeat) return;
+                        const key = event.key === ' ' ? 'Space' : event.key.length === 1 ? event.key.toUpperCase() : event.key;
+                        const binding = event.key === 'Backspace' || event.key === 'Delete' ? '' : [event.ctrlKey && 'Control', event.metaKey && 'Super', event.altKey && 'Alt', event.shiftKey && 'Shift', key].filter(Boolean).join('+');
+                        const bindings = settings.hotkeys ?? { 'toggle-record': 'CommandOrControl+Shift+R', take: 'CommandOrControl+Enter', 'cut-black': 'CommandOrControl+B' };
+                        if (binding && Object.entries(bindings).some(([other, value]) => other !== action && value === binding)) { setHotkeyError("That shortcut is already assigned."); return; }
+                        void updateSettings({ hotkeys: { ...bindings, [action]: binding } }).then(() => setHotkeyError(""), error => setHotkeyError(String(error)));
+                      }} readOnly />
+                  </label>
+                ))}
+                {hotkeyError ? <div role="alert">{hotkeyError}</div> : null}
+                <label className="field">Hold to trim with mouse
+                  <select value={settings.trimModifier ?? 'Alt'} onChange={event => void updateSettings({ trimModifier: event.target.value as 'Alt' | 'Control' | 'Shift' | 'Meta' })}>
+                    {['Alt', 'Control', 'Shift', 'Meta'].map(key => <option key={key}>{key}</option>)}
+                  </select>
+                </label>
                 <button
                   className="menu-command"
                   onClick={() => {

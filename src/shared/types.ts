@@ -223,6 +223,8 @@ export type ChurchIntegrationSettings = {
 };
 
 export type Settings = {
+  hotkeys?: Record<HotkeyAction, string>;
+  trimModifier?: "Alt" | "Control" | "Shift" | "Meta";
   saveDirectory: string;
   qualityPreset: QualityPreset;
   frameRate: FrameRatePreset;

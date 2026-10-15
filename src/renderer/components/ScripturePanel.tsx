@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LowerThirdAnimation, ScriptureFetchResult, ScriptureLibraryCatalog, ScriptureLibrarySummary, Source, SourceRect } from "../../shared/types";
 import { useAppStore } from "../store/useAppStore";
 import { maximumBibleVerseNumber, standardBibleBooks } from "../utils/bibleBooks";
 import { createScriptureSlides } from "../utils/presentationSlides";
+import { adjacentScriptureVerse } from "../utils/scriptureNavigation";
 import { sanitizeScriptureText } from "../../shared/scriptureText";
 
 const createId = () => crypto.randomUUID?.() ?? `scripture-${Date.now()}`;
@@ -54,6 +55,7 @@ const ScripturePanel: React.FC = () => {
   const [loadedVerses, setLoadedVerses] = useState<ScriptureFetchResult["verses"]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const requestInFlight = useRef(false);
   const [libraries, setLibraries] = useState<ScriptureLibrarySummary[]>([]);
   const [scriptureSource, setScriptureSource] = useState("online");
   const [catalog, setCatalog] = useState<ScriptureLibraryCatalog | null>(null);
@@ -134,7 +136,8 @@ const ScripturePanel: React.FC = () => {
 
   const fetchVerse = async (requestedReference = reference, live = false) => {
     const query = requestedReference.trim();
-    if (!query || loading) return;
+    if (!query || loading || requestInFlight.current) return;
+    requestInFlight.current = true;
     setLoading(true);
     setMessage(null);
     try {
@@ -142,6 +145,13 @@ const ScripturePanel: React.FC = () => {
         ? await window.dualcast.fetchScripture({ reference: query })
         : await window.dualcast.lookupScriptureLibrary({ libraryId: scriptureSource, reference: query });
       setReference(query);
+      const position = query.match(/^(.+) (\d+):(\d+)(?:-(\d+))?$/);
+      if (position) {
+        setSelectedBook(position[1]);
+        setSelectedChapter(Number(position[2]));
+        setStartVerse(Number(position[3]));
+        setEndVerse(Number(position[4] ?? position[3]));
+      }
       setVerseText(result.text);
       setResolvedReference(result.reference);
       setTranslation(result.translation);
@@ -156,8 +166,15 @@ const ScripturePanel: React.FC = () => {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load Scripture.");
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
     }
+  };
+
+  const navigateVerse = async (direction: -1 | 1) => {
+    const adjacent = adjacentScriptureVerse(verseOptions, startVerse, endVerse, direction);
+    if (adjacent === null) return;
+    await fetchVerse(`${selectedBook} ${selectedChapter}:${adjacent}`, true);
   };
 
   const sendToLowerThird = async () => {
@@ -186,11 +203,12 @@ const ScripturePanel: React.FC = () => {
     const text = sanitizeScriptureText(result?.text ?? verseText);
     if (!text) return;
     const displayReference = result?.reference ?? (resolvedReference.trim() || reference.trim());
-    const slides = createScriptureSlides({ reference: displayReference, text, translation: result?.translation ?? translation, verses: result?.verses ?? loadedVerses }, {
+    const displayTranslation = result ? result.translation : translation;
+    const slides = createScriptureSlides({ reference: displayReference, text, translation: displayTranslation, verses: result?.verses ?? loadedVerses }, {
       mode: splitMode,
       linesPerSlide,
       deckId: createId(),
-      deckTitle: `${displayReference}${translation ? ` - ${translation}` : ""}`,
+      deckTitle: `${displayReference}${displayTranslation ? ` - ${displayTranslation}` : ""}`,
       createId
     });
     if (!slides.length) return;
@@ -334,7 +352,7 @@ const ScripturePanel: React.FC = () => {
       <div className="panel-header"><h2>Scripture</h2><span className="tag">Online + Offline</span></div>
       <div className="field">
         <label htmlFor="scriptureSource">Scripture Source</label>
-        <select id="scriptureSource" value={scriptureSource} onChange={(event) => setScriptureSource(event.target.value)}>
+        <select id="scriptureSource" disabled={loading} value={scriptureSource} onChange={(event) => setScriptureSource(event.target.value)}>
           <option value="online">Configured Online Provider</option>
           {libraries.map((library) => (
             <option key={library.id} value={library.id}>{library.name}{library.translation ? ` - ${library.translation}` : ""} ({library.passageCount})</option>
@@ -345,7 +363,7 @@ const ScripturePanel: React.FC = () => {
       <div
         className="scripture-reference-picker"
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+          if (event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof HTMLButtonElement)) {
             event.preventDefault();
             if (!event.repeat) void fetchVerse(navigatorReference, true);
           }
@@ -354,19 +372,19 @@ const ScripturePanel: React.FC = () => {
         <div className="field-grid scripture-reference-grid">
           <label className="field">
             <span>Book</span>
-            <select aria-label="Bible book" value={selectedBook} onChange={(event) => setSelectedBook(event.target.value)}>
+            <select aria-label="Bible book" disabled={loading} value={selectedBook} onChange={(event) => setSelectedBook(event.target.value)}>
               {navigatorBooks.map((book) => <option key={book.name} value={book.name}>{book.name}</option>)}
             </select>
           </label>
           <label className="field">
             <span>Chapter</span>
-            <select aria-label="Bible chapter" value={selectedChapter} onChange={(event) => setSelectedChapter(Number(event.target.value))}>
+            <select aria-label="Bible chapter" disabled={loading} value={selectedChapter} onChange={(event) => setSelectedChapter(Number(event.target.value))}>
               {chapterOptions.map((chapter) => <option key={chapter} value={chapter}>{chapter}</option>)}
             </select>
           </label>
           <label className="field">
             <span>Start verse</span>
-            <select aria-label="Start verse" value={startVerse} onChange={(event) => {
+            <select aria-label="Start verse" disabled={loading} value={startVerse} onChange={(event) => {
               const value = Number(event.target.value);
               setStartVerse(value);
               if (endVerse < value) setEndVerse(value);
@@ -376,26 +394,32 @@ const ScripturePanel: React.FC = () => {
           </label>
           <label className="field">
             <span>End verse</span>
-            <select aria-label="End verse" value={endVerse} onChange={(event) => setEndVerse(Number(event.target.value))}>
+            <select aria-label="End verse" disabled={loading} value={endVerse} onChange={(event) => setEndVerse(Number(event.target.value))}>
               {verseOptions.filter((verse) => verse >= startVerse).map((verse) => <option key={verse} value={verse}>{verse}</option>)}
             </select>
           </label>
         </div>
-        <button className="btn btn-primary" onClick={() => void fetchVerse(navigatorReference)} disabled={loading}>
-          {loading ? "Working..." : `Load ${navigatorReference}`}
-        </button>
-        <span className="field-help">Enter loads and shows the verse immediately in Preview and Program. Load prepares it for editing.</span>
+        <div className="scripture-action-grid">
+          <button className="btn btn-primary" onClick={() => void fetchVerse(navigatorReference, true)} disabled={loading}>
+            {loading ? "Working..." : "Show Live (Enter)"}
+          </button>
+          <button className="btn btn-outline" onClick={() => void navigateVerse(-1)} disabled={loading || startVerse <= verseOptions[0]}>Previous Verse</button>
+          <button className="btn btn-outline" onClick={() => void navigateVerse(1)} disabled={loading || endVerse >= verseOptions[verseOptions.length - 1]}>Next Verse</button>
+          <button className="btn btn-primary" onClick={() => void sendToLowerThird()} disabled={loading || !verseText.trim()}>Create Slides in Preview</button>
+          <button className="btn btn-outline" onClick={() => void savePassageOffline()} disabled={loading || !verseText.trim()}>Save Passage Offline</button>
+        </div>
+        <span className="field-help">Show Live or Enter loads the selected passage directly into Preview, Program and connected viewing outputs. Previous and Next display the adjacent verse immediately.</span>
       </div>
       <details className="scripture-direct-reference">
         <summary>Type a reference instead</summary>
         <div className="field-row">
-          <input id="scriptureReference" value={reference} onChange={(event) => setReference(event.target.value)} onKeyDown={(event) => {
+          <input id="scriptureReference" disabled={loading} value={reference} onChange={(event) => setReference(event.target.value)} onKeyDown={(event) => {
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();
               if (!event.repeat) void fetchVerse(reference, true);
             }
           }} placeholder="John 3:16-18" />
-          <button className="btn btn-outline" onClick={() => void fetchVerse(reference)} disabled={loading || !reference.trim()}>Load Reference</button>
+          <button className="btn btn-outline" onClick={() => void fetchVerse(reference, true)} disabled={loading || !reference.trim()}>Show Live (Enter)</button>
         </div>
       </details>
       <div className="field"><label htmlFor="resolvedReference">Displayed Reference</label><input id="resolvedReference" value={resolvedReference} onChange={(event) => setResolvedReference(event.target.value)} placeholder="Reference appears with the verse" /></div>
@@ -446,12 +470,6 @@ const ScripturePanel: React.FC = () => {
         </div>
         <span className="field-help">Scripture uses the same lower-third formatting, Bible image, background and animated transitions as songs.</span>
       </div>
-      <div className="scripture-action-grid">
-        <button className="btn btn-primary" onClick={() => void showScriptureLive()} disabled={loading || !verseText.trim()}>Show Live (Enter)</button>
-        <button className="btn btn-primary" onClick={sendToLowerThird} disabled={!verseText.trim()}>Create Slides in Preview</button>
-        <button className="btn btn-outline" onClick={savePassageOffline} disabled={loading || !verseText.trim()}>Save Passage Offline</button>
-      </div>
-
       <details className="scripture-scene-layout" open>
         <summary>Add Scripture to Preview Scene</summary>
         <div className="field">

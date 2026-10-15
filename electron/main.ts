@@ -1,8 +1,9 @@
+import { getSettings } from "./services/settingsService";
 import { app, BrowserWindow, screen } from "electron";
 import path from "path";
 import { registerIpcHandlers } from "./services/ipc";
 import { setupLogging } from "./services/logger";
-import { registerHotkeys, unregisterHotkeys } from "./services/hotkeyService";
+import { configureHotkeys, registerHotkeys, unregisterHotkeys } from "./services/hotkeyService";
 import { initializeUpdater, stopUpdater } from "./services/updateService";
 import { cleanupRecordingSessions, cleanupStaleRecordingFiles } from "./services/recordingService";
 import { forceStopStreaming } from "./services/streamingService";
@@ -79,7 +80,10 @@ if (!hasSingleInstanceLock) {
     screen.on("display-added", notifyProjectionDisplaysChanged);
     screen.on("display-removed", notifyProjectionDisplaysChanged);
     screen.on("display-metrics-changed", notifyProjectionDisplaysChanged);
-    registerHotkeys(() => mainWindow);
+    try {
+      registerHotkeys(() => mainWindow);
+      configureHotkeys(getSettings().hotkeys);
+    } catch (error) { console.warn(error); }
     initializeUpdater();
 
     app.on("activate", () => {

@@ -513,7 +513,7 @@ const SceneSourcesPanel: React.FC = () => {
               <RowAction icon={source.locked ? "🔒" : "🔓"} label={source.locked ? "Unlock Source" : "Lock Source"} disabled={activeSceneLocked} onClick={() => void handleToggleSourceLock(source.id)} />
               <RowAction icon="↑" label="Move Source Up" disabled={index === 0 || activeSceneLocked || source.locked} onClick={() => void handleMove(source.id, -1)} />
               <RowAction icon="↓" label="Move Source Down" disabled={index === sceneSources.length - 1 || activeSceneLocked || source.locked} onClick={() => void handleMove(source.id, 1)} />
-              <RowAction icon="✎" label="Source Properties" onClick={() => { setSelectedSourceId(source.id); setToolOverlay("properties"); }} />
+              <RowAction icon="✎" label="Edit Source" onClick={() => { setSelectedSourceId(source.id); setToolOverlay("properties"); }} />
               <RowAction icon="×" label="Remove Source" disabled={activeSceneLocked || source.locked} onClick={() => void handleRemoveSource(source.id)} />
             </div>
           </div>
@@ -524,7 +524,7 @@ const SceneSourcesPanel: React.FC = () => {
       {toolOverlay === "properties" && selectedSource ? (
         <div className="selected-source-panel panel-tool-overlay">
           <div className="panel-header">
-            <h3>Selected Source</h3>
+            <h3>Edit Source</h3>
             <div className="panel-overlay-actions">
               <span className="tag">{selectedSource.type}</span>
               <button className="btn btn-outline btn-compact" onClick={() => setToolOverlay(null)}>Close</button>
@@ -551,8 +551,28 @@ const SceneSourcesPanel: React.FC = () => {
                 onChange={(event) => handleSourceUrlChange(event.target.value)}
                 disabled={activeSceneLocked || selectedSource.locked}
               />
+              {selectedSource.type !== 'browser' ? <button className="btn btn-outline btn-compact" disabled={activeSceneLocked || selectedSource.locked} onClick={async () => {
+                const result = await window.dualcast.selectMediaFile({ kind: selectedSource.type as "image" | "video" | "audio" });
+                if (result) handleSourceUrlChange(result.fileUrl);
+              }}>Replace File</button> : null}
             </div>
           ) : null}
+          {(selectedSource.type === "display" || selectedSource.type === "window" || selectedSource.type === "camera") ? (
+            <div className="field">
+              <label htmlFor="editSourceDevice">{selectedSource.type === "camera" ? "Camera" : "Capture source"}</label>
+              <select id="editSourceDevice" value={selectedSource.type === "camera" ? selectedSource.data.deviceId : selectedSource.data.captureId}
+                disabled={activeSceneLocked || selectedSource.locked}
+                onChange={event => {
+                  updateSource(selectedSource.id, { data: { ...selectedSource.data, ...(selectedSource.type === "camera" ? { deviceId: event.target.value } : { captureId: event.target.value }) } } as Partial<Source>);
+                  void persistStudioState();
+                }}>
+                <option value={selectedSource.type === "camera" ? selectedSource.data.deviceId : selectedSource.data.captureId}>Current selection</option>
+                {selectedSource.type === "camera" ? cameras.map(camera => <option key={camera.deviceId} value={camera.deviceId}>{camera.label}</option>) : displays.filter(display => selectedSource.type === "display" ? display.id.startsWith('screen:') : display.id.startsWith('window:')).map(display => <option key={display.id} value={display.id}>{display.name}</option>)}
+              </select>
+              <button className="btn btn-outline btn-compact" onClick={() => void refreshDisplays()}>Refresh captures</button>
+            </div>
+          ) : null}
+          <div className="field-help">Edit source content in Preview, then TAKE to apply it to Program.</div>
           {selectedSource.type === "text" ? (
             <div className="text-source-editor">
               <div className="field">
@@ -998,7 +1018,7 @@ const SceneSourcesPanel: React.FC = () => {
               <button onClick={() => runMenuAction(() => handleToggleSourceLock(menuSource.id))} disabled={activeSceneLocked}>
                 {menuSource.locked ? "Unlock Source" : "Lock Source"}
               </button>
-              <button onClick={() => runMenuAction(() => setToolOverlay("properties"))}>Properties</button>
+              <button onClick={() => runMenuAction(() => setToolOverlay("properties"))}>Edit Source</button>
               <button
                 className="context-menu-danger"
                 onClick={() => runMenuAction(() => handleRemoveSource(menuSource.id))}

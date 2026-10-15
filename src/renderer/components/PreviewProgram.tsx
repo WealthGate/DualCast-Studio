@@ -109,6 +109,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     isProjecting,
     isLowerThirdProjecting,
     updateSourceRect,
+    updateSource,
     setSelectedSourceId,
     takeToProgram,
     persistStudioState,
@@ -780,6 +781,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       if (rotation) {
         ctx.rotate(rotation);
       }
+      const textCrop = source.crop ?? { left: 0, right: 0, top: 0, bottom: 0 };
+      ctx.beginPath();
+      ctx.rect(-width / 2 + width * textCrop.left / 100, -height / 2 + height * textCrop.top / 100, width * (100 - textCrop.left - textCrop.right) / 100, height * (100 - textCrop.top - textCrop.bottom) / 100);
+      ctx.clip();
       ctx.fillStyle = source.data.backgroundColor || "transparent";
       ctx.fillRect(-width / 2, -height / 2, width, height);
       ctx.fillStyle = source.data.color || "#ffffff";
@@ -1361,6 +1366,11 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const startX = event.clientX;
     const startY = event.clientY;
     const startRect = { ...source.rect };
+    const trimming = event.getModifierState(settings.trimModifier ?? "Alt");
+    const cropStart = source.crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const localX = (event.clientX - rect.left) / rect.width * 100;
+    const localY = (event.clientY - rect.top) / rect.height * 100;
+    const cropHandle = handle ?? `${localY < startRect.y + startRect.height / 2 ? 'n' : 's'}${localX < startRect.x + startRect.width / 2 ? 'w' : 'e'}`;
 
     const snapRect = (nextRect: SourceRect) => {
       const threshold = 1.2;
@@ -1411,6 +1421,20 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const onMove = (moveEvent: PointerEvent) => {
       const deltaX = ((moveEvent.clientX - startX) / rect.width) * 100;
       const deltaY = ((moveEvent.clientY - startY) / rect.height) * 100;
+      if (trimming) {
+        const angle = (source.rotation ?? 0) * Math.PI / 180;
+        const px = moveEvent.clientX - startX;
+        const py = moveEvent.clientY - startY;
+        const dx = (px * Math.cos(angle) + py * Math.sin(angle)) / (rect.width * startRect.width / 100) * (100 - cropStart.left - cropStart.right);
+        const dy = (-px * Math.sin(angle) + py * Math.cos(angle)) / (rect.height * startRect.height / 100) * (100 - cropStart.top - cropStart.bottom);
+        const crop = { ...cropStart };
+        if (cropHandle.includes('w')) crop.left = clamp(cropStart.left + dx, 0, 95 - cropStart.right);
+        if (cropHandle.includes('e')) crop.right = clamp(cropStart.right - dx, 0, 95 - cropStart.left);
+        if (cropHandle.includes('n')) crop.top = clamp(cropStart.top + dy, 0, 95 - cropStart.bottom);
+        if (cropHandle.includes('s')) crop.bottom = clamp(cropStart.bottom - dy, 0, 95 - cropStart.top);
+        updateSource(sourceId, { crop });
+        return;
+      }
       let next: SourceRect = { ...startRect };
 
       if (mode === "move") {
@@ -1453,19 +1477,21 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       persistStudioState().catch(() => undefined);
       setGuides({ vertical: [], horizontal: [] });
     };
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
   return (
     <section className="preview-program">
       <div className="pane preview-pane">
         <div className="pane-header">
-          <h2>Preview</h2>
+          <h2 title={`Hold ${settings.trimModifier ?? "Alt"} and drag a source corner to trim. TAKE applies Preview edits to Program.`}>Preview</h2>
           <span className="tag">{hasPreviewScene ? "Staged" : "No Scene"}</span>
         </div>
         <div className="pane-body preview-body" ref={previewContainerRef}>

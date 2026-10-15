@@ -1,3 +1,4 @@
+import { configureHotkeys, defaultHotkeys } from "./hotkeyService";
 import Store from "electron-store";
 import path from "path";
 import { app } from "electron";
@@ -268,6 +269,8 @@ export const getSettings = (): Settings => {
     operatorStationName: stored.operatorStationName || "Main Director",
     operatorRole: stored.operatorRole || "director",
     masterAudioGain: Number.isFinite(stored.masterAudioGain) ? stored.masterAudioGain : 1,
+    hotkeys: stored.hotkeys ?? defaultHotkeys,
+    trimModifier: stored.trimModifier ?? "Alt",
     microphoneDeviceId: typeof stored.microphoneDeviceId === "string" ? stored.microphoneDeviceId : null,
     microphoneGain: Number.isFinite(stored.microphoneGain) ? stored.microphoneGain : 1,
     theme: allowedThemes.includes(stored.theme) ? stored.theme : "system",
@@ -284,6 +287,8 @@ export const getSettings = (): Settings => {
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (update.trimModifier && ["Alt", "Control", "Shift", "Meta"].includes(update.trimModifier)) sanitized.trimModifier = update.trimModifier;
+  if (update.hotkeys && Object.keys(defaultHotkeys).every(key => typeof update.hotkeys?.[key as keyof typeof defaultHotkeys] === "string")) sanitized.hotkeys = update.hotkeys;
 
   if (typeof update.saveDirectory === "string" && update.saveDirectory.trim().length > 0) {
     sanitized.saveDirectory = update.saveDirectory;
@@ -387,6 +392,7 @@ export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate =
 export const updateSettings = (update: SettingsUpdate): Settings => {
   const sanitized = sanitizeSettingsUpdate(update);
   const storeInstance = getStore();
+  if (sanitized.hotkeys) configureHotkeys(sanitized.hotkeys);
   storeInstance.set(sanitized);
   return getSettings();
 };
