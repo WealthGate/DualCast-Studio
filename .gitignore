@@ -8,3 +8,6 @@ Thumbs.db
 *.tmp
 *.swp
 .env
+.npm-cache/
+tmp/
+downloads/

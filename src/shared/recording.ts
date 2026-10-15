@@ -9,7 +9,7 @@ export const formatRecordingFilename = (date: Date) => {
   const minutes = pad(date.getMinutes());
   const seconds = pad(date.getSeconds());
 
-  return `DualCast_${year}-${month}-${day}_${hours}-${minutes}-${seconds}.mp4`;
+  return `OpenChurch_${year}-${month}-${day}_${hours}-${minutes}-${seconds}.mp4`;
 };
 
 export const getQualityProfile = (preset: QualityPreset) => {
