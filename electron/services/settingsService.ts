@@ -269,6 +269,7 @@ export const getSettings = (): Settings => {
     operatorStationName: stored.operatorStationName || "Main Director",
     operatorRole: stored.operatorRole || "director",
     masterAudioGain: Number.isFinite(stored.masterAudioGain) ? stored.masterAudioGain : 1,
+    scriptureSourceId: typeof stored.scriptureSourceId === "string" ? stored.scriptureSourceId : "online",
     hotkeys: stored.hotkeys ?? defaultHotkeys,
     trimModifier: stored.trimModifier ?? "Alt",
     microphoneDeviceId: typeof stored.microphoneDeviceId === "string" ? stored.microphoneDeviceId : null,
@@ -287,6 +288,7 @@ export const getSettings = (): Settings => {
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (typeof update.scriptureSourceId === "string" && update.scriptureSourceId.trim()) sanitized.scriptureSourceId = update.scriptureSourceId.trim();
   if (update.trimModifier && ["Alt", "Control", "Shift", "Meta"].includes(update.trimModifier)) sanitized.trimModifier = update.trimModifier;
   if (update.hotkeys && Object.keys(defaultHotkeys).every(key => typeof update.hotkeys?.[key as keyof typeof defaultHotkeys] === "string")) sanitized.hotkeys = update.hotkeys;
 

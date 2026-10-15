@@ -57,12 +57,12 @@ const ScripturePanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const requestInFlight = useRef(false);
   const [libraries, setLibraries] = useState<ScriptureLibrarySummary[]>([]);
-  const [scriptureSource, setScriptureSource] = useState("online");
+  const scriptureSource = settings.scriptureSourceId ?? "online";
   const [catalog, setCatalog] = useState<ScriptureLibraryCatalog | null>(null);
   const [selectedBook, setSelectedBook] = useState("John");
   const [selectedChapter, setSelectedChapter] = useState(3);
   const [startVerse, setStartVerse] = useState(16);
-  const [endVerse, setEndVerse] = useState(16);
+  const [jumpVerse, setJumpVerse] = useState("16");
   const [splitMode, setSplitMode] = useState<"passage" | "verse" | "lines">("verse");
   const [linesPerSlide, setLinesPerSlide] = useState(2);
   const [libraryUrl, setLibraryUrl] = useState("");
@@ -78,9 +78,7 @@ const ScripturePanel: React.FC = () => {
     try {
       const next = await window.dualcast.listScriptureLibraries();
       setLibraries(next);
-      if (scriptureSource !== "online" && !next.some((library) => library.id === scriptureSource)) {
-        setScriptureSource("online");
-      }
+
     } catch {
       setLibraries([]);
     }
@@ -105,7 +103,6 @@ const ScripturePanel: React.FC = () => {
           setSelectedBook(firstBook.name);
           setSelectedChapter(firstBook.chapters[0]?.number ?? 1);
           setStartVerse(firstBook.chapters[0]?.verses[0] ?? 1);
-          setEndVerse(firstBook.chapters[0]?.verses[0] ?? 1);
         }
       })
       .catch(() => active && setCatalog(null));
@@ -122,7 +119,6 @@ const ScripturePanel: React.FC = () => {
   const verseOptions = selectedChapterInfo?.verses?.length
     ? selectedChapterInfo.verses
     : Array.from({ length: maximumBibleVerseNumber }, (_, index) => index + 1);
-  const navigatorReference = `${selectedBook} ${selectedChapter}:${startVerse}${endVerse > startVerse ? `-${endVerse}` : ""}`;
 
   useEffect(() => {
     if (!chapterOptions.includes(selectedChapter)) setSelectedChapter(chapterOptions[0] ?? 1);
@@ -131,7 +127,6 @@ const ScripturePanel: React.FC = () => {
   useEffect(() => {
     const firstVerse = verseOptions[0] ?? 1;
     if (!verseOptions.includes(startVerse)) setStartVerse(firstVerse);
-    if (!verseOptions.includes(endVerse) || endVerse < startVerse) setEndVerse(startVerse);
   }, [selectedBook, selectedChapter, catalog, startVerse]);
 
   const fetchVerse = async (requestedReference = reference, live = false) => {
@@ -150,7 +145,6 @@ const ScripturePanel: React.FC = () => {
         setSelectedBook(position[1]);
         setSelectedChapter(Number(position[2]));
         setStartVerse(Number(position[3]));
-        setEndVerse(Number(position[4] ?? position[3]));
       }
       setVerseText(result.text);
       setResolvedReference(result.reference);
@@ -171,8 +165,19 @@ const ScripturePanel: React.FC = () => {
     }
   };
 
+  useEffect(() => { setJumpVerse(String(startVerse)); }, [startVerse, selectedBook, selectedChapter]);
+
+  const jumpToVerse = async () => {
+    const verse = Number(jumpVerse);
+    if (!Number.isInteger(verse) || !verseOptions.includes(verse)) {
+      setMessage("Enter an available verse number in the current chapter.");
+      return;
+    }
+    await fetchVerse(`${selectedBook} ${selectedChapter}:${verse}`, true);
+  };
+
   const navigateVerse = async (direction: -1 | 1) => {
-    const adjacent = adjacentScriptureVerse(verseOptions, startVerse, endVerse, direction);
+    const adjacent = adjacentScriptureVerse(verseOptions, startVerse, startVerse, direction);
     if (adjacent === null) return;
     await fetchVerse(`${selectedBook} ${selectedChapter}:${adjacent}`, true);
   };
@@ -303,8 +308,7 @@ const ScripturePanel: React.FC = () => {
       const library = await window.dualcast.importScriptureLibrary();
       if (library) {
         await refreshLibraries();
-        setScriptureSource(library.id);
-        setMessage(`Imported ${library.name} with ${library.passageCount.toLocaleString()} passages.`);
+        setMessage(`Imported ${library.name} with ${library.passageCount.toLocaleString()} passages. Select it from Scripture Source when ready.`);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to import the Scripture library.");
@@ -319,9 +323,8 @@ const ScripturePanel: React.FC = () => {
     try {
       const library = await window.dualcast.downloadScriptureLibrary({ url: libraryUrl.trim() });
       await refreshLibraries();
-      setScriptureSource(library.id);
       setLibraryUrl("");
-      setMessage(`Downloaded ${library.name} with ${library.passageCount.toLocaleString()} passages for offline use.`);
+      setMessage(`Downloaded ${library.name} with ${library.passageCount.toLocaleString()} passages for offline use. Select it from Scripture Source when ready.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to download the Scripture library.");
     } finally {
@@ -335,7 +338,6 @@ const ScripturePanel: React.FC = () => {
     setLoading(true);
     try {
       await window.dualcast.removeScriptureLibrary({ libraryId: selected.id });
-      setScriptureSource("online");
       await refreshLibraries();
       setMessage(`Removed ${selected.name} from this computer.`);
     } catch (error) {
@@ -352,8 +354,9 @@ const ScripturePanel: React.FC = () => {
       <div className="panel-header"><h2>Scripture</h2><span className="tag">Online + Offline</span></div>
       <div className="field">
         <label htmlFor="scriptureSource">Scripture Source</label>
-        <select id="scriptureSource" disabled={loading} value={scriptureSource} onChange={(event) => setScriptureSource(event.target.value)}>
+        <select id="scriptureSource" disabled={loading} value={scriptureSource} onChange={(event) => void updateSettings({ scriptureSourceId: event.target.value }).catch(error => setMessage(String(error)))}>
           <option value="online">Configured Online Provider</option>
+          {scriptureSource !== "online" && !libraries.some(library => library.id === scriptureSource) ? <option value={scriptureSource}>Selected offline source (unavailable)</option> : null}
           {libraries.map((library) => (
             <option key={library.id} value={library.id}>{library.name}{library.translation ? ` - ${library.translation}` : ""} ({library.passageCount})</option>
           ))}
@@ -365,7 +368,7 @@ const ScripturePanel: React.FC = () => {
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof HTMLButtonElement)) {
             event.preventDefault();
-            if (!event.repeat) void fetchVerse(navigatorReference, true);
+            if (!event.repeat) void jumpToVerse();
           }
         }}
       >
@@ -383,32 +386,21 @@ const ScripturePanel: React.FC = () => {
             </select>
           </label>
           <label className="field">
-            <span>Start verse</span>
-            <select aria-label="Start verse" disabled={loading} value={startVerse} onChange={(event) => {
-              const value = Number(event.target.value);
-              setStartVerse(value);
-              if (endVerse < value) setEndVerse(value);
-            }}>
-              {verseOptions.map((verse) => <option key={verse} value={verse}>{verse}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>End verse</span>
-            <select aria-label="End verse" disabled={loading} value={endVerse} onChange={(event) => setEndVerse(Number(event.target.value))}>
-              {verseOptions.filter((verse) => verse >= startVerse).map((verse) => <option key={verse} value={verse}>{verse}</option>)}
-            </select>
+            <span>Jump to verse</span>
+            <input aria-label="Jump to verse" type="number" min={verseOptions[0]} max={verseOptions[verseOptions.length - 1]} step={1}
+              disabled={loading} value={jumpVerse} onChange={event => setJumpVerse(event.target.value)} />
           </label>
         </div>
         <div className="scripture-action-grid">
-          <button className="btn btn-primary" onClick={() => void fetchVerse(navigatorReference, true)} disabled={loading}>
+          <button className="btn btn-primary" onClick={() => void jumpToVerse()} disabled={loading}>
             {loading ? "Working..." : "Show Live (Enter)"}
           </button>
           <button className="btn btn-outline" onClick={() => void navigateVerse(-1)} disabled={loading || startVerse <= verseOptions[0]}>Previous Verse</button>
-          <button className="btn btn-outline" onClick={() => void navigateVerse(1)} disabled={loading || endVerse >= verseOptions[verseOptions.length - 1]}>Next Verse</button>
+          <button className="btn btn-outline" onClick={() => void navigateVerse(1)} disabled={loading || startVerse >= verseOptions[verseOptions.length - 1]}>Next Verse</button>
           <button className="btn btn-primary" onClick={() => void sendToLowerThird()} disabled={loading || !verseText.trim()}>Create Slides in Preview</button>
           <button className="btn btn-outline" onClick={() => void savePassageOffline()} disabled={loading || !verseText.trim()}>Save Passage Offline</button>
         </div>
-        <span className="field-help">Show Live or Enter loads the selected passage directly into Preview, Program and connected viewing outputs. Previous and Next display the adjacent verse immediately.</span>
+        <span className="field-help">Show Live or Enter loads the selected passage directly into Preview, Program and connected viewing outputs. Enter a verse number and press Enter or Show Live to jump within this chapter. Previous and Next display the adjacent verse immediately.</span>
       </div>
       <details className="scripture-direct-reference">
         <summary>Type a reference instead</summary>
