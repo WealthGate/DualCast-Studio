@@ -4,6 +4,7 @@ import { pickStreamingRecorderMimeType, stopMediaStream } from "../utils/media";
 import { StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "../../shared/types";
 import { isValidRtmpUrl } from "../../shared/streamingValidation";
 import { formatElapsedTimer } from "../utils/time";
+import { createStreamingCapture } from "../utils/streamingCapture";
 
 const presetBitrateMap: Record<string, number> = {
   low: 2_500_000,
@@ -17,7 +18,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [formattedElapsed, setFormattedElapsed] = useState("00:00");
-  const [stats, setStats] = useState<{ fps?: number | null; bitrateKbps?: number | null; time?: string | null; droppedFrames?: number | null } | null>(null);
+  const [stats, setStats] = useState<StreamStatusPayload["stats"]>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [destinationStatuses, setDestinationStatuses] = useState<
     NonNullable<StreamStatusPayload["destinationStatuses"]>
@@ -27,6 +28,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const timerRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const canvasStreamRef = useRef<MediaStream | null>(null);
+  const stopCaptureRef = useRef<(() => void) | null>(null);
   const stopRequestedRef = useRef(false);
   const startInFlightRef = useRef(false);
   const chunkQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -39,6 +41,8 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   };
 
   const cleanupCapture = () => {
+    stopCaptureRef.current?.();
+    stopCaptureRef.current = null;
     stopMediaStream(canvasStreamRef.current);
     canvasStreamRef.current = null;
     audioContextRef.current?.close().catch(() => undefined);
@@ -119,7 +123,15 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       setStatusMessage(null);
       setElapsedSeconds(0);
 
-      const canvasStream = canvasRef.current.captureStream(settings.streamFps);
+      let capture: ReturnType<typeof createStreamingCapture>;
+      try {
+        capture = createStreamingCapture(canvasRef.current, settings.streamPreset, settings.streamFps);
+      } catch (error) {
+        startInFlightRef.current = false;
+        return { ok: false, message: error instanceof Error ? error.message : "Streaming capture failed." };
+      }
+      stopCaptureRef.current = capture.stop;
+      const canvasStream = capture.stream;
       canvasStreamRef.current = canvasStream;
       const tracks = [...canvasStream.getVideoTracks()];
 
@@ -180,22 +192,40 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         recorderRef.current = recorder;
         stopRequestedRef.current = false;
         chunkQueueRef.current = Promise.resolve();
+        let pendingBytes = 0;
+        let pendingChunks = 0;
+        let deliveryFailed = false;
 
         recorder.ondataavailable = (event) => {
-          if (!event.data || event.data.size === 0) {
+          if (deliveryFailed || !event.data || event.data.size === 0) {
+            return;
+          }
+          // WebM chunks depend on prior chunks: never discard random chunks.
+          // Stop with a useful error instead of accumulating minutes of delay.
+          pendingBytes += event.data.size;
+          pendingChunks += 1;
+          if (pendingBytes > 16 * 1024 * 1024 || pendingChunks > 32) {
+            deliveryFailed = true;
+            const message = "Streaming cannot keep up. Choose a lower streaming quality or fewer destinations, then restart the stream.";
+            setLastError(message);
+            setStatusMessage(message);
+            stopRequestedRef.current = true;
+            if (recorder.state !== "inactive") recorder.stop();
             return;
           }
           chunkQueueRef.current = chunkQueueRef.current
             .then(() => event.data.arrayBuffer())
-            .then((buffer) => window.dualcast.sendStreamChunk(new Uint8Array(buffer)))
+            .then((buffer) => deliveryFailed ? undefined : window.dualcast.sendStreamChunk(new Uint8Array(buffer)))
             .then(() => undefined)
             .catch((error) => {
+              deliveryFailed = true;
               const message = error instanceof Error ? error.message : "Stream data delivery failed.";
               setLastError(message);
               setStatusMessage(message);
               stopRequestedRef.current = true;
               if (recorder.state !== "inactive") recorder.stop();
-            });
+            })
+            .finally(() => { pendingBytes -= event.data.size; pendingChunks -= 1; });
         };
 
         recorder.onstop = async () => {
@@ -209,7 +239,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
           stopRequestedRef.current = false;
         };
 
-        recorder.start(1000);
+        recorder.start(250);
         startInFlightRef.current = false;
         return { ok: true };
       } catch {

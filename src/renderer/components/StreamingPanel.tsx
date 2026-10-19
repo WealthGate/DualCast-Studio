@@ -36,6 +36,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
     status,
     statusMessage,
     formattedElapsed,
+    elapsedSeconds,
     stats,
     lastError,
     destinationStatuses,
@@ -595,6 +596,11 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
           <span className="warn-pill">{lastError}</span>
         ) : null}
       </div>
+      {status === "live" && elapsedSeconds >= 15 && stats?.speed != null && stats.speed < 0.9 ? (
+        <div className="profile-message" role="status">
+          Stream delivery is behind real time ({stats.speed.toFixed(2)}×). Choose a lower streaming quality or fewer destinations to reduce buffering.
+        </div>
+      ) : null}
       {destinationStatuses.length > 0 ? (
         <div className="destination-status-list">
           {destinationStatuses.map((destination) => (

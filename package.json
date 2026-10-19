@@ -1,6 +1,6 @@
 {
   "name": "openchurch-broadcast-studio",
-  "version": "0.6.17",
+  "version": "0.6.18",
   "private": true,
   "description": "Open church production, presentation, recording, and multi-destination streaming studio",
   "author": {
@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && tsup && vite build",
     "package": "npm run build && electron-builder",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verify:streaming": "node scripts/verify-streaming.cjs"
   },
   "dependencies": {
     "electron-log": "^5.1.2",

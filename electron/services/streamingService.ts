@@ -124,6 +124,7 @@ const parseStats = (line: string) => {
   const bitrateMatch = line.match(/bitrate=\s*([0-9.]+)kbits\/s/);
   const timeMatch = line.match(/time=([0-9:.]+)/);
   const dropMatch = line.match(/drop=\s*([0-9]+)/);
+  const speedMatch = line.match(/speed=\s*([0-9.]+)x/);
 
   if (!fpsMatch && !bitrateMatch && !timeMatch && !dropMatch) {
     return null;
@@ -133,7 +134,8 @@ const parseStats = (line: string) => {
     fps: fpsMatch ? Number(fpsMatch[1]) : null,
     bitrateKbps: bitrateMatch ? Number(bitrateMatch[1]) : null,
     time: timeMatch ? timeMatch[1] : null,
-    droppedFrames: dropMatch ? Number(dropMatch[1]) : null
+    droppedFrames: dropMatch ? Number(dropMatch[1]) : null,
+    speed: speedMatch ? Number(speedMatch[1]) : null
   };
 };
 
@@ -179,7 +181,7 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     "-loglevel",
     "info",
     "-fflags",
-    "nobuffer",
+    "genpts",
     "-flags",
     "low_delay",
     "-max_delay",
@@ -242,9 +244,10 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
   } else if (encoder === "vaapi") {
     args.push("-bf", "0");
   }
+  if (encoder === "x264") args.push("-minrate", bitrate, "-x264-params", "nal-hrd=cbr:force-cfr=1");
 
   if (payload.hasAudio) {
-    args.push("-map", "0:a:0?", "-c:a", "aac", "-b:a", `${payload.audioBitrate}k`, "-ar", "44100");
+    args.push("-map", "0:a:0?", "-c:a", "aac", "-b:a", `${payload.audioBitrate}k`, "-ar", "48000");
   } else {
     args.push("-an");
   }
@@ -351,6 +354,9 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
         }
         if (line.toLowerCase().includes("error") || line.toLowerCase().includes("failed")) {
           runtime.lastError = sanitizeLogLine(line.trim());
+        }
+        if (/FIFO queue full|queue overflow/i.test(line)) {
+          runtime.lastError = "Upload cannot keep up. Recovery is dropping queued output to avoid growing delay. Lower streaming quality or reduce destinations.";
         }
         if (isHardwareEncoderStartupFailure(runtime.encoder, line)) {
           runtime.encoderFallbackPending = true;
@@ -509,9 +515,20 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
 };
 
 const writeToInput = (input: Writable, data: Buffer) => new Promise<void>((resolve, reject) => {
+  const timeout = setTimeout(() => {
+    const error = new Error("Stream encoder input stalled. Lower streaming quality or reduce destinations and restart.");
+    input.destroy(error);
+    reject(error);
+  }, 5000);
+  timeout.unref();
   try {
-    input.write(data, (error) => error ? reject(error) : resolve());
+    input.write(data, (error) => {
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    });
   } catch (error) {
+    clearTimeout(timeout);
     reject(error);
   }
 });
@@ -542,6 +559,8 @@ export const sendStreamChunk = async (payload: Uint8Array) => {
     } catch (error) {
       if (stopRequested || runtime.process !== process) return;
       runtime.lastError = (error as Error).message;
+      runtime.status = "error";
+      process?.kill("SIGINT");
       writeStreamLog(runtime.destination.name, `stdin write failed: ${runtime.lastError}`);
       publishAggregateStatus();
     }

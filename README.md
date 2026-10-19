@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.17**.
+Current release: **v0.6.18**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,15 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.17
+### What's new in v0.6.18
+
+- Reduce streaming load by sizing capture before browser encoding and delivering smaller, ordered media batches.
+- Preserve initial WebM keyframes to prevent startup decoder errors and missing video.
+- Bound network recovery queues and encoder stalls to prevent growing stream delay; show warnings when delivery cannot keep up.
+- Encode lower-third projection images asynchronously to reduce rendering stalls.
+- Verify the bundled FFmpeg's frame delivery in every desktop release build. See [streaming stability audit](docs/streaming-stability-audit.md) for evidence and testing limits.
+
+### Included from v0.6.17
 
 - Stop streaming without an unhandled `write EOF` error: drain the encoder input, handle late pipe errors, and ignore events from stopped encoders.
 - Browse other studio tabs while streaming. Live status updates no longer repeat a previous request to focus Stream Setup.

@@ -1293,6 +1293,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       return;
     }
 
+    const encoder = createFrameEncoder((frame) => window.dualcast.sendLowerThirdFrame(frame), "image/webp", 0.9);
     const sendLowerThirdFrame = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (!isCutToBlack && programScene && programScene.enabled !== false) {
@@ -1316,7 +1317,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       if (!isCutToBlack && settings.lowerThird.programSlideId) {
         drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), programLowerThirdCueRef);
       }
-      window.dualcast.sendLowerThirdFrame(canvas.toDataURL("image/webp", 0.9));
+      encoder.encode(canvas);
     };
 
     sendLowerThirdFrame();
@@ -1328,6 +1329,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     return () => {
       window.clearInterval(interval);
       window.clearTimeout(stopAnimation);
+      encoder.stop();
     };
   }, [
     isCutToBlack,

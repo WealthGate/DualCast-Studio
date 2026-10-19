@@ -75,4 +75,38 @@ describe("stream shutdown", () => {
     vi.advanceTimersByTime(4000);
     expect(child.process.kill).not.toHaveBeenCalled();
   });
+
+  it("bounds a stalled encoder write rather than blocking every destination indefinitely", async () => {
+    const child = encoder();
+    mocks.spawn.mockReturnValue(child.process);
+    await startStreaming(payload);
+    const pending = sendStreamChunk(new Uint8Array([1, 2, 3]));
+    vi.advanceTimersByTime(5000);
+    await pending;
+    expect(child.process.stdin.destroyed).toBe(true);
+    expect(child.process.kill).toHaveBeenCalledWith("SIGINT");
+  });
+
+  it("retains initial input packets and uses two-second keyframes with CBR output", async () => {
+    const child = encoder();
+    mocks.spawn.mockReturnValue(child.process);
+    await startStreaming(payload);
+    const args: string[] = mocks.spawn.mock.lastCall?.[1];
+    expect(args).not.toContain("nobuffer");
+    expect(args[args.indexOf("-g") + 1]).toBe("60");
+    expect(args).toContain("nal-hrd=cbr:force-cfr=1");
+    expect(args[args.indexOf("-fifo_options") + 1]).toContain("drop_pkts_on_overflow=1");
+  });
+
+  it("reports sub-real-time delivery and output overflow to the studio", async () => {
+    const child = encoder();
+    mocks.spawn.mockReturnValue(child.process);
+    const publish = vi.fn();
+    setStreamStatusPublisher(publish);
+    await startStreaming(payload);
+    child.process.stderr.emit("data", "frame= 100 fps=24 time=00:00:03.30 speed=0.81x");
+    expect(publish.mock.lastCall?.[0].stats.speed).toBe(0.81);
+    child.process.stderr.emit("data", "FIFO queue full");
+    expect(publish.mock.lastCall?.[0].lastError).toContain("Upload cannot keep up");
+  });
 });

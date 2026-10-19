@@ -323,6 +323,7 @@ export type StreamStatusPayload = {
     bitrateKbps?: number | null;
     time?: string | null;
     droppedFrames?: number | null;
+    speed?: number | null;
   } | null;
   reconnectAttempt?: number | null;
   reconnectMax?: number | null;
