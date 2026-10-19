@@ -277,9 +277,14 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   const [sizes, setSizes] = useState<DockSizes>(loadSizes);
   const [draggingPanelId, setDraggingPanelId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<DockContextMenu | null>(null);
+  const handledFocusToken = useRef<number | null>(null);
 
   useEffect(() => {
     if (!focusRequest || !panelMap.has(focusRequest.panelId)) return;
+    // Status updates recreate panelMap. A focus request must only run once,
+    // otherwise live stream statistics keep pulling users back to Stream Setup.
+    if (handledFocusToken.current === focusRequest.token) return;
+    handledFocusToken.current = focusRequest.token;
     setLayout((current) => {
       const next = cloneLayout(current);
       for (const zoneId of zoneIds) {

@@ -99,6 +99,7 @@ const ensureLogStream = () => {
   sessionLogPath = sessionLogPath ?? createSessionLogPath();
   fs.mkdirSync(path.dirname(sessionLogPath), { recursive: true });
   logStream = fs.createWriteStream(sessionLogPath, { flags: "a" });
+  logStream.on("error", (error) => log.warn(`Streaming log unavailable: ${error.message}`));
 };
 
 const sanitizeLogLine = (line: string) => {
@@ -326,10 +327,19 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     windowsHide: true
   });
   runtime.process = process;
+  // A failed write also emits an asynchronous stream error, even when the
+  // write callback handles it. Keep this listener through process shutdown.
+  process.stdin.on("error", (error: Error) => {
+    if (stopRequested || runtime.process !== process) return;
+    runtime.lastError = sanitizeLogLine(error.message);
+    writeStreamLog(runtime.destination.name, `Stream input closed: ${runtime.lastError}`);
+    publishAggregateStatus();
+  });
   writeStreamLog(runtime.destination.name, `Starting FFmpeg with ${mapStreamingEncoder(encoder)}.`);
 
   process.stderr.setEncoding("utf8");
   process.stderr.on("data", (chunk: string) => {
+    if (stopRequested || runtime.process !== process) return;
     chunk
       .split(/\r?\n/)
       .filter(Boolean)
@@ -359,6 +369,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   });
 
   process.on("error", (error: NodeJS.ErrnoException) => {
+    if (stopRequested || runtime.process !== process) return;
     runtime.lastError = error.message;
     runtime.status = "error";
     if (error.code === "ENOENT" || error.code === "EACCES") {
@@ -369,6 +380,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   });
 
   process.on("close", (code, signal) => {
+    if (runtime.process !== process) return;
     runtime.process = null;
     if (stopRequested) {
       return;
@@ -505,15 +517,16 @@ const writeToInput = (input: Writable, data: Buffer) => new Promise<void>((resol
 });
 
 export const sendStreamChunk = async (payload: Uint8Array) => {
-  if (!payload?.length) {
+  if (stopRequested || !payload?.length) {
     return;
   }
   const chunk = Buffer.from(payload);
   cachedHeader = cachedHeader ?? chunk;
 
   await Promise.all(Array.from(runtimes.values()).map(async (runtime) => {
-    const stdin = runtime.process?.stdin;
-    if (!stdin?.writable) {
+    const process = runtime.process;
+    const stdin = process?.stdin;
+    if (!stdin?.writable || stdin.destroyed || stdin.writableEnded) {
       return;
     }
     try {
@@ -524,8 +537,10 @@ export const sendStreamChunk = async (payload: Uint8Array) => {
           return;
         }
       }
+      if (stopRequested || runtime.process !== process) return;
       await writeToInput(stdin, chunk);
     } catch (error) {
+      if (stopRequested || runtime.process !== process) return;
       runtime.lastError = (error as Error).message;
       writeStreamLog(runtime.destination.name, `stdin write failed: ${runtime.lastError}`);
       publishAggregateStatus();
@@ -545,6 +560,7 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
       runtime.reconnectTimer = null;
     }
     const process = runtime.process;
+    runtime.process = null;
     if (!process) {
       return;
     }
@@ -553,12 +569,14 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
     } catch {
       // Process may already be closing.
     }
-    process.kill("SIGINT");
-    setTimeout(() => {
-      if (process.exitCode === null) {
+    // Let EOF drain buffered media and finalize the output before forcing exit.
+    const timeout = setTimeout(() => {
+      if (process.exitCode === null && process.signalCode === null) {
         process.kill("SIGKILL");
       }
     }, STOP_TIMEOUT_MS);
+    timeout.unref();
+    process.once("close", () => clearTimeout(timeout));
   });
 
   runtimes.clear();
@@ -577,8 +595,10 @@ export const forceStopStreaming = () => {
   runtimes.forEach((runtime) => {
     if (runtime.reconnectTimer) clearTimeout(runtime.reconnectTimer);
     runtime.reconnectTimer = null;
+    const process = runtime.process;
+    runtime.process = null;
     try {
-      runtime.process?.kill("SIGKILL");
+      process?.kill("SIGKILL");
     } catch {
       // The process may already have exited.
     }
