@@ -2,11 +2,15 @@
 
 OpenChurch Broadcast Studio is an open desktop production suite for churches and large venues. It combines live presentation, multi-display projection, lower thirds, recording, multi-destination streaming, operator controls, audio mixing, Multiview, and lightweight post-production in one interface.
 
+Scripture text must always be displayed without source markup or stray angle delimiters (`<`, `>`, `‹`, `›`), including encoded versions. Preserve the scripture's words and normal punctuation. This is a permanent requirement across future updates, protected by the shared scripture sanitization regression tests.
+
+Press **Escape** while the studio or any display window is focused to close all Program, lower-third, and Multiview display windows and return to the studio controls, including when presenting on the primary screen.
+
 ## Download
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.15**.
+Current release: **v0.6.16**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -16,7 +20,13 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.15
+### What's new in v0.6.16
+
+- Strip stray scripture angle delimiters, including `‹ ›` and encoded forms, while preserving verse wording and punctuation.
+- Press Escape from the studio or display windows to close Program, lower-third, and Multiview displays and return to the controls.
+- Verify YouTube permissions, reconnect outdated sign-ins, and explain channel live-streaming restrictions. Stream addresses and keys are filled automatically after broadcast creation.
+
+### Included from v0.6.15
 
 - Hide Scripture beside Show Live clears the displayed Scripture from Preview, Program, and connected outputs while retaining the passage and slides for reuse.
 

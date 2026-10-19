@@ -5,6 +5,7 @@ import { MultiviewAction, MultiviewPayload } from "../../src/shared/types";
 
 let multiviewWindow: BrowserWindow | null = null;
 let lastPayload: MultiviewPayload | null = null;
+export const hasMultiviewWindow = () => Boolean(multiviewWindow && !multiviewWindow.isDestroyed());
 
 const notifyStudioWindows = (channel: string, payload?: unknown) => {
   BrowserWindow.getAllWindows().forEach((window) => {

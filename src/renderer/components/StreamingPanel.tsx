@@ -365,7 +365,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
                 <fieldset className="youtube-broadcast-setup" disabled={isActive || authorizingId === destination.id}>
                   <legend>YouTube Broadcast Setup</legend>
                   <p className="field-help">
-                    These settings are applied when OpenChurch creates the broadcast. Connect again only when you intentionally want a new broadcast.
+                    Enter a title, click Connect & Create, choose the Google account that owns your channel, and allow YouTube access. The stream address and key are filled in automatically; then click Start Stream. Connect again only to create a new broadcast.
                   </p>
                   <div className="field">
                     <label htmlFor={`youtube-title-${index}`}>Broadcast Title *</label>

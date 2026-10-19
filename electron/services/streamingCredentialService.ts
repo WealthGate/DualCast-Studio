@@ -16,6 +16,7 @@ type ProviderCredentials = {
 };
 
 export type StoredProviderToken = {
+  scopes?: string;
   refreshToken?: string;
   accessToken?: string;
   expiresAt?: number;

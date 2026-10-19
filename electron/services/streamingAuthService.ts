@@ -70,14 +70,33 @@ type YouTubeApiError = {
   };
 };
 
+const youtubeScope = "https://www.googleapis.com/auth/youtube.force-ssl";
+export const hasYouTubeWritePermission = (scope?: string) =>
+  (scope ?? "").split(/\s+/).some((value) => value === youtubeScope || value === "https://www.googleapis.com/auth/youtube");
+
+class YouTubePermissionError extends Error {}
+
 const readYouTubeResponse = async <T>(response: Response, action: string): Promise<T> => {
   const body = await response.json().catch(() => ({})) as T & YouTubeApiError;
   if (response.ok) return body;
+  const reasons = body.error?.errors?.map((error) => error.reason) ?? [];
+  if (reasons.includes("liveStreamingNotEnabled")) {
+    throw new Error("Enable live streaming for your channel in YouTube Studio, complete any verification or activation wait, then try Connect & Create again.");
+  }
+  if (reasons.includes("livePermissionBlocked") || reasons.includes("insufficientLivePermissions")) {
+    throw new Error("YouTube has not allowed this channel to go live. Sign in with the channel owner and check live-streaming eligibility in YouTube Studio, then try again.");
+  }
+  if (reasons.includes("insufficientPermissions") || /insufficient permission/i.test(body.error?.message ?? "")) {
+    const message = "YouTube permission is missing. Connect again, select the account that owns your channel, and allow the requested YouTube access on Google's consent screen.";
+    if (action === "YouTube broadcast creation") throw new YouTubePermissionError(message);
+    throw new Error(message);
+  }
   const detail = body.error?.errors?.[0]?.message || body.error?.message;
   throw new Error(detail ? `${action}: ${detail}` : `${action} failed (${response.status}).`);
 };
 
 type GoogleTokenResponse = {
+  scope?: string;
   access_token: string;
   refresh_token?: string;
   expires_in?: number;
@@ -89,7 +108,7 @@ const requestYouTubeAccessToken = async (
   forceAccountSelection: boolean
 ) => {
   const stored = forceAccountSelection ? null : getStoredProviderToken("youtube");
-  if (stored?.refreshToken) {
+  if (stored?.refreshToken && hasYouTubeWritePermission(stored.scopes)) {
     const refreshBody = new URLSearchParams({
       client_id: clientId,
       refresh_token: stored.refreshToken,
@@ -103,12 +122,16 @@ const requestYouTubeAccessToken = async (
     });
     if (refreshResponse.ok) {
       const refreshed = await refreshResponse.json() as GoogleTokenResponse;
-      setStoredProviderToken("youtube", {
-        ...stored,
-        accessToken: refreshed.access_token,
-        expiresAt: Date.now() + Math.max(60, refreshed.expires_in ?? 3600) * 1000
-      });
-      return refreshed.access_token;
+      const scopes = refreshed.scope ?? stored.scopes;
+      if (hasYouTubeWritePermission(scopes)) {
+        setStoredProviderToken("youtube", {
+          ...stored,
+          scopes,
+          accessToken: refreshed.access_token,
+          expiresAt: Date.now() + Math.max(60, refreshed.expires_in ?? 3600) * 1000
+        });
+        return refreshed.access_token;
+      }
     }
     clearStoredProviderToken("youtube");
   }
@@ -121,7 +144,7 @@ const requestYouTubeAccessToken = async (
       client_id: clientId,
       redirect_uri: callback,
       response_type: "code",
-      scope: "openid email https://www.googleapis.com/auth/youtube.force-ssl",
+      scope: `openid email ${youtubeScope}`,
       access_type: "offline",
       prompt: "select_account consent",
       code_challenge: codeChallenge,
@@ -144,7 +167,12 @@ const requestYouTubeAccessToken = async (
     body: tokenBody
   });
   const token = await readYouTubeResponse<GoogleTokenResponse>(tokenResponse, "YouTube token exchange");
+  if (!hasYouTubeWritePermission(token.scope)) {
+    clearStoredProviderToken("youtube");
+    throw new Error("Google sign-in succeeded, but YouTube access was not granted. Click Connect & Create again and allow the YouTube permission on Google's consent screen.");
+  }
   setStoredProviderToken("youtube", {
+    scopes: token.scope,
     refreshToken: token.refresh_token,
     accessToken: token.access_token,
     expiresAt: Date.now() + Math.max(60, token.expires_in ?? 3600) * 1000
@@ -280,7 +308,15 @@ const authorizeFacebook = async (
 
 export const authorizeStreaming = async (payload: StreamingAuthorizationPayload) => {
   try {
-    return payload.provider === "youtube" ? await authorizeYouTube(payload) : await authorizeFacebook(payload);
+    if (payload.provider !== "youtube") return await authorizeFacebook(payload);
+    try {
+      return await authorizeYouTube(payload);
+    } catch (error) {
+      // Only retry a rejected creation: no broadcast has been created yet.
+      if (!(error instanceof YouTubePermissionError) || payload.forceAccountSelection) throw error;
+      clearStoredProviderToken("youtube");
+      return await authorizeYouTube({ ...payload, forceAccountSelection: true });
+    }
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Authorization failed." };
   }

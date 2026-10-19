@@ -6,6 +6,8 @@ import { IpcChannels } from "../../src/shared/ipc";
 const programWindows = new Map<string, BrowserWindow>();
 const lowerThirdWindows = new Map<string, BrowserWindow>();
 let lastProgramState: ProgramState | null = null;
+export const hasProjectionWindows = () =>
+  [...programWindows.values(), ...lowerThirdWindows.values()].some((window) => !window.isDestroyed());
 export const getProgramState = () => lastProgramState;
 
 const getDisplayBounds = (displayId?: string | null) => {

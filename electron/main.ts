@@ -10,6 +10,9 @@ import { forceStopStreaming } from "./services/streamingService";
 import { cleanupEditorCommands } from "./services/editorService";
 import { installApplicationMenu } from "./services/menuService";
 import { IpcChannels } from "../src/shared/ipc";
+import { registerDisplayEscape } from "./services/displayEscapeService";
+import { closeProjectionWindows, closeLowerThirdWindow, hasProjectionWindows } from "./services/projectionService";
+import { closeMultiviewWindow, hasMultiviewWindow } from "./services/multiviewService";
 
 
 const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -22,6 +25,15 @@ if (isDev) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+app.on("browser-window-created", (_event, window) => {
+  registerDisplayEscape(window, () => {
+    if (!hasProjectionWindows() && !hasMultiviewWindow()) return false;
+    void closeProjectionWindows();
+    void closeLowerThirdWindow();
+    closeMultiviewWindow();
+    return true;
+  }, () => mainWindow);
+});
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 const createMainWindow = () => {
