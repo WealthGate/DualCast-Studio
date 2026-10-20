@@ -1,4 +1,3 @@
-import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { Source, SourceCrop, SourceRect, SourceType } from "../../shared/types";
@@ -525,7 +524,7 @@ const SceneSourcesPanel: React.FC = () => {
       {toolOverlay === "properties" && selectedSource ? (
         <div className="selected-source-panel panel-tool-overlay">
           <div className="panel-header">
-            <h3>Edit Source</h3><DisplayTextControls />
+            <h3>Edit Source</h3>
             <div className="panel-overlay-actions">
               <span className="tag">{selectedSource.type}</span>
               <button className="btn btn-outline btn-compact" onClick={() => setToolOverlay(null)}>Close</button>

@@ -302,3 +302,12 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 - `src/renderer/` — React production interface and capture pipeline
 - `src/shared/` — shared types and IPC constants
 - `src/services/` — service interfaces and extension points
+
+
+## Display and Audio Controls
+
+Use the single **All outputs** row above Preview and Program to show or hide text, display the theme alone, or display the configured logo alone. **Hide Lower Third / Show Lower Third** hides or restores the entire lower third on Preview, Program, and the separate lower-third output without clearing its content.
+
+In **Audio Mixer**, use the **Stereo / Mono** button for the Program mix. Mono combines left and right and sends the result to both speakers; Stereo preserves the channels. The setting applies to Program monitoring, recordings, and streams and is saved between sessions.
+
+The workspace supports windows down to 640 × 480. At compact widths the displays appear above the docks, panels wrap or scroll, and controls remain reachable. Larger windows retain the resizable dock layout.

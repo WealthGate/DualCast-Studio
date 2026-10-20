@@ -75,6 +75,16 @@ const AudioMixerPanel: React.FC = () => {
 
   return (
     <section className="compact-dock-panel audio-mixer-panel">
+      <div className="mixer-output-mode">
+        <span>Program output</span>
+        <button type="button" className="btn btn-outline"
+          aria-label={`Program output: ${settings.audioChannelMode === "mono" ? "Mono" : "Stereo"}. Toggle mono and stereo`}
+          aria-pressed={settings.audioChannelMode === "mono"}
+          onClick={() => updateSettings({ audioChannelMode: settings.audioChannelMode === "mono" ? "stereo" : "mono" })}>
+          {settings.audioChannelMode === "mono" ? "Mono" : "Stereo"}
+        </button>
+        <span className="field-help">Mono sends the combined mix to both speakers. Stereo preserves left and right.</span>
+      </div>
       <div className="mixer-routing">
         <label>
           Program audio

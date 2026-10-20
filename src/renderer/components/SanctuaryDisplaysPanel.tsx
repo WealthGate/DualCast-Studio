@@ -1,4 +1,3 @@
-import DisplayTextControls from "./DisplayTextControls";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { ProjectionDisplay } from "../../shared/types";
@@ -100,7 +99,7 @@ const SanctuaryDisplaysPanel: React.FC = () => {
   return (
     <div className="compact-dock-panel sanctuary-displays-panel">
       <div className="display-target-toolbar">
-        <strong>Connected displays</strong><DisplayTextControls />
+        <strong>Connected displays</strong>
         <button className="btn btn-outline btn-compact" onClick={() => void refreshProjectionDisplays()} disabled={isRefreshing}>
           {isRefreshing ? "Detecting…" : "Refresh"}
         </button>

@@ -1,3 +1,4 @@
+export type AudioChannelMode = "mono" | "stereo";
 export type AudioMode = "system" | "microphone" | "both" | "none";
 export type AudioRoutingScope = "scene" | "persistent";
 export type QualityPreset = "low" | "medium" | "high";
@@ -223,6 +224,7 @@ export type ChurchIntegrationSettings = {
 };
 
 export type Settings = {
+  audioChannelMode?: AudioChannelMode;
   swapPreviewProgram?: boolean;
   hideOutputCursor?: boolean;
   scriptureSourceId?: string;

@@ -119,6 +119,7 @@ const createStore = () => {
       operatorStationName: "Main Director",
       operatorRole: "director",
       masterAudioGain: 1,
+      audioChannelMode: "stereo",
       swapPreviewProgram: true,
       hideOutputCursor: true,
       theme: "system",
@@ -145,6 +146,7 @@ const createStore = () => {
       operatorStationName: { type: "string" },
       operatorRole: { type: "string" },
       masterAudioGain: { type: "number" },
+      audioChannelMode: { type: "string", enum: ["mono", "stereo"] },
       swapPreviewProgram: { type: "boolean" },
       hideOutputCursor: { type: "boolean" },
       theme: { type: "string" },
@@ -278,6 +280,7 @@ export const getSettings = (): Settings => {
     trimModifier: stored.trimModifier ?? "Alt",
     microphoneDeviceId: typeof stored.microphoneDeviceId === "string" ? stored.microphoneDeviceId : null,
     microphoneGain: Number.isFinite(stored.microphoneGain) ? stored.microphoneGain : 1,
+    audioChannelMode: stored.audioChannelMode === "mono" ? "mono" : "stereo",
     swapPreviewProgram: stored.swapPreviewProgram !== false,
     hideOutputCursor: stored.hideOutputCursor !== false,
     theme: allowedThemes.includes(stored.theme) ? stored.theme : "system",
@@ -294,6 +297,7 @@ export const getSettings = (): Settings => {
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (update.audioChannelMode === "mono" || update.audioChannelMode === "stereo") sanitized.audioChannelMode = update.audioChannelMode;
   if (typeof update.swapPreviewProgram === "boolean") sanitized.swapPreviewProgram = update.swapPreviewProgram;
   if (typeof update.hideOutputCursor === "boolean") sanitized.hideOutputCursor = update.hideOutputCursor;
   if (typeof update.scriptureSourceId === "string" && update.scriptureSourceId.trim()) sanitized.scriptureSourceId = update.scriptureSourceId.trim();

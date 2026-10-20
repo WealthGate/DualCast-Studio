@@ -315,3 +315,18 @@ describe("Transition scene swapping", () => {
     expect(useAppStore.getState().programSceneId).toBe("scene-b");
   });
 });
+
+
+describe("Whole lower-third visibility", () => {
+  it("toggles visibility without clearing cues, branding, or scene text", () => {
+    useAppStore.setState({ isLowerThirdHidden: false });
+    const before = useAppStore.getState();
+    before.toggleLowerThirdHidden();
+    expect(useAppStore.getState().isLowerThirdHidden).toBe(true);
+    expect(useAppStore.getState().settings.lowerThird).toBe(before.settings.lowerThird);
+    expect(useAppStore.getState().sources).toBe(before.sources);
+    expect(useAppStore.getState().programSources).toBe(before.programSources);
+    before.toggleLowerThirdHidden();
+    expect(useAppStore.getState().isLowerThirdHidden).toBe(false);
+  });
+});

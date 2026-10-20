@@ -1,4 +1,3 @@
-import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useState } from "react";
 import { NetworkOutputStatus, OperatorRole } from "../../shared/types";
 import { useAppStore } from "../store/useAppStore";
@@ -61,7 +60,7 @@ const VenuePanel: React.FC = () => {
     <div className="venue-panel-stack">
       <section className="panel">
         <div className="panel-header">
-          <h2>Operator Station</h2><DisplayTextControls />
+          <h2>Operator Station</h2>
           <span className="tag">{settings.operatorRole}</span>
         </div>
         <div className="field">

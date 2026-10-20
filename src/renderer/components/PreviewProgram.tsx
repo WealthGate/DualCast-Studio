@@ -1,3 +1,4 @@
+import { createStereoProgramOutput, setProgramChannelMode } from "../utils/audioChannels";
 import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
@@ -152,6 +153,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const bibleImageRef = useRef<HTMLImageElement | null>(null);
   const lowerThirdBackgroundImageRef = useRef<HTMLImageElement | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const programMixGainRef = useRef<GainNode | null>(null);
   const programAudioMonitorGainRef = useRef<GainNode | null>(null);
   const previewLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
   const programLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
@@ -579,10 +581,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const destination = audioContext.createMediaStreamDestination();
     const masterGain = audioContext.createGain();
     masterGain.gain.value = clamp(settings.masterAudioGain ?? 1, 0, 2);
-    masterGain.connect(destination);
+    setProgramChannelMode(masterGain, useAppStore.getState().settings.audioChannelMode ?? "stereo");
+    programMixGainRef.current = masterGain;
+    const stereoOutput = createStereoProgramOutput(audioContext, masterGain);
+    stereoOutput.connect(destination);
     const monitorGain = createProgramAudioMonitor(
       audioContext,
-      masterGain,
+      stereoOutput,
       isProgramAudioMonitoring,
       programAudioMonitorGain
     );
@@ -603,7 +608,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       analyser.smoothingTimeConstant = 0.55;
       masterSplitter.connect(analyser, channel);
     });
-    masterGain.connect(masterSplitter);
+    stereoOutput.connect(masterSplitter);
     meterTaps.push({
       id: "master",
       channels: 2,
@@ -663,6 +668,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     }
 
     if (connectedSources === 0) {
+      programMixGainRef.current = null;
+      programAudioMonitorGainRef.current = null;
       publishAudioMeters({});
       setProgramAudioStream(null);
       void audioContext.close();
@@ -694,6 +701,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       window.clearInterval(meterTimer);
       publishAudioMeters({});
       setProgramAudioStream(null);
+      if (programMixGainRef.current === masterGain) programMixGainRef.current = null;
       if (programAudioMonitorGainRef.current === monitorGain) {
         programAudioMonitorGainRef.current = null;
       }
@@ -710,6 +718,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     setProgramAudioStream,
     sources
   ]);
+
+  useEffect(() => {
+    if (programMixGainRef.current) setProgramChannelMode(programMixGainRef.current, settings.audioChannelMode ?? "stereo");
+  }, [settings.audioChannelMode]);
 
   useEffect(() => {
     updateProgramAudioMonitor(
@@ -737,6 +749,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const rotation = ((source.rotation ?? 0) * Math.PI) / 180;
     const media = sourceMediaRef.current.get(source.id);
 
+    if (source.type === "text" && source.data.role === "lower-third" && useAppStore.getState().isLowerThirdHidden) return;
     if (useAppStore.getState().displayTextMode === "logo") return;
     let drawable: CanvasImageSource | null = null;
     if (source.type === "image" && media?.imageEl) {
@@ -875,6 +888,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     now: number,
     cueRef: React.MutableRefObject<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>
   ) => {
+    if (useAppStore.getState().isLowerThirdHidden) return;
     const config = settings.lowerThird;
     const cue = cueRef.current;
     const mode = useAppStore.getState().displayTextMode;
@@ -1504,76 +1518,79 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   };
 
   return (
-    <section className={`preview-program ${settings.hideOutputCursor !== false ? "hide-output-cursor" : ""}`}>
-      <div className="pane preview-pane">
-        <div className="pane-header">
-          <h2 title={`Hold ${settings.trimModifier ?? "Alt"} and drag a source corner to trim. TAKE applies Preview edits to Program.`}>Preview</h2>
-          <DisplayTextControls /><span className="tag">{hasPreviewScene ? "Staged" : "No Scene"}</span>
-        </div>
-        <div className="pane-body preview-body" ref={previewContainerRef}>
-          <div className="canvas-stage" style={{ width: previewCanvasSize.width, height: previewCanvasSize.height }}>
-            <canvas ref={previewCanvasRef} className="video-surface" />
-            <div className="source-overlay">
-              {previewScene
-                ? previewScene.sourceIds
-                    .map((id) => sources[id])
-                    .filter(Boolean)
-                    .filter((source) => source.type !== "audio")
-                    .map((source) => {
-                      const rect = source.rect;
-                      const style = {
-                        left: `${rect.x}%`,
-                        top: `${rect.y}%`,
-                        width: `${rect.width}%`,
-                        height: `${rect.height}%`
-                      };
-                      return (
-                        <div
-                          key={source.id}
-                          className={`source-box ${selectedSourceId === source.id ? "selected" : ""} ${
-                            source.enabled ? "" : "disabled"
-                          } ${source.locked ? "locked" : ""}`}
-                          style={style}
-                          onPointerDown={(event) => handlePointerDrag(event, source.id, "move")}
-                          onDoubleClick={(event) => {
-                            if (source.type === "text") {
-                              event.stopPropagation();
-                              takeToProgram();
-                            }
-                          }}
-                          title={source.type === "text" ? "Double-click to send this text and scene to Program" : undefined}
-                        >
-                          <span className="source-title">{source.name}</span>
-                          {!source.locked ? (
-                            <>
-                              <span className="resize-handle nw" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "nw")} />
-                              <span className="resize-handle ne" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "ne")} />
-                              <span className="resize-handle sw" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "sw")} />
-                              <span className="resize-handle se" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "se")} />
-                            </>
-                          ) : null}
-                        </div>
-                      );
-                    })
-                : null}
-              {guides.vertical.map((value) => (
-                <div key={`v-${value}`} className="guide guide-vertical" style={{ left: `${value}%` }} />
-              ))}
-              {guides.horizontal.map((value) => (
-                <div key={`h-${value}`} className="guide guide-horizontal" style={{ top: `${value}%` }} />
-              ))}
+    <section className="display-workspace" aria-label="Preview and Program displays">
+      <div className="display-controls-row"><DisplayTextControls /></div>
+      <div className={`preview-program ${settings.hideOutputCursor !== false ? "hide-output-cursor" : ""}`}>
+        <div className="pane preview-pane">
+          <div className="pane-header">
+            <h2 title={`Hold ${settings.trimModifier ?? "Alt"} and drag a source corner to trim. TAKE applies Preview edits to Program.`}>Preview</h2>
+            <span className="tag">{hasPreviewScene ? "Staged" : "No Scene"}</span>
+          </div>
+          <div className="pane-body preview-body" ref={previewContainerRef}>
+            <div className="canvas-stage" style={{ width: previewCanvasSize.width, height: previewCanvasSize.height }}>
+              <canvas ref={previewCanvasRef} className="video-surface" />
+              <div className="source-overlay">
+                {previewScene
+                  ? previewScene.sourceIds
+                      .map((id) => sources[id])
+                      .filter(Boolean)
+                      .filter((source) => source.type !== "audio")
+                      .map((source) => {
+                        const rect = source.rect;
+                        const style = {
+                          left: `${rect.x}%`,
+                          top: `${rect.y}%`,
+                          width: `${rect.width}%`,
+                          height: `${rect.height}%`
+                        };
+                        return (
+                          <div
+                            key={source.id}
+                            className={`source-box ${selectedSourceId === source.id ? "selected" : ""} ${
+                              source.enabled ? "" : "disabled"
+                            } ${source.locked ? "locked" : ""}`}
+                            style={style}
+                            onPointerDown={(event) => handlePointerDrag(event, source.id, "move")}
+                            onDoubleClick={(event) => {
+                              if (source.type === "text") {
+                                event.stopPropagation();
+                                takeToProgram();
+                              }
+                            }}
+                            title={source.type === "text" ? "Double-click to send this text and scene to Program" : undefined}
+                          >
+                            <span className="source-title">{source.name}</span>
+                            {!source.locked ? (
+                              <>
+                                <span className="resize-handle nw" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "nw")} />
+                                <span className="resize-handle ne" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "ne")} />
+                                <span className="resize-handle sw" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "sw")} />
+                                <span className="resize-handle se" onPointerDown={(event) => handlePointerDrag(event, source.id, "resize", "se")} />
+                              </>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                  : null}
+                {guides.vertical.map((value) => (
+                  <div key={`v-${value}`} className="guide guide-vertical" style={{ left: `${value}%` }} />
+                ))}
+                {guides.horizontal.map((value) => (
+                  <div key={`h-${value}`} className="guide guide-horizontal" style={{ top: `${value}%` }} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div className="pane program-pane">
-        <div className="pane-header program-header">
-          <h2>Program</h2><DisplayTextControls />
-          <span className={isCutToBlack ? "tag alert" : "tag"}>{isCutToBlack ? "BLACK" : "LIVE"}</span>
-        </div>
-        <div className="pane-body program-body" ref={programContainerRef}>
-          <div className="canvas-stage" style={{ width: previewCanvasSize.width, height: previewCanvasSize.height }}>
-            <canvas ref={programCanvasRef} className="video-surface" />
+        <div className="pane program-pane">
+          <div className="pane-header program-header">
+            <h2>Program</h2>
+            <span className={isCutToBlack ? "tag alert" : "tag"}>{isCutToBlack ? "BLACK" : "LIVE"}</span>
+          </div>
+          <div className="pane-body program-body" ref={programContainerRef}>
+            <div className="canvas-stage" style={{ width: previewCanvasSize.width, height: previewCanvasSize.height }}>
+              <canvas ref={programCanvasRef} className="video-surface" />
+            </div>
           </div>
         </div>
       </div>

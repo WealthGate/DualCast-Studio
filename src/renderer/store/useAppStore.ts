@@ -148,6 +148,8 @@ type AppState = {
   isProjecting: boolean;
   isLowerThirdProjecting: boolean;
   projectionTargetIds: string[];
+  isLowerThirdHidden: boolean;
+  toggleLowerThirdHidden: () => void;
   displayTextMode: "show" | "hide" | "theme" | "logo";
   setDisplayTextMode: (mode: "show" | "hide" | "theme" | "logo") => void;
   isCutToBlack: boolean;
@@ -232,6 +234,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   isProjecting: false,
   isLowerThirdProjecting: false,
   projectionTargetIds: [],
+  isLowerThirdHidden: false,
+  toggleLowerThirdHidden: () => set((state) => ({ isLowerThirdHidden: !state.isLowerThirdHidden })),
   displayTextMode: "show",
   setDisplayTextMode: (displayTextMode) => set({ displayTextMode }),
   isCutToBlack: false,

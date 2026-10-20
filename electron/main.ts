@@ -41,8 +41,8 @@ const createMainWindow = () => {
     title: `OpenChurch Broadcast Studio v${app.getVersion()}`,
     width: 1400,
     height: 900,
-    minWidth: 1100,
-    minHeight: 720,
+    minWidth: 640,
+    minHeight: 480,
     backgroundColor: "#0b0f14",
     show: false,
     webPreferences: {
