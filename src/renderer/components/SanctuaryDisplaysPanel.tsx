@@ -1,3 +1,4 @@
+import SanctuaryLayoutEditor from "./SanctuaryLayoutEditor";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { ProjectionDisplay } from "../../shared/types";
@@ -54,13 +55,18 @@ const SanctuaryDisplaysPanel: React.FC = () => {
   }, [displayIds, projectionDisplays, projectionTargetIds, setProjectionTargetIds]);
 
   const handleProjectionToggle = async () => {
-    if (isProjecting) {
-      await window.dualcast.closeProjection();
-      setIsProjecting(false);
-      return;
+    try {
+      if (isProjecting) {
+        await window.dualcast.closeProjection();
+        setIsProjecting(false);
+        return;
+      }
+      const opened = await window.dualcast.openProjection(projectionTargetIds);
+      setIsProjecting(opened);
+      setDisplayError(opened ? null : "The sanctuary display could not be opened.");
+    } catch (error) {
+      setDisplayError(error instanceof Error ? error.message : "The sanctuary display could not be updated.");
     }
-    await window.dualcast.openProjection(projectionTargetIds);
-    setIsProjecting(true);
   };
 
   const handleProjectionTargetToggle = (displayId: string, checked: boolean) => {
@@ -125,10 +131,11 @@ const SanctuaryDisplaysPanel: React.FC = () => {
       <button
         className="btn btn-primary"
         onClick={handleProjectionToggle}
-        disabled={!isProjecting && (!programSceneId || projectionDisplays.length === 0 || projectionTargetIds.length === 0)}
+        disabled={!isProjecting && ((settings.sanctuaryDisplay?.mode !== "independent" && !programSceneId) || projectionDisplays.length === 0 || projectionTargetIds.length === 0)}
       >
-        {isProjecting ? "Stop Projection" : "Project Program"}
+        {isProjecting ? "Stop Projection" : settings.sanctuaryDisplay?.mode === "independent" ? "Project Sanctuary Layout" : "Project Program"}
       </button>
+      <SanctuaryLayoutEditor />
       <div className="lower-third-dock-section">
         <label htmlFor="lowerThirdDisplay">Lower-third screen</label>
         <select

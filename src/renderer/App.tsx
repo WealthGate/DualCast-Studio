@@ -1,3 +1,4 @@
+import { getSanctuaryDisplayState } from "./utils/sanctuaryContent";
 import React, { useEffect, useRef, useState } from "react";
 import Header from "./components/Header";
 import SettingsPanel from "./components/SettingsPanel";
@@ -51,6 +52,10 @@ const App: React.FC = () => {
     setManualBlend,
     isRecording,
     programSceneId,
+    programSceneSnapshot,
+    programSources,
+    displayTextMode,
+    isLowerThirdHidden,
     isCutToBlack,
     isFrozen,
     settings
@@ -128,9 +133,10 @@ const App: React.FC = () => {
       programSceneId,
       isCutToBlack,
       isFrozen,
-      qualityPreset: settings.qualityPreset
+      qualityPreset: settings.qualityPreset,
+      sanctuary: getSanctuaryDisplayState(useAppStore.getState())
     });
-  }, [programSceneId, isCutToBlack, isFrozen, settings.qualityPreset]);
+  }, [programSceneId, programSceneSnapshot, programSources, displayTextMode, isLowerThirdHidden, isCutToBlack, isFrozen, settings.qualityPreset, settings.sanctuaryDisplay, settings.lowerThird]);
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onHotkey((action) => {

@@ -1,3 +1,4 @@
+import { defaultSanctuaryDisplay, normalizeSanctuaryDisplay } from "../../src/shared/sanctuaryDisplay";
 import { configureHotkeys, defaultHotkeys } from "./hotkeyService";
 import Store from "electron-store";
 import path from "path";
@@ -119,6 +120,7 @@ const createStore = () => {
       operatorStationName: "Main Director",
       operatorRole: "director",
       masterAudioGain: 1,
+      sanctuaryDisplay: defaultSanctuaryDisplay,
       audioChannelMode: "stereo",
       swapPreviewProgram: true,
       hideOutputCursor: true,
@@ -146,6 +148,7 @@ const createStore = () => {
       operatorStationName: { type: "string" },
       operatorRole: { type: "string" },
       masterAudioGain: { type: "number" },
+      sanctuaryDisplay: { type: "object" },
       audioChannelMode: { type: "string", enum: ["mono", "stereo"] },
       swapPreviewProgram: { type: "boolean" },
       hideOutputCursor: { type: "boolean" },
@@ -280,6 +283,7 @@ export const getSettings = (): Settings => {
     trimModifier: stored.trimModifier ?? "Alt",
     microphoneDeviceId: typeof stored.microphoneDeviceId === "string" ? stored.microphoneDeviceId : null,
     microphoneGain: Number.isFinite(stored.microphoneGain) ? stored.microphoneGain : 1,
+    sanctuaryDisplay: normalizeSanctuaryDisplay(stored.sanctuaryDisplay),
     audioChannelMode: stored.audioChannelMode === "mono" ? "mono" : "stereo",
     swapPreviewProgram: stored.swapPreviewProgram !== false,
     hideOutputCursor: stored.hideOutputCursor !== false,
@@ -297,6 +301,7 @@ export const getSettings = (): Settings => {
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (update.sanctuaryDisplay) sanitized.sanctuaryDisplay = normalizeSanctuaryDisplay(update.sanctuaryDisplay);
   if (update.audioChannelMode === "mono" || update.audioChannelMode === "stereo") sanitized.audioChannelMode = update.audioChannelMode;
   if (typeof update.swapPreviewProgram === "boolean") sanitized.swapPreviewProgram = update.swapPreviewProgram;
   if (typeof update.hideOutputCursor === "boolean") sanitized.hideOutputCursor = update.hideOutputCursor;

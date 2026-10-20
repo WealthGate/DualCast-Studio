@@ -1,3 +1,4 @@
+import SanctuaryLayout from "./components/SanctuaryLayout";
 import React, { useEffect, useRef, useState } from "react";
 import { ProgramState } from "../shared/types";
 
@@ -102,7 +103,11 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
       drawFrameRef.current = () => undefined;
       window.removeEventListener("resize", resize);
     };
-  }, [mode, programState.isCutToBlack, programState.programSceneId]);
+  }, [mode, programState.isCutToBlack, programState.programSceneId, programState.sanctuary?.settings.mode]);
+
+  if (mode === "program" && programState.sanctuary?.settings.mode === "independent") {
+    return <SanctuaryLayout state={programState.sanctuary} black={programState.isCutToBlack} />;
+  }
 
   return (
     <div className="projection-root">

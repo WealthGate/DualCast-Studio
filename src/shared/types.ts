@@ -223,7 +223,35 @@ export type ChurchIntegrationSettings = {
   aiHighlightDetection: boolean;
 };
 
+export type SanctuaryDisplaySettings = {
+  mode: "program" | "independent";
+  backgroundType: "color" | "image" | "video";
+  backgroundColor: string;
+  backgroundUrl: string;
+  backgroundFit: "cover" | "contain";
+  backgroundDim: number;
+  textSource: "program" | "custom";
+  customText: string;
+  fontFamily: string;
+  fontSize: number;
+  textColor: string;
+  bold: boolean;
+  italic: boolean;
+  textAlign: "left" | "center" | "right";
+  verticalAlign: "top" | "center" | "bottom";
+  textRect: SourceRect;
+};
+
+export type SanctuaryDisplayState = {
+  settings: SanctuaryDisplaySettings;
+  text: string;
+  reference: string;
+  textMode: "show" | "hide" | "theme" | "logo";
+  logoUrl: string;
+};
+
 export type Settings = {
+  sanctuaryDisplay?: SanctuaryDisplaySettings;
   audioChannelMode?: AudioChannelMode;
   swapPreviewProgram?: boolean;
   hideOutputCursor?: boolean;
@@ -362,6 +390,7 @@ export type ExportClipResult = {
 };
 
 export type ProgramState = {
+  sanctuary?: SanctuaryDisplayState;
   programSceneId: string | null;
   isCutToBlack: boolean;
   isFrozen: boolean;

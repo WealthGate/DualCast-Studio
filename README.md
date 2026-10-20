@@ -286,7 +286,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 
 ## Known Limits
 
-- Main projector outputs currently mirror one Program bus; the lower-third bus is the first independent auxiliary output.
+- Main sanctuary projector targets share one selected layout: Mirror Program or Independent Layout. The lower-third bus remains a separate auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
 - AI live captions, sermon summaries, and highlight detection are not executed in v0.6.9; the current controls only prepare provider settings for a future implementation.
@@ -311,3 +311,6 @@ Use the single **All outputs** row above Preview and Program to show or hide tex
 In **Audio Mixer**, use the **Stereo / Mono** button for the Program mix. Mono combines left and right and sends the result to both speakers; Stereo preserves the channels. The setting applies to Program monitoring, recordings, and streams and is saved between sessions.
 
 The workspace supports windows down to 640 × 480. At compact widths the displays appear above the docks, panels wrap or scroll, and controls remain reachable. Larger windows retain the resizable dock layout.
+
+
+In **Sanctuary Displays**, choose **Mirror Program** to send the Program picture directly to the congregation screens. Choose **Independent Layout** to give those screens their own color, image, or looping-video background and text style. Follow live Program text (Scripture, lyrics, or scene text) or enter sanctuary-only text. Font, size, color, alignment, text position, background fit, and dimming are independent of Program. Review the sanctuary preview and select **Apply Sanctuary Layout**. The background video is muted. These layout settings are saved between sessions; recordings, streams, and the separate lower-third output keep their Program layout.
