@@ -148,6 +148,8 @@ type AppState = {
   isProjecting: boolean;
   isLowerThirdProjecting: boolean;
   projectionTargetIds: string[];
+  displayTextMode: "show" | "hide" | "theme" | "logo";
+  setDisplayTextMode: (mode: "show" | "hide" | "theme" | "logo") => void;
   isCutToBlack: boolean;
   isFrozen: boolean;
   transitionType: "cut" | "fade" | "crossfade";
@@ -230,6 +232,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   isProjecting: false,
   isLowerThirdProjecting: false,
   projectionTargetIds: [],
+  displayTextMode: "show",
+  setDisplayTextMode: (displayTextMode) => set({ displayTextMode }),
   isCutToBlack: false,
   isFrozen: false,
   transitionType: "cut",
@@ -328,9 +332,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     const scene = state.scenes.find((candidate) => candidate.id === state.previewSceneId) ?? null;
     if (!scene) return;
     const snapshot = createProgramSnapshot(scene, state.sources);
-    const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
+    const swap = state.settings.swapPreviewProgram !== false;
+    const previewSceneId = swap && state.scenes.some(candidate => candidate.id === state.programSceneId)
+      ? state.programSceneId : state.previewSceneId;
+    const lowerThird = { ...state.settings.lowerThird,
+      programSlideId: state.settings.lowerThird.activeSlideId,
+      activeSlideId: swap ? state.settings.lowerThird.programSlideId : state.settings.lowerThird.activeSlideId };
+
     set({
       programSceneId: scene.id,
+      previewSceneId,
       programSceneSnapshot: snapshot.scene,
       programSources: snapshot.sources,
       programRevision: state.programRevision + 1,
@@ -343,7 +354,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         scenes: state.scenes,
         sources: state.sources,
         groups: state.groups,
-        previewSceneId: state.previewSceneId,
+        previewSceneId,
         programSceneId: scene.id
       };
       void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);
@@ -524,6 +535,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         return state;
       }
       return {
+        programSources: update.captureCursor !== undefined && state.programSources[`program:${sourceId}`]
+          ? { ...state.programSources, [`program:${sourceId}`]: { ...state.programSources[`program:${sourceId}`], captureCursor: update.captureCursor } as Source }
+          : state.programSources,
         sources: {
           ...state.sources,
           [sourceId]: { ...current, ...update } as Source
@@ -618,9 +632,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     const snapshot = createProgramSnapshot(scene, state.sources);
-    const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
+    const swap = state.settings.swapPreviewProgram !== false;
+    const previewSceneId = swap && state.scenes.some(candidate => candidate.id === state.programSceneId)
+      ? state.programSceneId : state.previewSceneId;
+    const lowerThird = { ...state.settings.lowerThird,
+      programSlideId: state.settings.lowerThird.activeSlideId,
+      activeSlideId: swap ? state.settings.lowerThird.programSlideId : state.settings.lowerThird.activeSlideId };
+
     set({
       programSceneId: state.previewSceneId,
+      previewSceneId,
       programSceneSnapshot: snapshot.scene,
       programSources: snapshot.sources,
       programRevision: state.programRevision + 1,
@@ -633,7 +654,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         scenes: state.scenes,
         sources: state.sources,
         groups: state.groups,
-        previewSceneId: state.previewSceneId,
+        previewSceneId,
         programSceneId: scene.id
       };
       void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);

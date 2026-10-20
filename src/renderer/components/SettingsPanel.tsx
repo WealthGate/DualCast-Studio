@@ -64,6 +64,7 @@ const SettingsPanel: React.FC = () => {
     <section className="panel settings-panel">
       <h2>Settings</h2>
       <h3>General</h3>
+      <label><input type="checkbox" checked={settings.hideOutputCursor !== false} onChange={(event) => updateSettings({ hideOutputCursor: event.target.checked })} /> Hide cursor over Preview and Program</label>
       <div className="field">
         <label htmlFor="theme">Interface Theme</label>
         <select

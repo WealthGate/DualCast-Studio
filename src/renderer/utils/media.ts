@@ -21,7 +21,16 @@ export const getDisplayStream = async (
     }
   } as MediaStreamConstraints;
 
-  return navigator.mediaDevices.getUserMedia(constraints);
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  // Desktop capture can ignore the initial cursor hint; apply it to the live track too.
+  await Promise.all(stream.getVideoTracks().map(async (track) => {
+    try {
+      await track.applyConstraints({ cursor: captureCursor } as MediaTrackConstraints);
+    } catch {
+      // Older capture backends only support the initial acquisition constraints.
+    }
+  }));
+  return stream;
 };
 
 export const getCameraStream = async (deviceId: string) => {

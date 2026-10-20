@@ -223,6 +223,8 @@ export type ChurchIntegrationSettings = {
 };
 
 export type Settings = {
+  swapPreviewProgram?: boolean;
+  hideOutputCursor?: boolean;
   scriptureSourceId?: string;
   hotkeys?: Record<HotkeyAction, string>;
   trimModifier?: "Alt" | "Control" | "Shift" | "Meta";

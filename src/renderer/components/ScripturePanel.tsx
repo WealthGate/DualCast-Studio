@@ -1,3 +1,4 @@
+import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LowerThirdAnimation, ScriptureFetchResult, ScriptureLibraryCatalog, ScriptureLibrarySummary, Source, SourceRect } from "../../shared/types";
 import { useAppStore } from "../store/useAppStore";
@@ -352,7 +353,7 @@ const ScripturePanel: React.FC = () => {
 
   return (
     <section className="panel scripture-panel">
-      <div className="panel-header"><h2>Scripture</h2><span className="tag">Online + Offline</span></div>
+      <div className="panel-header"><h2>Scripture</h2><DisplayTextControls /><span className="tag">Online + Offline</span></div>
       <div className="field">
         <label htmlFor="scriptureSource">Scripture Source</label>
         <select id="scriptureSource" disabled={loading} value={scriptureSource} onChange={(event) => void updateSettings({ scriptureSourceId: event.target.value }).catch(error => setMessage(String(error)))}>

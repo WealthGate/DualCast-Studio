@@ -119,6 +119,8 @@ const createStore = () => {
       operatorStationName: "Main Director",
       operatorRole: "director",
       masterAudioGain: 1,
+      swapPreviewProgram: true,
+      hideOutputCursor: true,
       theme: "system",
       lowerThird: defaultLowerThird,
       networkOutput: defaultNetworkOutput,
@@ -143,6 +145,8 @@ const createStore = () => {
       operatorStationName: { type: "string" },
       operatorRole: { type: "string" },
       masterAudioGain: { type: "number" },
+      swapPreviewProgram: { type: "boolean" },
+      hideOutputCursor: { type: "boolean" },
       theme: { type: "string" },
       lowerThird: { type: "object" },
       networkOutput: { type: "object" },
@@ -274,6 +278,8 @@ export const getSettings = (): Settings => {
     trimModifier: stored.trimModifier ?? "Alt",
     microphoneDeviceId: typeof stored.microphoneDeviceId === "string" ? stored.microphoneDeviceId : null,
     microphoneGain: Number.isFinite(stored.microphoneGain) ? stored.microphoneGain : 1,
+    swapPreviewProgram: stored.swapPreviewProgram !== false,
+    hideOutputCursor: stored.hideOutputCursor !== false,
     theme: allowedThemes.includes(stored.theme) ? stored.theme : "system",
     lowerThird: normalizeLowerThird(stored.lowerThird),
     networkOutput: {
@@ -288,6 +294,8 @@ export const getSettings = (): Settings => {
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (typeof update.swapPreviewProgram === "boolean") sanitized.swapPreviewProgram = update.swapPreviewProgram;
+  if (typeof update.hideOutputCursor === "boolean") sanitized.hideOutputCursor = update.hideOutputCursor;
   if (typeof update.scriptureSourceId === "string" && update.scriptureSourceId.trim()) sanitized.scriptureSourceId = update.scriptureSourceId.trim();
   if (update.trimModifier && ["Alt", "Control", "Shift", "Meta"].includes(update.trimModifier)) sanitized.trimModifier = update.trimModifier;
   if (update.hotkeys && Object.keys(defaultHotkeys).every(key => typeof update.hotkeys?.[key as keyof typeof defaultHotkeys] === "string")) sanitized.hotkeys = update.hotkeys;

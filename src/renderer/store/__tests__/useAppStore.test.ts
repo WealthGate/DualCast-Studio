@@ -268,3 +268,50 @@ describe("Preview and Program isolation", () => {
     expect(useAppStore.getState().sources["text-a"]).toBeUndefined();
   });
 });
+
+
+describe("Output controls", () => {
+  it("changes output text mode without destroying staged text", () => {
+    const before = useAppStore.getState();
+    before.setDisplayTextMode("hide");
+    expect(useAppStore.getState().displayTextMode).toBe("hide");
+    expect(useAppStore.getState().sources).toBe(before.sources);
+    expect(useAppStore.getState().settings.lowerThird.slides).toBe(before.settings.lowerThird.slides);
+    before.setDisplayTextMode("show");
+  });
+  it("applies cursor changes to the live snapshot while preserving staged edits", () => {
+    useAppStore.getState().setStudioState(studioState);
+    useAppStore.getState().updateSource("text-a", { captureCursor: "always" });
+    useAppStore.getState().updateSource("text-a", { captureCursor: "never" });
+    expect(useAppStore.getState().programSources["program:text-a"].captureCursor).toBe("never");
+    expect(useAppStore.getState().programSources["program:text-a"].data).toMatchObject(studioState.sources["text-a"].data);
+  });
+});
+
+
+describe("Transition scene swapping", () => {
+  const prepare = (swapPreviewProgram: boolean) => {
+    const state = useAppStore.getState();
+    state.setSettings({ ...state.settings, swapPreviewProgram });
+    state.setStudioState({ ...studioState,
+      scenes: [...studioState.scenes, { id: "scene-b", name: "Next", sourceIds: [] }],
+      previewSceneId: "scene-b", programSceneId: "scene-a" });
+  };
+  it("swaps Preview and Program for TAKE and manual completion", () => {
+    prepare(true);
+    useAppStore.getState().takeToProgram();
+    expect(useAppStore.getState().programSceneId).toBe("scene-b");
+    expect(useAppStore.getState().previewSceneId).toBe("scene-a");
+    useAppStore.getState().setManualBlend(1);
+    useAppStore.getState().completeManualBlend();
+    expect(useAppStore.getState().programSceneId).toBe("scene-a");
+    expect(useAppStore.getState().previewSceneId).toBe("scene-b");
+    expect(useAppStore.getState().manualBlend).toBe(0);
+  });
+  it("keeps Preview when swapping is disabled", () => {
+    prepare(false);
+    useAppStore.getState().applyTransition("cut");
+    expect(useAppStore.getState().previewSceneId).toBe("scene-b");
+    expect(useAppStore.getState().programSceneId).toBe("scene-b");
+  });
+});

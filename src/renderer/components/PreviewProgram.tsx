@@ -1,3 +1,4 @@
+import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { createFrameEncoder } from "../utils/frameEncoder";
@@ -736,6 +737,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const rotation = ((source.rotation ?? 0) * Math.PI) / 180;
     const media = sourceMediaRef.current.get(source.id);
 
+    if (useAppStore.getState().displayTextMode === "logo") return;
     let drawable: CanvasImageSource | null = null;
     if (source.type === "image" && media?.imageEl) {
       drawable = media.imageEl;
@@ -793,7 +795,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       const textX =
         source.data.align === "left" ? -width / 2 + padding : source.data.align === "right" ? width / 2 - padding : 0;
       const startY = -Math.min(lines.length * lineHeight, height - padding * 2) / 2;
-      lines.forEach((line, index) => {
+      if (useAppStore.getState().displayTextMode === "show") lines.forEach((line, index) => {
         const textY = startY + index * lineHeight;
         if (textY + lineHeight <= height / 2) {
           ctx.fillText(line, textX, textY, maxTextWidth);
@@ -875,6 +877,17 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   ) => {
     const config = settings.lowerThird;
     const cue = cueRef.current;
+    const mode = useAppStore.getState().displayTextMode;
+    if (mode === "logo") {
+      const image = lowerThirdImageRef.current ?? bibleImageRef.current;
+      if (image) {
+        const size = Math.min(canvasWidth, canvasHeight) * 0.4;
+        const ratio = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+        const w = image.naturalWidth * ratio, h = image.naturalHeight * ratio;
+        ctx.drawImage(image, (canvasWidth - w) / 2, (canvasHeight - h) / 2, w, h);
+      }
+      return;
+    }
     if (!cue.current && !cue.previous) return;
     const duration = Math.max(100, config.animationDurationMs);
     const progress = Math.min(1, Math.max(0, (now - cue.changedAt) / duration));
@@ -919,7 +932,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       const imagePosition = useBibleBranding ? config.bibleImagePosition : config.imagePosition;
       let textLeft = canvasWidth * 0.055;
       let textRight = canvasWidth * 0.945;
-      if (image) {
+      if (image && mode !== "theme") {
         if (imagePosition === "background") {
           ctx.save();
           ctx.globalAlpha *= 0.25;
@@ -934,6 +947,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         }
       }
 
+      if (mode !== "show") { ctx.restore(); return; }
       const availableWidth = Math.max(100, textRight - textLeft);
       const wordsToLines = (fontSize: number) => {
         const fontStyle = `${config.italic ? "italic " : ""}${config.bold ? "700 " : "400 "}${fontSize}px ${config.fontFamily}`;
@@ -1129,7 +1143,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         drawScene(ctx, previewScene, sources, canvas.width, canvas.height, settings.lowerThird.activeSlideId);
-        if (settings.lowerThird.activeSlideId) {
+        if (settings.lowerThird.activeSlideId || useAppStore.getState().displayTextMode === "logo") {
           drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), previewLowerThirdCueRef);
         }
       }
@@ -1225,7 +1239,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
           syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
         }
       }
-      if (!isCutToBlack && settings.lowerThird.showOnProgram && settings.lowerThird.programSlideId) {
+      if (!isCutToBlack && (useAppStore.getState().displayTextMode === "logo" || (settings.lowerThird.showOnProgram && settings.lowerThird.programSlideId))) {
         drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), programLowerThirdCueRef);
       }
 
@@ -1314,7 +1328,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
           }
         });
       }
-      if (!isCutToBlack && settings.lowerThird.programSlideId) {
+      if (!isCutToBlack && (settings.lowerThird.programSlideId || useAppStore.getState().displayTextMode === "logo")) {
         drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), programLowerThirdCueRef);
       }
       encoder.encode(canvas);
@@ -1490,11 +1504,11 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   };
 
   return (
-    <section className="preview-program">
+    <section className={`preview-program ${settings.hideOutputCursor !== false ? "hide-output-cursor" : ""}`}>
       <div className="pane preview-pane">
         <div className="pane-header">
           <h2 title={`Hold ${settings.trimModifier ?? "Alt"} and drag a source corner to trim. TAKE applies Preview edits to Program.`}>Preview</h2>
-          <span className="tag">{hasPreviewScene ? "Staged" : "No Scene"}</span>
+          <DisplayTextControls /><span className="tag">{hasPreviewScene ? "Staged" : "No Scene"}</span>
         </div>
         <div className="pane-body preview-body" ref={previewContainerRef}>
           <div className="canvas-stage" style={{ width: previewCanvasSize.width, height: previewCanvasSize.height }}>
@@ -1554,7 +1568,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       </div>
       <div className="pane program-pane">
         <div className="pane-header program-header">
-          <h2>Program</h2>
+          <h2>Program</h2><DisplayTextControls />
           <span className={isCutToBlack ? "tag alert" : "tag"}>{isCutToBlack ? "BLACK" : "LIVE"}</span>
         </div>
         <div className="pane-body program-body" ref={programContainerRef}>

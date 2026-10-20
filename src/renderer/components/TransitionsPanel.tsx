@@ -8,6 +8,8 @@ type TransitionsPanelProps = {
 
 const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) => {
   const {
+    settings,
+    updateSettings,
     transitionType,
     transitionDurationMs,
     manualBlend,
@@ -53,6 +55,7 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
         <button onClick={() => applyTransition("crossfade")} disabled={!previewSceneId}>Crossfade</button>
       </div>
       <p className="field-help">Cut, Fade, and Crossfade immediately send Preview to Program. TAKE uses the most recently selected transition.</p>
+      <label><input type="checkbox" checked={settings.swapPreviewProgram !== false} onChange={(event) => updateSettings({ swapPreviewProgram: event.target.checked })} /> Swap Preview and Program after transitions</label>
       <div className="manual-blend-control">
         <div className="manual-blend-heading">
           <strong>Live Preview Blend</strong>
@@ -66,6 +69,12 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
           step={1}
           value={Math.round(manualBlend * 100)}
           disabled={!canBlend || !previewSceneId}
+          onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
+          onPointerUp={() => setManualBlend(0)}
+          onPointerCancel={() => setManualBlend(0)}
+          onLostPointerCapture={() => setManualBlend(0)}
+          onBlur={() => setManualBlend(0)}
+          onKeyUp={() => setManualBlend(0)}
           onInput={(event) => {
             const input = event.currentTarget;
             applyManualBlendInput(
@@ -74,12 +83,13 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
               () => {
                 completeManualBlend();
                 input.value = "0";
-              }
+              },
+              (complete) => complete()
             );
           }}
         />
         <div className="blend-scale"><span>Program</span><span>Preview</span></div>
-        <p>Move slowly to hold any live mixture. At 100%, Preview goes to Program and the control automatically returns to 0%. Program audio stays live until completion.</p>
+        <p>Drag to blend live. Release to return to Program and reset to 0%. Reaching 100% sends Preview to Program.</p>
         <div className="quick-transition-buttons blend-actions">
           <button onClick={() => setManualBlend(0)} disabled={manualBlend === 0}>Reset to Program</button>
           <button onClick={completeManualBlend} disabled={manualBlend === 0 || !previewSceneId}>Complete to Preview</button>

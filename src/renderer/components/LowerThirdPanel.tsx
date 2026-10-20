@@ -1,3 +1,4 @@
+import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LowerThirdAnimation, LowerThirdSlide, SongLibraryEntry } from "../../shared/types";
 import { useAppStore } from "../store/useAppStore";
@@ -296,7 +297,7 @@ const LowerThirdPanel: React.FC = () => {
       }}
     >
       <div className="panel-header">
-        <h2>Lower Third Studio</h2>
+        <h2>Lower Third Studio</h2><DisplayTextControls />
         <span className="tag">{activeSlide ? `Preview ${navigationIndex + 1}/${navigationSlides.length}` : "Preview Clear"}</span>
       </div>
 
