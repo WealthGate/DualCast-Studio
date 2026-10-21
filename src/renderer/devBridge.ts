@@ -89,6 +89,8 @@ export const installDevelopmentBridge = () => {
     onStreamStatus: () => noopUnsubscribe,
     updateProgramState: () => undefined,
     sendProgramFrame: () => undefined,
+    sendProjectionSignal: () => undefined,
+    onProjectionSignal: () => noopUnsubscribe,
     sendLowerThirdFrame: () => undefined,
     sendMultiviewData: () => undefined,
     sendMultiviewAction: () => undefined,

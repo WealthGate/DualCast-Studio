@@ -10,6 +10,8 @@ if (!process.versions.electron) {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/cursorFreeCaptureService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "ffmpeg-static"], outfile: path.join(root, "tmp/capture-verification.cjs") });
+    require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/projectionService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron"], outfile: path.join(root, "tmp/projection-verification.cjs") });
+    require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/browserSourceService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "electron-log"], outfile: path.join(root, "tmp/browser-verification.cjs") });
     const vite = spawn(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5174", "--strictPort"], { cwd: root, env, windowsHide: true, stdio: "ignore" });
     let electron;
     try {
@@ -18,7 +20,7 @@ if (!process.versions.electron) {
         await new Promise(resolve => setTimeout(resolve, 100));
         if (i === 99) throw new Error("Test renderer did not start.");
       }
-      electron = spawn(require("electron"), [__filename], { cwd: root, env, windowsHide: true, stdio: "inherit" });
+      electron = spawn(require("electron"), [__filename, ...process.argv.slice(2)], { cwd: root, env, windowsHide: true, stdio: "inherit" });
       const code = await new Promise(resolve => electron.once("exit", resolve));
       process.exitCode = code ?? 1;
     } finally { vite.kill(); electron?.kill(); }
@@ -37,7 +39,9 @@ if (!process.versions.electron) {
     try {
       await window.loadURL("http://127.0.0.1:5174");
       window.showInactive();
-      const result = await window.webContents.executeJavaScript(`(async () => {
+      let result = {};
+      if (!process.argv.includes("--performance-only")) {
+      result = await window.webContents.executeJavaScript(`(async () => {
         const { useAppStore: store } = await import('/store/useAppStore.ts');
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         await wait(300);
@@ -173,6 +177,24 @@ if (!process.versions.electron) {
       })()`);
       result.scrollingText = await window.webContents.executeJavaScript(`(${require("./verify-scrolling-text.cjs").toString()})(${JSON.stringify("/@fs/" + root.replace(/\\/g, "/") + "/src/shared/scrollingText.ts")})`);
       fs.writeFileSync(path.join(root, "tmp/scrolling-text-verification.png"), (await window.webContents.capturePage()).toPNG());
+      }
+      // Pixel-readback checks can make Chromium migrate a canvas to software.
+      // Benchmark a fresh page, matching normal GPU-backed production rendering.
+      await window.loadURL("http://127.0.0.1:5174");
+      await window.webContents.executeJavaScript(`(async () => {
+        const {useAppStore:store}=await import('/store/useAppStore.ts');
+        const {defaultScrollingText}=await import(${JSON.stringify("/@fs/" + root.replace(/\\/g, "/") + "/src/shared/scrollingText.ts")});
+        const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));await wait(300);
+        const ticker={id:'ticker',name:'Ticker',type:'scrolling-text',enabled:true,audioEnabled:false,rect:{x:0,y:70,width:100,height:15},data:{...defaultScrollingText,text:'Smooth video and scrolling announcements at the selected output frame rate'}};
+        const scene={id:'performance',name:'Output performance',sourceIds:['ticker']};
+        store.setState({isFrozen:false,isCutToBlack:false,transitionType:'cut',manualBlend:0,settings:{...store.getState().settings,networkOutput:{...store.getState().settings.networkOutput,enabled:false}}});
+        store.getState().setStudioState({scenes:[scene],sources:{ticker},groups:[],previewSceneId:scene.id,programSceneId:scene.id});
+        window.__transitionCheck={store,wait};await wait(100);
+      })()`);
+      const performanceFps = process.argv.includes("--fps=60") ? 60 : 30;
+      result.performance = await window.webContents.executeJavaScript(`(${require("./verify-output-performance.cjs").toString()})(${performanceFps})`);
+      if (!process.argv.includes("--performance-only")) result.projectionVideo = await require("./verify-projection-video.cjs")(window, root);
+      if (!process.argv.includes("--performance-only")) result.browserCapture = await require("./verify-browser-capture.cjs")(root);
       if (process.platform === "win32") {
         const capture = require(path.join(root, "tmp/capture-verification.cjs"));
         const { EventEmitter } = require("events");
@@ -183,7 +205,7 @@ if (!process.versions.electron) {
         const source = sources.find(item => item.name === "Meeting capture test");
         if (!source) throw Error("Native test meeting window was not listed.");
         const frames = [];
-        const owner = Object.assign(new EventEmitter(), { id: 9999, isDestroyed: () => false, send: (_channel, frame) => { if (frame.dataUrl) frames.push(frame.dataUrl); } });
+        const owner = Object.assign(new EventEmitter(), { id: 9999, isDestroyed: () => false, send: (_channel, frame) => { if (frame.dataUrl) { frames.push(frame.dataUrl); capture.acknowledgeCursorFreeFrame(9999, frame.id, frame.sequence); } } });
         const id = await capture.startCursorFreeCapture(owner, source.id);
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         for (let i=0;i<100&&!frames.length;i++) await wait(50);

@@ -3,23 +3,28 @@
 export const createFrameDecoder = (draw: (image: HTMLImageElement) => void) => {
   let busy = false;
   let stopped = false;
-  let pending: string | null = null;
-  const decode = (dataUrl: string) => {
-    if (stopped) return;
-    if (busy) { pending = dataUrl; return; }
+  let pending: { dataUrl: string; resolve: () => void } | null = null;
+  let finishActive: (() => void) | null = null;
+  const start = (dataUrl: string, resolve: () => void) => {
+    if (stopped) { resolve(); return; }
+    if (busy) { pending?.resolve(); pending = { dataUrl, resolve }; return; }
     busy = true;
     const image = new Image();
     const finish = () => {
+      resolve();
+      finishActive = null;
       busy = false;
       if (pending && !stopped) {
         const next = pending;
         pending = null;
-        decode(next);
+        start(next.dataUrl, next.resolve);
       }
     };
-    image.onload = () => { if (!stopped) draw(image); finish(); };
+    finishActive = resolve;
+    image.onload = () => { try { if (!stopped) draw(image); } finally { finish(); } };
     image.onerror = finish;
     image.src = dataUrl;
   };
-  return { decode, stop: () => { stopped = true; pending = null; } };
+  const decode = (dataUrl: string) => new Promise<void>(resolve => start(dataUrl, resolve));
+  return { decode, stop: () => { stopped = true; pending?.resolve(); pending = null; finishActive?.(); } };
 };

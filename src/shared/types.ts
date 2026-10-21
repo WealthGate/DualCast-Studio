@@ -339,6 +339,7 @@ export type BrowserFramePayload = {
 };
 
 export type BrowserSourcePayload = {
+  frameRate?: number;
   sourceId: string;
   url: string;
   width: number;
@@ -415,11 +416,19 @@ export type ExportClipResult = {
 };
 
 export type ProgramState = {
+  frameRate?: number;
   sanctuary?: SanctuaryDisplayState;
   programSceneId: string | null;
   isCutToBlack: boolean;
   isFrozen: boolean;
   qualityPreset: QualityPreset;
+};
+
+export type ProjectionSignal = {
+  type: "register" | "ready" | "offer" | "answer" | "candidate" | "closed";
+  peerId?: number;
+  description?: RTCSessionDescriptionInit;
+  candidate?: RTCIceCandidateInit;
 };
 
 export type MultiviewTile = {

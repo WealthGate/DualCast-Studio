@@ -61,12 +61,14 @@ const programPage = `<!doctype html>
     <script>
       const image = document.getElementById("program");
       const refresh = () => {
+        const started = performance.now();
         const next = new Image();
-        next.onload = () => { image.src = next.src; };
+        const schedule = () => setTimeout(refresh, Math.max(0, 1000 / 30 - (performance.now() - started)));
+        next.onload = () => { image.src = next.src; schedule(); };
+        next.onerror = () => setTimeout(refresh, 250);
         next.src = "/program.jpg?t=" + Date.now();
       };
       refresh();
-      setInterval(refresh, 100);
     </script>
   </body>
 </html>`;

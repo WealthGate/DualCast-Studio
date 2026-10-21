@@ -1,26 +1,35 @@
-// Bound encoding work to one frame; slow machines skip frames instead of queuing them.
+// One active encode and one latest canvas reference. Retry immediately when an
+// encode finishes; waiting for the next render tick can halve delivery FPS.
 export const createFrameEncoder = (send: (frame: string) => void, type = "image/jpeg", quality = 0.8) => {
   let busy = false;
   let stopped = false;
-  return {
-    stop: () => { stopped = true; },
-    encode: (canvas: HTMLCanvasElement) => {
-      if (busy || stopped || !canvas.width || !canvas.height) return;
+  let pending: HTMLCanvasElement | null = null;
+  const finish = () => {
+    busy = false;
+    const next = pending;
+    pending = null;
+    if (next && !stopped) encode(next);
+  };
+  const encode = (canvas: HTMLCanvasElement) => {
+      if (stopped || !canvas.width || !canvas.height) return;
+      if (busy) { pending = canvas; return; }
       busy = true;
       try {
-        canvas.toBlob((blob) => {
-          if (!blob || stopped) { busy = false; return; }
+        const read = (blob: Blob | null) => {
+          if (!blob || stopped) { finish(); return; }
           const reader = new FileReader();
           reader.onload = () => {
-            busy = false;
-            if (!stopped && typeof reader.result === "string") send(reader.result);
+            try { if (!stopped && typeof reader.result === "string") send(reader.result); }
+            finally { finish(); }
           };
-          reader.onerror = () => { busy = false; };
+          reader.onerror = finish;
           reader.readAsDataURL(blob);
-        }, type, quality);
-      } catch {
-        busy = false;
-      }
-    }
+        };
+        canvas.toBlob(read, type, quality);
+      } catch { finish(); }
+  };
+  return {
+    stop: () => { stopped = true; pending = null; },
+    encode
   };
 };

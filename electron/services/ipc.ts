@@ -4,7 +4,8 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { IpcChannels } from "../../src/shared/ipc";
 import { listDisplays, listProjectionDisplays } from "./displayService";
-import { startCursorFreeCapture, stopCursorFreeCapture } from "./cursorFreeCaptureService";
+import { acknowledgeCursorFreeFrame, startCursorFreeCapture, stopCursorFreeCapture } from "./cursorFreeCaptureService";
+import { acknowledgeProjectionFrame, routeProjectionSignal } from "./projectionService";
 import { getSettings, updateSettings } from "./settingsService";
 import {
   appendRecordingChunk,
@@ -82,7 +83,10 @@ import {
 } from "./streamingCredentialService";
 
 export const registerIpcHandlers = () => {
-  ipcMain.handle(IpcChannels.startCursorFreeCapture, (event, sourceId: string) => startCursorFreeCapture(event.sender, sourceId));
+  ipcMain.handle(IpcChannels.startCursorFreeCapture, (event, sourceId: string, fps?: number) => startCursorFreeCapture(event.sender, sourceId, fps));
+  ipcMain.on(IpcChannels.cursorFreeFramePresented, (event, id: string, sequence: number) => {
+    if (typeof id === "string" && Number.isSafeInteger(sequence)) acknowledgeCursorFreeFrame(event.sender.id, id, sequence);
+  });
   ipcMain.handle(IpcChannels.stopCursorFreeCapture, (event, id: string) => stopCursorFreeCapture(id, event.sender.id));
   ipcMain.handle(IpcChannels.getProgramState, () => getProgramState());
   setStreamStatusPublisher((payload) => {
@@ -294,6 +298,10 @@ export const registerIpcHandlers = () => {
       updateNetworkProgramFrame(dataUrl);
     }
   });
+  ipcMain.on(IpcChannels.projectionFramePresented, (event, sequence: number) => {
+    if (Number.isSafeInteger(sequence)) acknowledgeProjectionFrame(event.sender.id, sequence);
+  });
+  ipcMain.on(IpcChannels.projectionSignal, (event, signal) => routeProjectionSignal(event.sender, signal));
 
   ipcMain.on(IpcChannels.lowerThirdFrame, (_event, dataUrl: string) => {
     if (typeof dataUrl === "string" && dataUrl.length > 0) {

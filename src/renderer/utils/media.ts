@@ -2,10 +2,11 @@ import { getCursorFreeStream } from "./cursorFreeCapture";
 
 export const getDisplayStream = async (
   sourceId: string,
-  includeAudio: boolean
+  includeAudio: boolean,
+  fps = 30
 ) => {
   const captureCursor = "never";
-  const cursorFreeStream = await getCursorFreeStream(sourceId);
+  const cursorFreeStream = await getCursorFreeStream(sourceId, fps);
   if (cursorFreeStream && !includeAudio) return cursorFreeStream;
   const constraints = {
     audio: includeAudio
@@ -21,7 +22,8 @@ export const getDisplayStream = async (
         chromeMediaSource: "desktop",
         chromeMediaSourceId: sourceId
       },
-      cursor: captureCursor
+      cursor: captureCursor,
+      frameRate: { ideal: fps, max: fps }
     }
   } as MediaStreamConstraints;
 

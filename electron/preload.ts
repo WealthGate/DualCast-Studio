@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { ProjectionSignal } from "../src/shared/types";
 import { IpcChannels } from "../src/shared/ipc";
 import {
   SaveRecordingPayload,
@@ -45,10 +46,14 @@ import {
 } from "../src/shared/types";
 
 const api = {
-  startCursorFreeCapture: (sourceId: string): Promise<string | null> => ipcRenderer.invoke(IpcChannels.startCursorFreeCapture, sourceId),
+  startCursorFreeCapture: (sourceId: string, fps?: number): Promise<string | null> => ipcRenderer.invoke(IpcChannels.startCursorFreeCapture, sourceId, fps),
   stopCursorFreeCapture: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.stopCursorFreeCapture, id),
-  onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null; error?: string }) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, frame: { id: string; dataUrl: string | null; error?: string }) => callback(frame);
+  onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null; error?: string }) => void | Promise<void>) => {
+    const listener = (_event: Electron.IpcRendererEvent, frame: { id: string; dataUrl: string | null; error?: string; sequence?: number }) => {
+      void Promise.resolve().then(() => callback(frame)).finally(() => {
+        if (frame.sequence !== undefined) ipcRenderer.send(IpcChannels.cursorFreeFramePresented, frame.id, frame.sequence);
+      }).catch(() => undefined);
+    };
     ipcRenderer.on(IpcChannels.cursorFreeFrame, listener);
     return () => ipcRenderer.removeListener(IpcChannels.cursorFreeFrame, listener);
   },
@@ -138,6 +143,12 @@ const api = {
     ipcRenderer.invoke(IpcChannels.disconnectStreamingAccount, provider),
   downloadUserGuide: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.downloadUserGuide),
   updateProgramState: (state: ProgramState) => ipcRenderer.send(IpcChannels.updateProgramState, state),
+  sendProjectionSignal: (signal: ProjectionSignal) => ipcRenderer.send(IpcChannels.projectionSignal, signal),
+  onProjectionSignal: (handler: (signal: ProjectionSignal) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, signal: ProjectionSignal) => handler(signal);
+    ipcRenderer.on(IpcChannels.projectionSignal, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.projectionSignal, listener);
+  },
   sendProgramFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.programFrame, dataUrl),
   sendLowerThirdFrame: (dataUrl: string) => ipcRenderer.send(IpcChannels.lowerThirdFrame, dataUrl),
   sendMultiviewData: (payload: MultiviewPayload) => ipcRenderer.send(IpcChannels.multiviewData, payload),
@@ -147,13 +158,21 @@ const api = {
     ipcRenderer.on(IpcChannels.streamStatus, listener);
     return () => ipcRenderer.removeListener(IpcChannels.streamStatus, listener);
   },
-  onProgramFrame: (handler: (dataUrl: string) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: string) => handler(payload);
+  onProgramFrame: (handler: (dataUrl: string) => void | Promise<void>) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: string | { dataUrl: string; sequence: number }) => {
+      void Promise.resolve().then(() => handler(typeof payload === "string" ? payload : payload.dataUrl)).finally(() => {
+        if (typeof payload !== "string") ipcRenderer.send(IpcChannels.projectionFramePresented, payload.sequence);
+      }).catch(() => undefined);
+    };
     ipcRenderer.on(IpcChannels.programFrame, listener);
     return () => ipcRenderer.removeListener(IpcChannels.programFrame, listener);
   },
-  onLowerThirdFrame: (handler: (dataUrl: string) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: string) => handler(payload);
+  onLowerThirdFrame: (handler: (dataUrl: string) => void | Promise<void>) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: string | { dataUrl: string; sequence: number }) => {
+      void Promise.resolve().then(() => handler(typeof payload === "string" ? payload : payload.dataUrl)).finally(() => {
+        if (typeof payload !== "string") ipcRenderer.send(IpcChannels.projectionFramePresented, payload.sequence);
+      }).catch(() => undefined);
+    };
     ipcRenderer.on(IpcChannels.lowerThirdFrame, listener);
     return () => ipcRenderer.removeListener(IpcChannels.lowerThirdFrame, listener);
   },

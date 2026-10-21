@@ -37,9 +37,11 @@ describe("stream shutdown", () => {
     setStreamStatusPublisher(publish);
     expect(await startStreaming(payload)).toEqual({ ok: true });
     const pending = sendStreamChunk(new Uint8Array([1, 2, 3]));
-    expect(await stopStreaming()).toEqual({ ok: true });
+    await Promise.resolve();
+    const stopping = stopStreaming();
     child.failWrite();
     await pending;
+    expect(await stopping).toEqual({ ok: true });
     // Let Writable emit its error event after invoking the failed write callback.
     await vi.runAllTicks();
     expect(publish.mock.lastCall?.[0].status).toBe("idle");
@@ -81,7 +83,7 @@ describe("stream shutdown", () => {
     mocks.spawn.mockReturnValue(child.process);
     await startStreaming(payload);
     const pending = sendStreamChunk(new Uint8Array([1, 2, 3]));
-    vi.advanceTimersByTime(5000);
+    await vi.advanceTimersByTimeAsync(1500);
     await pending;
     expect(child.process.stdin.destroyed).toBe(true);
     expect(child.process.kill).toHaveBeenCalledWith("SIGINT");

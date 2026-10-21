@@ -7,7 +7,7 @@ vi.mock("electron", () => ({ desktopCapturer: { getSources: mocks.getSources }, 
 vi.mock("child_process", () => ({ spawn: mocks.spawn }));
 vi.mock("../ffmpegPathService", () => ({ resolveFfmpegExecutablePath: () => "ffmpeg.exe" }));
 vi.mock("../windowsCapturePathService", () => ({ getWindowsCaptureExecutable: () => "window-capture.exe" }));
-import { startCursorFreeCapture, stopCursorFreeCapture, stopAllCursorFreeCaptures } from "../cursorFreeCaptureService";
+import { acknowledgeCursorFreeFrame, startCursorFreeCapture, stopCursorFreeCapture, stopAllCursorFreeCaptures } from "../cursorFreeCaptureService";
 import type { WebContents } from "electron";
 
 describe("cursor-free capture", () => {
@@ -42,12 +42,16 @@ describe("cursor-free capture", () => {
     await expect(startCursorFreeCapture(owner, "window:99:0")).rejects.toThrow("unavailable");
     expect(mocks.spawn).not.toHaveBeenCalled();
   });
+  it("uses the requested 60fps capture cadence while keeping the cursor excluded", async () => {
+    await startCursorFreeCapture(owner, "window:42:0", 60);
+    expect(mocks.spawn.mock.calls[0][1].join(" ")).toContain("capture_cursor=0:capture_border=0:display_border=0:max_framerate=60");
+  });
   it("assembles split JPEG frames and restricts stopping to the owning renderer", async () => {
     const id = await startCursorFreeCapture(owner, "screen:0:0");
     child.stdout.write(Buffer.from([0xff, 0xd8, 1, 0xff]));
     expect(owner.send).not.toHaveBeenCalled();
     child.stdout.write(Buffer.from([0xd9]));
-    expect(owner.send).toHaveBeenCalledWith(expect.any(String), { id, dataUrl: "data:image/jpeg;base64,/9gB/9k=" });
+    expect(owner.send).toHaveBeenCalledWith(expect.any(String), { id, dataUrl: "data:image/jpeg;base64,/9gB/9k=", sequence: 1 });
     stopCursorFreeCapture(id!, 8);
     expect(child.kill).not.toHaveBeenCalled();
     stopCursorFreeCapture(id!, 7);
@@ -57,5 +61,15 @@ describe("cursor-free capture", () => {
     await startCursorFreeCapture(owner, "screen:0:0");
     owner.emit("destroyed");
     expect(child.kill).toHaveBeenCalledOnce();
+  });
+  it("keeps only the latest native frame while the owning renderer decodes", async () => {
+    const id = await startCursorFreeCapture(owner, "screen:0:0");
+    for (const value of [1, 2, 3]) child.stdout.write(Buffer.from([0xff, 0xd8, value, 0xff, 0xd9]));
+    expect(owner.send).toHaveBeenCalledTimes(1);
+    acknowledgeCursorFreeFrame(8, id!, 1);
+    expect(owner.send).toHaveBeenCalledTimes(1);
+    acknowledgeCursorFreeFrame(7, id!, 1);
+    expect(owner.send).toHaveBeenCalledTimes(2);
+    expect(owner.send).toHaveBeenLastCalledWith(expect.any(String), { id, sequence: 2, dataUrl: `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 3, 0xff, 0xd9]).toString("base64")}` });
   });
 });

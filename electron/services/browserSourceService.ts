@@ -5,17 +5,14 @@ import log from "./logger";
 
 type BrowserSourceEntry = {
   window: BrowserWindow;
-  timer: NodeJS.Timeout | null;
   url: string;
-  capturing: boolean;
 };
 
 const sources = new Map<string, BrowserSourceEntry>();
-const captureFps = 10;
 
 const broadcastFrame = (payload: BrowserFramePayload) => {
   BrowserWindow.getAllWindows().forEach((window) => {
-    if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+    if (!window.isDestroyed() && !window.webContents.isDestroyed() && !Array.from(sources.values()).some(entry => entry.window === window) && !/[?&](projection|multiview)=/.test(window.webContents.getURL())) {
       window.webContents.send(IpcChannels.browserFrame, payload);
     }
   });
@@ -39,37 +36,11 @@ const normalizePayload = (payload: BrowserSourcePayload): BrowserSourcePayload |
       sourceId: payload.sourceId,
       url: url.toString(),
       width: Math.max(1, Math.min(4096, Math.round(width))),
-      height: Math.max(1, Math.min(4096, Math.round(height)))
+      height: Math.max(1, Math.min(4096, Math.round(height))),
+      frameRate: Number.isFinite(payload.frameRate) ? Math.max(1, Math.min(60, Math.round(payload.frameRate!))) : 30
     };
   } catch {
     return null;
-  }
-};
-
-const startCapture = (sourceId: string, entry: BrowserSourceEntry) => {
-  if (entry.timer) {
-    return;
-  }
-  entry.timer = setInterval(async () => {
-    if (entry.window.isDestroyed() || entry.capturing) {
-      return;
-    }
-    entry.capturing = true;
-    try {
-      const image = await entry.window.webContents.capturePage();
-      broadcastFrame({ sourceId, dataUrl: image.toDataURL() });
-    } catch (error) {
-      log.warn("Browser source capture failed.", error);
-    } finally {
-      entry.capturing = false;
-    }
-  }, 1000 / captureFps);
-};
-
-const stopCapture = (entry: BrowserSourceEntry) => {
-  if (entry.timer) {
-    clearInterval(entry.timer);
-    entry.timer = null;
   }
 };
 
@@ -88,7 +59,10 @@ const createWindow = (payload: BrowserSourcePayload) => {
     }
   });
 
-  window.webContents.setFrameRate(30);
+  window.webContents.setFrameRate(payload.frameRate ?? 30);
+  window.webContents.on("paint", (_event, _rect, image) => {
+    if (!window.isDestroyed()) broadcastFrame({ sourceId: payload.sourceId, dataUrl: `data:image/jpeg;base64,${image.toJPEG(85).toString("base64")}` });
+  });
   window.webContents.setAudioMuted(true);
   window.webContents.loadURL(payload.url).catch((error) => {
     log.warn("Browser source failed to load URL.", error);
@@ -111,17 +85,15 @@ export const createBrowserSource = async (payload: BrowserSourcePayload) => {
     existing.window.webContents.loadURL(payload.url).catch((error) => {
       log.warn("Browser source failed to reload URL.", error);
     });
-    startCapture(payload.sourceId, existing);
+    existing.window.webContents.setFrameRate(payload.frameRate ?? 30);
     return true;
   }
 
   const window = createWindow(payload);
-  const entry: BrowserSourceEntry = { window, timer: null, url: payload.url, capturing: false };
+  const entry: BrowserSourceEntry = { window, url: payload.url };
   sources.set(payload.sourceId, entry);
-  startCapture(payload.sourceId, entry);
 
   window.on("closed", () => {
-    stopCapture(entry);
     sources.delete(payload.sourceId);
   });
 
@@ -147,7 +119,7 @@ export const updateBrowserSource = async (payload: BrowserSourcePayload) => {
     });
   }
 
-  startCapture(payload.sourceId, entry);
+  entry.window.webContents.setFrameRate(payload.frameRate ?? 30);
   return true;
 };
 
@@ -156,7 +128,6 @@ export const destroyBrowserSource = async (payload: { sourceId: string }) => {
   if (!entry) {
     return false;
   }
-  stopCapture(entry);
   if (!entry.window.isDestroyed()) {
     entry.window.destroy();
   }

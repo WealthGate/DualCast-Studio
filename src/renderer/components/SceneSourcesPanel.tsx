@@ -498,6 +498,7 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
         <div className="field-help" aria-live="polite">Sources for {activeScene?.name ?? "selected scene"}</div>
         <div className="row-actions">
           <RowAction icon="+" label="Add Source" disabled={!activeScene || activeSceneLocked} onClick={() => setToolOverlay("add")} />
+          <button className="btn btn-outline btn-compact" disabled={!activeScene || activeSceneLocked} onClick={() => { setSourceType("scrolling-text"); setToolOverlay("add"); }}>Add Scrolling Text</button>
           <RowAction icon="▤" label="Manage Groups" onClick={() => setToolOverlay("groups")} />
         </div>
         {sceneSources.length === 0 ? <div className="empty-hint">No sources in {activeScene?.name ?? "this scene"}.</div> : null}

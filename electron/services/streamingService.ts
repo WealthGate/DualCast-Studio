@@ -26,10 +26,12 @@ import {
 } from "../../src/shared/types";
 import { buildRecoverableRtmpOutputArgs } from "../../src/shared/streamingOutputs";
 import { isValidRtmpUrl } from "../../src/shared/streamingValidation";
+import { createMediaInputQueue } from "./mediaInputQueue";
 
 type StatusPublisher = (payload: StreamStatusPayload) => void;
 
 type DestinationRuntime = {
+  inputQueue?: ReturnType<typeof createMediaInputQueue>;
   destination: StreamDestinationInput;
   process: ChildProcessByStdio<Writable, null, Readable> | null;
   status: StreamingStatus;
@@ -185,7 +187,9 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     "-flags",
     "low_delay",
     "-max_delay",
-    "0"
+    "0",
+    "-probesize", "262144",
+    "-analyzeduration", "500000"
   ];
 
   if (encoder === "vaapi" && vaapiDevice) {
@@ -330,6 +334,24 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     windowsHide: true
   });
   runtime.process = process;
+  runtime.inputQueue?.stop();
+  runtime.inputQueue = createMediaInputQueue(async chunk => {
+    if (runtime.process !== process) return;
+    if (runtime.needsHeader && cachedHeader) {
+      await writeToInput(process.stdin, cachedHeader);
+      runtime.needsHeader = false;
+      if (chunk.equals(cachedHeader)) return;
+    }
+    if (runtime.process === process) await writeToInput(process.stdin, chunk);
+  }, error => {
+    if (stopRequested || runtime.process !== process) return;
+    runtime.lastError = error.message;
+    runtime.status = "error";
+    process.stdin.destroy();
+    process.kill("SIGINT");
+    writeStreamLog(runtime.destination.name, error.message);
+    publishAggregateStatus();
+  });
   // A failed write also emits an asynchronous stream error, even when the
   // write callback handles it. Keep this listener through process shutdown.
   process.stdin.on("error", (error: Error) => {
@@ -519,7 +541,7 @@ const writeToInput = (input: Writable, data: Buffer) => new Promise<void>((resol
     const error = new Error("Stream encoder input stalled. Lower streaming quality or reduce destinations and restart.");
     input.destroy(error);
     reject(error);
-  }, 5000);
+  }, 1500);
   timeout.unref();
   try {
     input.write(data, (error) => {
@@ -540,31 +562,10 @@ export const sendStreamChunk = async (payload: Uint8Array) => {
   const chunk = Buffer.from(payload);
   cachedHeader = cachedHeader ?? chunk;
 
-  await Promise.all(Array.from(runtimes.values()).map(async (runtime) => {
-    const process = runtime.process;
-    const stdin = process?.stdin;
-    if (!stdin?.writable || stdin.destroyed || stdin.writableEnded) {
-      return;
-    }
-    try {
-      if (runtime.needsHeader && cachedHeader) {
-        await writeToInput(stdin, cachedHeader);
-        runtime.needsHeader = false;
-        if (chunk.equals(cachedHeader)) {
-          return;
-        }
-      }
-      if (stopRequested || runtime.process !== process) return;
-      await writeToInput(stdin, chunk);
-    } catch (error) {
-      if (stopRequested || runtime.process !== process) return;
-      runtime.lastError = (error as Error).message;
-      runtime.status = "error";
-      process?.kill("SIGINT");
-      writeStreamLog(runtime.destination.name, `stdin write failed: ${runtime.lastError}`);
-      publishAggregateStatus();
-    }
-  }));
+  runtimes.forEach(runtime => {
+    const input = runtime.process?.stdin;
+    if (input?.writable && !input.destroyed && !input.writableEnded) runtime.inputQueue?.enqueue(chunk);
+  });
 };
 
 export const stopStreaming = async (): Promise<StreamStopResult> => {
@@ -573,7 +574,9 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
   }
 
   stopRequested = true;
+  await Promise.all(Array.from(runtimes.values()).map(runtime => runtime.inputQueue?.drain()));
   runtimes.forEach((runtime) => {
+    runtime.inputQueue?.stop();
     if (runtime.reconnectTimer) {
       clearTimeout(runtime.reconnectTimer);
       runtime.reconnectTimer = null;
@@ -612,6 +615,7 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
 export const forceStopStreaming = () => {
   stopRequested = true;
   runtimes.forEach((runtime) => {
+    runtime.inputQueue?.stop();
     if (runtime.reconnectTimer) clearTimeout(runtime.reconnectTimer);
     runtime.reconnectTimer = null;
     const process = runtime.process;

@@ -1,5 +1,5 @@
 import { RefObject, useEffect, useLayoutEffect, useRef } from "react";
-import { createFrameCadence } from "../utils/frameCadence";
+import { publishCanvasFrame, requestedCanvasFrameRate } from "../utils/canvasFrames";
 
 export const resizeCanvas = (canvas: HTMLCanvasElement, width: number, height: number) => {
   // Assigning even the SAME dimensions clears the backing bitmap and resets
@@ -21,15 +21,26 @@ export const useCanvasRenderer = (
     resizeCanvas(canvas, width, height);
     const context = canvas.getContext("2d");
     if (!context) return;
-    let frame = 0;
-    const shouldDraw = createFrameCadence(fps);
-    const render = (now: number) => {
-      if (!frozen && shouldDraw(now)) {
-        drawRef.current(context, now);
+    let timer = 0;
+    let activeFps = fps;
+    let nextAt = performance.now();
+    const render = () => {
+      const now = performance.now();
+      const requiredFps = Math.max(fps, requestedCanvasFrameRate(canvas));
+      if (requiredFps !== activeFps) { activeFps = requiredFps; nextAt = now; }
+      const interval = 1000 / Math.max(1, activeFps);
+      try {
+        if (now + 0.5 >= nextAt) {
+          nextAt += interval * (Math.floor(Math.max(0, now - nextAt) / interval) + 1);
+          if (!frozen) { drawRef.current(context, now); publishCanvasFrame(canvas, now); }
+        }
+      } finally {
+        // Program must keep its clock when the operator's monitor refreshes
+        // more slowly than the sanctuary display or requested stream FPS.
+        timer = window.setTimeout(render, Math.max(1, nextAt - performance.now()));
       }
-      frame = requestAnimationFrame(render);
     };
-    frame = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(frame);
+    timer = window.setTimeout(render, 0);
+    return () => window.clearTimeout(timer);
   }, [canvasRef, enabled, fps, frozen, height, width]);
 };

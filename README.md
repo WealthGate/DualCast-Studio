@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.25**.
+Current release: **v0.6.26**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -321,4 +321,4 @@ In **Sanctuary Displays**, choose **Mirror Program** to send the Program picture
 
 ## Scrolling text
 
-Add a **Scrolling Text / Ticker** source for customizable announcements with four directions, speed, fonts, colors, background images, positioning, and an optional fixed logo on either side. Edit in Preview, then TAKE to Program. Scene selection shows the associated sources in both Studio Mode and Program Focus. See the [user guide](docs/OpenChurch-Broadcast-Studio-User-Guide.md#scrolling-messages-and-side-logos).
+Click **Add Scrolling Text** directly in the Sources panel, or add a **Scrolling Text / Ticker** source from Add Source, for customizable announcements with four directions, speed, fonts, colors, background images, positioning, and an optional fixed logo on either side. Edit in Preview, then TAKE to Program. Scene selection shows the associated sources in both Studio Mode and Program Focus. See the [user guide](docs/OpenChurch-Broadcast-Studio-User-Guide.md#scrolling-messages-and-side-logos).

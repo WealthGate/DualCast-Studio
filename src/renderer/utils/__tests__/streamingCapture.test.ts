@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStreamingCapture, streamingCaptureSize } from "../streamingCapture";
+import { publishCanvasFrame, requestedCanvasFrameRate } from "../canvasFrames";
 
 describe("streaming capture", () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -13,22 +14,28 @@ describe("streaming capture", () => {
 
   it("caps draw work at stream FPS and releases capture when stopped", () => {
     vi.useFakeTimers();
-    vi.stubGlobal("window", { setInterval, clearInterval });
     const drawImage = vi.fn();
     const stop = vi.fn();
-    const stream = { getTracks: () => [{ stop }] };
+    const requestFrame = vi.fn();
+    const track = { stop, requestFrame };
+    const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
     const canvas = { width: 0, height: 0, getContext: () => ({ drawImage }), captureStream: vi.fn(() => stream) };
     vi.stubGlobal("document", { createElement: () => canvas });
-    const capture = createStreamingCapture({ width: 2560, height: 1440 } as HTMLCanvasElement, "low", 30);
+    const source = { width: 2560, height: 1440 } as HTMLCanvasElement;
+    const capture = createStreamingCapture(source, "low", 30);
     expect(canvas).toMatchObject({ width: 1280, height: 720 });
-    expect(canvas.captureStream).toHaveBeenCalledWith(30);
-    vi.advanceTimersByTime(1000);
+    expect(canvas.captureStream).toHaveBeenCalledWith(0);
+    expect(requestedCanvasFrameRate(source)).toBe(30);
+    const start = performance.now();
+    for (let i = 1; i <= 60; i++) publishCanvasFrame(source, start + i * 1000 / 60);
     expect(drawImage.mock.calls.length).toBeGreaterThanOrEqual(30);
     expect(drawImage.mock.calls.length).toBeLessThanOrEqual(32);
     capture.stop();
     const count = drawImage.mock.calls.length;
-    vi.advanceTimersByTime(1000);
+    expect(requestedCanvasFrameRate(source)).toBe(0);
+    publishCanvasFrame(source, start + 2000);
     expect(drawImage).toHaveBeenCalledTimes(count);
     expect(stop).toHaveBeenCalledOnce();
+    expect(requestFrame).toHaveBeenCalledTimes(count);
   });
 });

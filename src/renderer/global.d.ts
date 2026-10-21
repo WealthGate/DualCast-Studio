@@ -1,4 +1,5 @@
 import {
+  ProjectionSignal,
   DisplaySource,
   ProjectionDisplay,
   SaveRecordingPayload,
@@ -45,9 +46,9 @@ import {
 declare global {
   interface Window {
     dualcast: {
-      startCursorFreeCapture: (sourceId: string) => Promise<string | null>;
+      startCursorFreeCapture: (sourceId: string, fps?: number) => Promise<string | null>;
       stopCursorFreeCapture: (id: string) => Promise<void>;
-      onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null; error?: string }) => void) => () => void;
+      onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null; error?: string }) => void | Promise<void>) => () => void;
       getProgramState: () => Promise<ProgramState | null>;
       listDisplays: () => Promise<DisplaySource[]>;
       listProjectionDisplays: () => Promise<ProjectionDisplay[]>;
@@ -108,13 +109,15 @@ declare global {
       downloadUserGuide: () => Promise<string | null>;
       onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => () => void;
       updateProgramState: (state: ProgramState) => void;
+      sendProjectionSignal: (signal: ProjectionSignal) => void;
+      onProjectionSignal: (handler: (signal: ProjectionSignal) => void) => () => void;
       sendProgramFrame: (dataUrl: string) => void;
       sendLowerThirdFrame: (dataUrl: string) => void;
       sendMultiviewData: (payload: MultiviewPayload) => void;
       sendMultiviewAction: (action: MultiviewAction) => void;
       onBrowserFrame: (handler: (payload: BrowserFramePayload) => void) => () => void;
-      onProgramFrame: (handler: (dataUrl: string) => void) => () => void;
-      onLowerThirdFrame: (handler: (dataUrl: string) => void) => () => void;
+      onProgramFrame: (handler: (dataUrl: string) => void | Promise<void>) => () => void;
+      onLowerThirdFrame: (handler: (dataUrl: string) => void | Promise<void>) => () => void;
       onProgramState: (handler: (state: ProgramState) => void) => () => void;
       onProjectionOpened: (handler: () => void) => () => void;
       onProjectionDisplaysChanged: (handler: () => void) => () => void;

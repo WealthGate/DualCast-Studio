@@ -204,7 +204,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
           // Stop with a useful error instead of accumulating minutes of delay.
           pendingBytes += event.data.size;
           pendingChunks += 1;
-          if (pendingBytes > 16 * 1024 * 1024 || pendingChunks > 32) {
+          if (pendingBytes > 4 * 1024 * 1024 || pendingChunks > 8) {
             deliveryFailed = true;
             const message = "Streaming cannot keep up. Choose a lower streaming quality or fewer destinations, then restart the stream.";
             setLastError(message);

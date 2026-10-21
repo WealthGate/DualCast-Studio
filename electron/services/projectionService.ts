@@ -1,11 +1,31 @@
 import { app, BrowserWindow, screen } from "electron";
 import path from "path";
-import { ProgramState } from "../../src/shared/types";
+import { ProgramState, ProjectionSignal } from "../../src/shared/types";
 import { IpcChannels } from "../../src/shared/ipc";
+import { createLatestFrameRelay } from "./latestFrameRelay";
 
 const programWindows = new Map<string, BrowserWindow>();
 const lowerThirdWindows = new Map<string, BrowserWindow>();
 let lastProgramState: ProgramState | null = null;
+const relays = new Map<number, ReturnType<typeof createLatestFrameRelay>>();
+let videoProducer: Electron.WebContents | null = null;
+export const routeProjectionSignal = (sender: Electron.WebContents, signal: ProjectionSignal) => {
+  if (!signal || typeof signal !== "object") return;
+  const outputs = Array.from(programWindows.values()).filter(window => !window.isDestroyed());
+  const output = outputs.find(window => window.webContents.id === sender.id);
+  if (signal.type === "register" && !output) {
+    const window = BrowserWindow.fromWebContents(sender);
+    if (!window || isOutputWindow(window) || /[?&](multiview|projection)=/.test(sender.getURL())) return;
+    videoProducer = sender;
+    outputs.forEach(window => sender.send(IpcChannels.projectionSignal, { type: "ready", peerId: window.webContents.id }));
+  } else if (sender === videoProducer) {
+    const target = outputs.find(window => window.webContents.id === signal.peerId);
+    if (target && ["offer", "candidate"].includes(signal.type)) target.webContents.send(IpcChannels.projectionSignal, signal);
+  } else if (output && videoProducer && !videoProducer.isDestroyed() && ["ready", "answer", "candidate", "closed"].includes(signal.type)) {
+    videoProducer.send(IpcChannels.projectionSignal, { ...signal, peerId: sender.id });
+  }
+};
+export const acknowledgeProjectionFrame = (senderId: number, sequence: number) => relays.get(senderId)?.acknowledge(sequence);
 export const hasProjectionWindows = () =>
   [...programWindows.values(), ...lowerThirdWindows.values()].some((window) => !window.isDestroyed());
 export const getProgramState = () => lastProgramState;
@@ -68,10 +88,16 @@ const createOutputWindow = async (
   });
 
   collection.set(displayId, outputWindow);
+  relays.set(outputWindow.webContents.id, createLatestFrameRelay(payload => {
+    if (!outputWindow.isDestroyed()) outputWindow.webContents.send(mode === "program" ? IpcChannels.programFrame : IpcChannels.lowerThirdFrame, payload);
+  }));
+  const contentsId = outputWindow.webContents.id;
   outputWindow.setBounds(getDisplayBounds(displayId));
 
   outputWindow.once("ready-to-show", () => outputWindow.show());
   outputWindow.on("closed", () => {
+    if (mode === "program" && videoProducer && !videoProducer.isDestroyed()) videoProducer.send(IpcChannels.projectionSignal, { type: "closed", peerId: contentsId });
+    relays.delete(contentsId);
     collection.delete(displayId);
     if (collection.size === 0) {
       notifyMainWindows(mode === "program" ? IpcChannels.projectionClosed : IpcChannels.lowerThirdClosed);
@@ -151,7 +177,7 @@ export const setProgramState = (state: ProgramState) => {
 export const forwardProgramFrame = (dataUrl: string) => {
   programWindows.forEach((window) => {
     if (!window.isDestroyed()) {
-      window.webContents.send(IpcChannels.programFrame, dataUrl);
+      if (lastProgramState?.sanctuary?.settings.mode !== "independent") relays.get(window.webContents.id)?.offer(dataUrl);
     }
   });
 };
@@ -159,7 +185,7 @@ export const forwardProgramFrame = (dataUrl: string) => {
 export const forwardLowerThirdFrame = (dataUrl: string) => {
   lowerThirdWindows.forEach((window) => {
     if (!window.isDestroyed()) {
-      window.webContents.send(IpcChannels.lowerThirdFrame, dataUrl);
+      relays.get(window.webContents.id)?.offer(dataUrl);
     }
   });
 };

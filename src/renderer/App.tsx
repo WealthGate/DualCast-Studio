@@ -130,13 +130,14 @@ const App: React.FC = () => {
 
   useEffect(() => {
     window.dualcast.updateProgramState({
+      frameRate: settings.frameRate,
       programSceneId,
       isCutToBlack,
       isFrozen,
       qualityPreset: settings.qualityPreset,
       sanctuary: getSanctuaryDisplayState(useAppStore.getState())
     });
-  }, [programSceneId, programSceneSnapshot, programSources, displayTextMode, isLowerThirdHidden, isCutToBlack, isFrozen, settings.qualityPreset, settings.sanctuaryDisplay, settings.lowerThird]);
+  }, [programSceneId, programSceneSnapshot, programSources, displayTextMode, isLowerThirdHidden, isCutToBlack, isFrozen, settings.qualityPreset, settings.frameRate, settings.sanctuaryDisplay, settings.lowerThird]);
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onHotkey((action) => {

@@ -713,7 +713,7 @@ Complete this checklist before every service.
 
 ## Scrolling messages and side logos
 
-Select a scene, open **Sources → Add Source**, choose **Scrolling Text / Ticker**, and enter your message. Its Properties open after adding it. Clicking a scene shows that scene's sources in both Studio Mode and Program Focus.
+Select a scene and click **Add Scrolling Text** in Sources. Alternatively, open **Sources → Add Source** and choose **Scrolling Text / Ticker**. Enter your message and add the source; its Properties open automatically. To edit it later, click the source's pencil button. Clicking a scene shows that scene's sources in both Studio Mode and Program Focus.
 
 Use the top/bottom banner or left/right panel presets, drag and resize in Preview, or enter X/Y/W/H for precise placement. Properties include four scroll directions, speed, font, size, bold/italic, text color, background color and opacity, a background image with fill/fit/stretch, padding, repeat gap, and continuous or single-pass scrolling. Font size and speed use a 1920-pixel-wide output as their reference and scale with output resolution.
 

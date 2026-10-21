@@ -64,5 +64,12 @@ module.exports = async function verifyScrollingText(sharedModuleUrl) {
   await selectScene('Ticker scene'); assert(JSON.stringify(names()) === JSON.stringify(['Scrolling welcome']), 'Program Focus ticker source missing');
   document.querySelector('.control-studio').click(); await wait(100);
   document.querySelector('.source-row button[aria-label="Edit Source"]').click(); await wait(100);
+  document.querySelector('.selected-source-panel button').click(); await wait(50);
+  const tickerShortcut = [...document.querySelectorAll('.sources-list button')].find(button => button.textContent === 'Add Scrolling Text');
+  assert(tickerShortcut, 'Scrolling text shortcut is missing');
+  tickerShortcut.click(); await wait(50);
+  assert(document.querySelector('#sourceType').value === 'scrolling-text', 'Scrolling text shortcut did not open ticker creation');
+  document.querySelector('.panel-tool-overlay .btn-primary').click(); await wait(100);
+  assert(document.querySelector('#scroll-text') && document.querySelector('#scroll-logoSide'), 'New ticker did not open its editing controls');
   return { directions: checks, fixedLogoBothSides: true, backgroundOpacity: true, pauseResumeRestart: true, programAnimation: true, stagedUntilTake: true, sceneSourcesBothModes: true };
 };

@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ProgramState } from "../shared/types";
 import { resizeCanvas } from "./hooks/useCanvasRenderer";
 import { createFrameDecoder } from "./utils/frameDecoder";
+import { applyProjectionSignal, localProjectionDescription } from "./utils/projectionPeer";
 
 const defaultState: ProgramState = {
   programSceneId: null,
@@ -20,6 +21,41 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const latestFrameRef = useRef<HTMLImageElement | null>(null);
   const drawFrameRef = useRef<() => void>(() => undefined);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoReady, setVideoReady] = useState(false);
+  const videoReadyRef = useRef(false);
+  videoReadyRef.current = videoReady;
+  const independent = programState.sanctuary?.settings.mode === "independent";
+
+  useEffect(() => {
+    if (mode !== "program" || independent) return;
+    let peer: RTCPeerConnection | null = null;
+    let active = true;
+    const createPeer = () => {
+      const connection = new RTCPeerConnection({ iceServers: [] });
+      connection.onicecandidate = event => { if (event.candidate) window.dualcast.sendProjectionSignal({ type: "candidate", candidate: event.candidate.toJSON() }); };
+      connection.ontrack = event => {
+        const video = videoRef.current;
+        if (video) { video.srcObject = event.streams[0]; void video.play().catch(() => setVideoReady(false)); }
+      };
+      connection.onconnectionstatechange = () => {
+        setVideoReady(connection.connectionState === "connected" && (videoRef.current?.readyState ?? 0) >= 2);
+      };
+      return connection;
+    };
+    const unsubscribe = window.dualcast.onProjectionSignal(signal => {
+      if (signal.type === "offer" && signal.description) {
+        peer?.close(); setVideoReady(false); peer = createPeer();
+        const connection = peer;
+        void applyProjectionSignal(connection, signal).then(async () => {
+          await connection.setLocalDescription(localProjectionDescription(await connection.createAnswer()));
+          if (active && peer === connection) window.dualcast.sendProjectionSignal({ type: "answer", description: connection.localDescription!.toJSON() });
+        }).catch(() => setVideoReady(false));
+      } else if (signal.type === "candidate" && peer) void applyProjectionSignal(peer, signal).catch(() => undefined);
+    });
+    window.dualcast.sendProjectionSignal({ type: "ready" });
+    return () => { active = false; unsubscribe(); peer?.close(); setVideoReady(false); const video = videoRef.current; if (video) video.srcObject = null; window.dualcast.sendProjectionSignal({ type: "closed" }); };
+  }, [mode, independent]);
 
   useEffect(() => {
     document.body.classList.add("projection-mode");
@@ -52,7 +88,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
       latestFrameRef.current = image;
       drawFrameRef.current();
     });
-    const unsubscribe = subscribe(decoder.decode);
+    const unsubscribe = subscribe(frame => mode === "program" && videoReadyRef.current ? Promise.resolve() : decoder.decode(frame));
 
     return () => {
       unsubscribe();
@@ -105,12 +141,13 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   }, [mode, programState.isCutToBlack, programState.programSceneId, programState.sanctuary?.settings.mode]);
 
   if (mode === "program" && programState.sanctuary?.settings.mode === "independent") {
-    return <SanctuaryLayout state={programState.sanctuary} black={programState.isCutToBlack} />;
+    return <SanctuaryLayout state={programState.sanctuary} black={programState.isCutToBlack} frameRate={programState.frameRate} />;
   }
 
   return (
     <div className="projection-root">
-      <canvas ref={canvasRef} className="projection-canvas" />
+      <canvas ref={canvasRef} className="projection-canvas" style={{ visibility: videoReady ? "hidden" : "visible" }} />
+      {mode === "program" && <video ref={videoRef} autoPlay muted playsInline className="projection-video" onPlaying={() => setVideoReady(true)} style={{ visibility: videoReady && !programState.isCutToBlack && Boolean(programState.programSceneId) ? "visible" : "hidden" }} />}
     </div>
   );
 };
