@@ -1,4 +1,5 @@
 import { RefObject, useEffect, useLayoutEffect, useRef } from "react";
+import { createFrameCadence } from "../utils/frameCadence";
 
 export const resizeCanvas = (canvas: HTMLCanvasElement, width: number, height: number) => {
   // Assigning even the SAME dimensions clears the backing bitmap and resets
@@ -21,10 +22,9 @@ export const useCanvasRenderer = (
     const context = canvas.getContext("2d");
     if (!context) return;
     let frame = 0;
-    let last = -Infinity;
+    const shouldDraw = createFrameCadence(fps);
     const render = (now: number) => {
-      if (!frozen && now - last >= 1000 / Math.max(1, fps)) {
-        last = now;
+      if (!frozen && shouldDraw(now)) {
         drawRef.current(context, now);
       }
       frame = requestAnimationFrame(render);

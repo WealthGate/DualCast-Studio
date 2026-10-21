@@ -132,18 +132,20 @@ A scene is one complete arrangement, such as Sermon Camera, Worship Lyrics, Scri
 2. Add, edit, move, or trim its sources.
 3. Check the complete result in Preview.
 4. Set the transition duration before sending the scene live.
-5. Choose **Cut**, **Fade**, or **Crossfade** in Scene Transitions, then press **TAKE** in Production Controls.
+5. In Scene Transitions, press **Cut**, **Fade**, **Crossfade**, **Wipe Left/Right**, **Slide Left/Right**, **Soft Zoom**, or **Iris Reveal** to send Preview live immediately. Alternatively, choose an effect in the selector and press **TAKE** in Production Controls.
 6. Confirm the Program label and picture are correct.
 
 TAKE uses the selected transition. Ctrl/Cmd + Enter and remote TAKE commands follow the same path. Changing the transition selector prepares the next take without sending it live.
+
+The effect buttons perform immediate transitions; **Live Preview Blend** remains an independent manual fader. Wipes reveal the next picture horizontally, Slides glide it over the current picture, Soft Zoom gently scales and dissolves, and Iris Reveal opens from the center. The outgoing picture stays behind every effect so uncovered areas do not flash black.
 
 ### Make a slow manual blend from Preview to Program
 
 1. Stay in **Studio Mode** and prepare the next scene in Preview.
 2. Open **Scene Transitions** and find **Live Preview Blend**.
 3. Move the fader slowly from Program toward Preview. The projector, recording, stream, and network output immediately see the selected mixture.
-4. Hold the fader anywhere between 1% and 99% to blend both scenes. Releasing before 100% returns to Program and resets the fader.
-5. Drag the fader fully to 100% to make Preview the new Program scene. The fader automatically returns to 0% after the change is completed. You can also choose **Complete to Preview** without dragging to the end, or **Reset to Program** to cancel the blend safely.
+4. Hold the fader anywhere between 1% and 99% to blend both scenes. Releasing before 100% returns smoothly to Program and resets the fader.
+5. Drag the fader fully to 100% to make Preview the new Program scene. Each drag completes at most one take, even if you hold or move the pointer at the endpoint. The fader automatically returns to 0% after completion. **Complete to Preview** and **Reset to Program** remain available as explicit actions.
 
 Program audio remains active during the blend and switches when the take completes. Fade and Crossfade blend complete pictures without dipping through black. Incoming media is prepared before it replaces the last live picture. Automatic transition duration can be set from 100 milliseconds up to 15 seconds.
 

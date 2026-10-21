@@ -2,13 +2,15 @@ import { createStereoProgramOutput, setProgramChannelMode } from "../utils/audio
 import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { resizeCanvas, useCanvasRenderer } from "../hooks/useCanvasRenderer";
+import { drawSceneTransition } from "../utils/transitions";
+import { createFrameCadence } from "../utils/frameCadence";
 import { canShareSourceMedia, compositeSceneBlend, registerCapturePreviewProvider, sourceMediaReady, sourceMediaSignature } from "../utils/sourceMedia";
 import { useAppStore } from "../store/useAppStore";
 import { createFrameEncoder } from "../utils/frameEncoder";
 import { isPresentationTextSource, visiblePresentationSourceIds } from "../utils/presentationText";
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
 import { fitToBounds, getQualityProfile } from "../../shared/recording";
-import { LowerThirdAnimation, LowerThirdSlide, Scene, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
+import { LowerThirdAnimation, LowerThirdSlide, Scene, SceneTransitionType, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
 import { AudioMeterSnapshot, publishAudioMeters } from "../audioMeterBus";
 import { createProgramAudioMonitor, updateProgramAudioMonitor } from "../utils/audioMonitoring";
 
@@ -136,7 +138,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const [microphoneRevision, setMicrophoneRevision] = useState(0);
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
   const transitionRef = useRef<{
-    type: "fade" | "crossfade";
+    type: SceneTransitionType;
     startAt: number | null;
     duration: number;
     fromFrame: HTMLCanvasElement;
@@ -164,9 +166,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     [programSources, sources]
   );
   const previewSceneLocked = Boolean(previewScene?.locked);
+  const needsPreviewMedia = showPreview || manualBlend > 0;
   const activeSourceIds = useMemo(
     () => {
-      const ids = collectActiveSourceIds(isMultiviewOpen, scenes, programScene, showPreview || manualBlend > 0 ? previewScene : null, allSources);
+      const ids = collectActiveSourceIds(isMultiviewOpen, scenes, programScene, needsPreviewMedia ? previewScene : null, allSources);
       Object.values(programSources).forEach((source) => {
         if (source.type === "audio" && source.audioScope === "persistent") {
           ids.delete(source.id);
@@ -174,7 +177,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       });
       return ids;
     },
-    [allSources, isMultiviewOpen, manualBlend, programScene, previewScene, programSources, scenes, showPreview]
+    [allSources, isMultiviewOpen, needsPreviewMedia, programScene, previewScene, programSources, scenes]
   );
 
   const profile = getQualityProfile(settings.qualityPreset);
@@ -200,7 +203,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       fromFrame.height = canvas.height;
       fromFrame.getContext("2d")?.drawImage(canvas, 0, 0);
       transitionRef.current = {
-        type: transitionType === "fade" ? "fade" : "crossfade",
+        type: transitionType,
         startAt: null,
         duration: transitionDurationMs,
         fromFrame,
@@ -1153,7 +1156,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       return source.type === "browser" ? browserFramesRef.current.has(id) : sourceMediaReady(source, sourceMediaRef.current.get(id));
     });
 
-  const blendScene = (ctx: CanvasRenderingContext2D, outgoing: HTMLCanvasElement | null, progress: number, eased = false) => {
+  const blendScene = (ctx: CanvasRenderingContext2D, outgoing: HTMLCanvasElement | null, progress: number, type: SceneTransitionType = "crossfade") => {
     const canvas = ctx.canvas;
     if (!blendCanvasesRef.current) blendCanvasesRef.current = { from: document.createElement("canvas"), to: document.createElement("canvas") };
     const { from, to } = blendCanvasesRef.current;
@@ -1171,7 +1174,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const incoming = outgoing ? programScene : previewScene;
     const incomingSources = outgoing ? programSources : sources;
     drawScene(toContext, incoming, incomingSources, to.width, to.height, outgoing ? settings.lowerThird.programSlideId : settings.lowerThird.activeSlideId);
-    compositeSceneBlend(ctx, outgoing ?? from, to, eased ? progress * progress * (3 - 2 * progress) : progress, canvas.width, canvas.height);
+    if (outgoing) drawSceneTransition(ctx, outgoing, to, type, progress, canvas.width, canvas.height);
+    else compositeSceneBlend(ctx, from, to, progress, canvas.width, canvas.height);
   };
 
   useCanvasRenderer(previewCanvasRef, programSize.width, programSize.height, Math.min(30, settings.frameRate), (ctx, now) => {
@@ -1205,7 +1209,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       } else if (transition) {
         if (transition.startAt === null) transition.startAt = now;
         const progress = Math.min(1, (now - transition.startAt) / transition.duration);
-        blendScene(ctx, transition.fromFrame, progress, transition.type === "fade");
+        blendScene(ctx, transition.fromFrame, progress, transition.type);
         if (progress >= 1) transitionRef.current = null;
         syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
       } else {
@@ -1225,11 +1229,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     }
 
     const encoder = createFrameEncoder((frame) => window.dualcast.sendProgramFrame(frame));
-    let lastSentAt = -Infinity;
-    const frameInterval = isFrozen && !isCutToBlack ? 1000 : 1000 / Math.min(30, settings.frameRate);
+    const shouldSend = createFrameCadence(isFrozen && !isCutToBlack ? 1 : Math.min(30, settings.frameRate));
     publishProgramFrameRef.current = (canvas, now) => {
-      if (now - lastSentAt < frameInterval) return;
-      lastSentAt = now;
+      if (!shouldSend(now)) return;
       encoder.encode(canvas);
     };
 

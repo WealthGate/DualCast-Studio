@@ -2515,6 +2515,11 @@ body {
   gap: 4px;
 }
 
+.transition-style-buttons { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.transition-style-buttons button { min-width: 0; padding: 7px 5px; white-space: normal; }
+.transition-style-buttons button.active { border-color: var(--accent); background: var(--panel-soft); }
+.transitions-dock-panel > .field-help { grid-column: 1 / -1; }
+
 .quick-transition-buttons button,
 .production-controls-panel button {
   min-height: 32px;

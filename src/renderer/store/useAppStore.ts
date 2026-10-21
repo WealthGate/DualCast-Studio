@@ -4,6 +4,7 @@ import {
   LowerThirdSlide,
   SaveRecordingResult,
   Scene,
+  SceneTransitionType,
   Settings,
   SettingsUpdate,
   Source,
@@ -156,7 +157,7 @@ type AppState = {
   setDisplayTextMode: (mode: "show" | "hide" | "theme" | "logo") => void;
   isCutToBlack: boolean;
   isFrozen: boolean;
-  transitionType: "cut" | "fade" | "crossfade";
+  transitionType: SceneTransitionType;
   transitionDurationMs: number;
   manualBlend: number;
   programTransitionMode: "configured" | "none";
@@ -194,8 +195,8 @@ type AppState = {
   addGroup: (name?: string) => string;
   renameGroup: (groupId: string, name: string) => void;
   removeGroup: (groupId: string) => void;
-  setTransitionType: (value: "cut" | "fade" | "crossfade") => void;
-  applyTransition: (value: "cut" | "fade" | "crossfade") => void;
+  setTransitionType: (value: SceneTransitionType) => void;
+  applyTransition: (value: SceneTransitionType) => void;
   setTransitionDuration: (value: number) => void;
   setManualBlend: (value: number) => void;
   completeManualBlend: () => void;

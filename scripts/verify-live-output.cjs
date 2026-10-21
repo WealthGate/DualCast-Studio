@@ -111,6 +111,66 @@ if (!process.versions.electron) {
         assert(cameraRequests===1, 'Camera was reopened for Program or geometry edits: '+cameraRequests);
         return {midpoint, blackFrames, encodedBlackFrames, encodedFrames:encodedFrames.length, cameraRequests, checks:['rapid fader', 'manual completion', 'fade', 'cold cut hold', 'freeze/black/restore', 'shared camera capture','meeting area crop']};
       })()`);
+      // Drive the actual range control with native Chromium pointer events.
+      // Store-only tests cannot detect endpoint repeat events or capture loss.
+      await window.webContents.executeJavaScript(`(async () => {
+        const { useAppStore: store } = await import('/store/useAppStore.ts');
+        const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+        const pixel = () => { const canvas=document.querySelector('.program-pane canvas'); return [...canvas.getContext('2d').getImageData(canvas.width/2,canvas.height/2,1,1).data]; };
+        const seed = async () => {
+          const source = (id,fill) => { const c=document.createElement('canvas');c.width=320;c.height=180;const x=c.getContext('2d');x.fillStyle=fill;x.fillRect(0,0,320,180);return {id,name:id,type:'image',enabled:true,audioEnabled:false,rect:{x:0,y:0,width:100,height:100},data:{url:c.toDataURL()}}; };
+          const red=source('red','red'),blue=source('blue','blue');
+          store.setState({transitionType:'cut',manualBlend:0,isFrozen:false,isCutToBlack:false});
+          store.getState().setStudioState({scenes:[{id:'red',name:'Red',sourceIds:['red']},{id:'blue',name:'Blue',sourceIds:['blue']}],sources:{red,blue},groups:[],programSceneId:'red',previewSceneId:'blue'});
+          for(let i=0;i<100 && pixel()[0]<245;i++) await wait(20);
+          await wait(100);
+        };
+        window.__transitionCheck={store,wait,pixel,seed};
+        await seed();
+        store.getState().setTransitionType('iris');
+      })()`);
+      window.focus(); window.webContents.focus();
+      const bounds = await window.webContents.executeJavaScript(`(() => {
+        const input=document.querySelector('input[aria-label="Live Preview blend"]');
+        input.scrollIntoView({block:'center'});const r=input.getBoundingClientRect();
+        return {left:r.left,width:r.width,y:r.top+r.height/2};
+      })()`);
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const mouse = (type, amount) => window.webContents.sendInputEvent({ type, x: Math.round(bounds.left + 8 + (bounds.width - 16) * amount), y: Math.round(bounds.y), button: "left", clickCount: 1, ...(type === "mouseMove" ? { modifiers: ["leftButtonDown"] } : {}) });
+      const readFader = () => window.webContents.executeJavaScript(`(() => { const {store,pixel}=window.__transitionCheck; const state=store.getState();return {blend:state.manualBlend,revision:state.programRevision,program:state.programSceneId,pixel:pixel()}; })()`);
+      mouse("mouseDown", 0); await sleep(30);
+      const faderPixels = [];
+      for (const value of [0.2, 0.4, 0.6, 0.8]) {
+        mouse("mouseMove", value); await sleep(75);
+        const sample=await readFader();
+        if(Math.abs(sample.blend-value)>0.12 || sample.pixel[0]+sample.pixel[2]<245) throw Error(`Native fader failed: ${JSON.stringify(sample)}`);
+        faderPixels.push(sample.pixel[2]);
+      }
+      if(faderPixels.some((value,index)=>index && value<faderPixels[index-1]-3)) throw Error("Fader flickered backwards during a continuous drag.");
+      const beforeComplete=await readFader();
+      mouse("mouseMove", 1); await sleep(100);
+      for(let i=0;i<5;i++) { mouse("mouseMove", 1); await sleep(35); }
+      mouse("mouseUp", 1); await sleep(100);
+      const afterComplete=await readFader();
+      if(afterComplete.revision!==beforeComplete.revision+1 || afterComplete.program!=="blue" || afterComplete.pixel[2]<245) throw Error(`Endpoint swapped scenes more than once: ${JSON.stringify(afterComplete)}`);
+      mouse("mouseDown", 0); mouse("mouseMove", 0.6); await sleep(75); mouse("mouseUp", 0.6); await sleep(200);
+      if((await readFader()).blend!==0) throw Error("Fader did not return to Program after release.");
+      result.fader={forwardSamples:faderPixels, endpointTakes:afterComplete.revision-beforeComplete.revision, resetOnRelease:true, independentOfSelectedEffect:true};
+      result.transitionButtons=await window.webContents.executeJavaScript(`(async () => {
+        const {sceneTransitions}=await import('/utils/transitions.ts');
+        const {store,wait,pixel,seed}=window.__transitionCheck;
+        const checked=[];
+        for(const effect of sceneTransitions){
+          await seed();store.getState().setTransitionDuration(200);
+          const button=document.querySelector('button[aria-label="Apply '+effect.label+' transition"]');
+          if(!button)throw Error('Missing transition button '+effect.label);
+          button.click();
+          for(let i=0;i<18;i++){await wait(18);const p=pixel();if(p[0]+p[2]<240)throw Error(effect.label+' exposed a dark frame: '+p);}
+          if(pixel()[2]<245 || store.getState().transitionType!==effect.type)throw Error(effect.label+' did not complete on Preview');
+          checked.push(effect.label);
+        }
+        return checked;
+      })()`);
       if (process.platform === "win32") {
         const capture = require(path.join(root, "tmp/capture-verification.cjs"));
         const { EventEmitter } = require("events");

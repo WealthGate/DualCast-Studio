@@ -1,4 +1,5 @@
 export type AudioChannelMode = "mono" | "stereo";
+export type SceneTransitionType = "cut" | "fade" | "crossfade" | "wipe-left" | "wipe-right" | "slide-left" | "slide-right" | "zoom" | "iris";
 export type AudioMode = "system" | "microphone" | "both" | "none";
 export type AudioRoutingScope = "scene" | "persistent";
 export type QualityPreset = "low" | "medium" | "high";

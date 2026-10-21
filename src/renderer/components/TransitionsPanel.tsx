@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { applyManualBlendInput } from "../utils/transitions";
+import { createManualBlendGesture, sceneTransitions } from "../utils/transitions";
+import { SceneTransitionType } from "../../shared/types";
 
 type TransitionsPanelProps = {
   canBlend?: boolean;
@@ -14,11 +15,40 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
     transitionDurationMs,
     manualBlend,
     setTransitionType,
+    applyTransition,
     setTransitionDuration,
     setManualBlend,
     completeManualBlend,
     previewSceneId
   } = useAppStore();
+  const gesture = useMemo(() => createManualBlendGesture(setManualBlend, completeManualBlend), [setManualBlend, completeManualBlend]);
+  const gestureActive = useRef(false);
+  const returnFrame = useRef<number | null>(null);
+  const stopReturn = () => {
+    if (returnFrame.current !== null) cancelAnimationFrame(returnFrame.current);
+    returnFrame.current = null;
+  };
+  const beginGesture = () => {
+    stopReturn();
+    gestureActive.current = true;
+    gesture.begin();
+  };
+  const endGesture = () => {
+    if (!gestureActive.current) return;
+    gestureActive.current = false;
+    if (gesture.isComplete()) return;
+    const { manualBlend: from, programRevision } = useAppStore.getState();
+    stopReturn();
+    const start = performance.now();
+    const easeBack = (now: number) => {
+      if (useAppStore.getState().programRevision !== programRevision) { returnFrame.current = null; return; }
+      const progress = Math.min(1, (now - start) / 120);
+      setManualBlend(from * (1 - progress) ** 2);
+      returnFrame.current = progress < 1 ? requestAnimationFrame(easeBack) : null;
+    };
+    if (from > 0) returnFrame.current = requestAnimationFrame(easeBack);
+  };
+  useEffect(() => () => stopReturn(), []);
 
   return (
     <section className="compact-dock-panel transitions-dock-panel">
@@ -27,12 +57,10 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
         <select
           value={transitionType}
           disabled={!previewSceneId}
-          onChange={(event) => setTransitionType(event.target.value as "cut" | "fade" | "crossfade")}
+          onChange={(event) => setTransitionType(event.target.value as SceneTransitionType)}
           aria-label="Scene transition type"
         >
-          <option value="cut">Cut</option>
-          <option value="fade">Fade</option>
-          <option value="crossfade">Crossfade</option>
+          {sceneTransitions.map(transition => <option key={transition.type} value={transition.type}>{transition.label}</option>)}
         </select>
       </label>
       <label>
@@ -49,7 +77,16 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
           <span>ms</span>
         </div>
       </label>
-      <p className="field-help">Choose a transition, then press TAKE in Production Controls. Fade and Crossfade keep the picture visible throughout.</p>
+      <div className="transition-style-buttons" role="group" aria-label="Apply transition now">
+        {sceneTransitions.map(transition => (
+          <button key={transition.type} className={transitionType === transition.type ? "active" : ""}
+            aria-label={`Apply ${transition.label} transition`} title={transition.description}
+            disabled={!previewSceneId} onClick={() => { stopReturn(); applyTransition(transition.type); }}>
+            {transition.label}
+          </button>
+        ))}
+      </div>
+      <p className="field-help">Each button sends Preview to Program using that effect. The selector prepares the effect for TAKE. Live Preview Blend remains a separate manual control.</p>
       <label><input type="checkbox" checked={settings.swapPreviewProgram !== false} onChange={(event) => updateSettings({ swapPreviewProgram: event.target.checked })} /> Swap Preview and Program after transitions</label>
       <div className="manual-blend-control">
         <div className="manual-blend-heading">
@@ -64,30 +101,29 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
           step={1}
           value={Math.round(manualBlend * 100)}
           disabled={!canBlend || !previewSceneId}
-          onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
-          onPointerUp={() => setManualBlend(0)}
-          onPointerCancel={() => setManualBlend(0)}
-          onLostPointerCapture={() => setManualBlend(0)}
-          onBlur={() => setManualBlend(0)}
-          onKeyUp={() => setManualBlend(0)}
-          onInput={(event) => {
+          onPointerDown={(event) => { beginGesture(); event.currentTarget.setPointerCapture(event.pointerId); }}
+          onPointerUp={endGesture}
+          onPointerCancel={endGesture}
+          onLostPointerCapture={endGesture}
+          onBlur={endGesture}
+          onKeyDown={event => {
+            if (!gestureActive.current && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) beginGesture();
+          }}
+          onKeyUp={event => {
+            if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) endGesture();
+          }}
+          onChange={(event) => {
+            if (!gestureActive.current) return;
             const input = event.currentTarget;
-            applyManualBlendInput(
-              Number(input.value) / 100,
-              setManualBlend,
-              () => {
-                completeManualBlend();
-                input.value = "0";
-              },
-              (complete) => complete()
-            );
+            gesture.input(Number(input.value) / 100);
+            if (gesture.isComplete()) input.value = "0";
           }}
         />
         <div className="blend-scale"><span>Program</span><span>Preview</span></div>
-        <p>Drag to blend live. Release to return to Program and reset to 0%. Reaching 100% sends Preview to Program.</p>
+        <p>Drag to blend live. Release to return smoothly to Program. Reaching 100% completes one take and resets the fader.</p>
         <div className="quick-transition-buttons blend-actions">
-          <button onClick={() => setManualBlend(0)} disabled={manualBlend === 0}>Reset to Program</button>
-          <button onClick={completeManualBlend} disabled={manualBlend === 0 || !previewSceneId}>Complete to Preview</button>
+          <button onClick={() => { stopReturn(); setManualBlend(0); }} disabled={manualBlend === 0}>Reset to Program</button>
+          <button onClick={() => { stopReturn(); completeManualBlend(); }} disabled={manualBlend === 0 || !previewSceneId}>Complete to Preview</button>
         </div>
         {!canBlend ? <p>Return to Studio Mode to prepare and blend a Preview scene.</p> : null}
       </div>
