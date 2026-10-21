@@ -1,4 +1,5 @@
 import { getSettings } from "./services/settingsService";
+import { stopAllCursorFreeCaptures } from "./services/cursorFreeCaptureService";
 import { app, BrowserWindow, screen } from "electron";
 import path from "path";
 import { registerIpcHandlers } from "./services/ipc";
@@ -113,6 +114,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", () => {
+  stopAllCursorFreeCaptures();
   unregisterHotkeys();
   stopUpdater();
   forceStopStreaming();

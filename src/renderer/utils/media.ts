@@ -1,8 +1,12 @@
+import { getCursorFreeStream } from "./cursorFreeCapture";
+
 export const getDisplayStream = async (
   sourceId: string,
-  includeAudio: boolean,
-  captureCursor: "never" | "motion" | "always" = "never"
+  includeAudio: boolean
 ) => {
+  const captureCursor = "never";
+  const cursorFreeStream = await getCursorFreeStream(sourceId);
+  if (cursorFreeStream && !includeAudio) return cursorFreeStream;
   const constraints = {
     audio: includeAudio
       ? {
@@ -21,7 +25,18 @@ export const getDisplayStream = async (
     }
   } as MediaStreamConstraints;
 
-  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (error) {
+    stopMediaStream(cursorFreeStream);
+    throw error;
+  }
+  if (cursorFreeStream) {
+    stream.getVideoTracks().forEach((track) => track.stop());
+    stream.getAudioTracks().forEach((track) => cursorFreeStream.addTrack(track));
+    return cursorFreeStream;
+  }
   // Desktop capture can ignore the initial cursor hint; apply it to the live track too.
   await Promise.all(stream.getVideoTracks().map(async (track) => {
     try {

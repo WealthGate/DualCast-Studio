@@ -18,6 +18,9 @@ export const installDevelopmentBridge = () => {
   }
 
   window.dualcast = {
+    startCursorFreeCapture: async () => null,
+    stopCursorFreeCapture: async () => undefined,
+    onCursorFreeFrame: () => () => undefined,
     getProgramState: async () => null,
     listDisplays: async () => [],
     listProjectionDisplays: async () => [

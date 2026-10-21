@@ -3472,7 +3472,6 @@ body {
 }
 
 .display-text-controls [aria-pressed="true"] { background: var(--accent); color: #fff; }
-.hide-output-cursor .canvas-stage, .hide-output-cursor .canvas-stage * { cursor: none !important; }
 body.projection-mode, body.projection-mode * { cursor: none !important; }
 
 /* Docks can be resized independently of the app window. */

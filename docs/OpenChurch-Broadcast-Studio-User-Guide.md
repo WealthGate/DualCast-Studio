@@ -187,16 +187,13 @@ Every scene can contain:
 
 ### Hide the mouse cursor from Program and the audience
 
-This applies to Display and Window capture sources.
+The operator's pointer remains visible throughout the studio, including Preview and Program controls. Audience projection and lower-third windows hide the pointer across their entire surface.
 
-1. In Sources, right-click the Display or Window source and choose Properties.
-2. Find **Cursor in Program**.
-3. Choose **Hide Cursor** so the pointer is not captured.
-4. Choose Show While Moving only when viewers need to follow occasional pointer movement.
-5. Choose Always Show only for demonstrations where the pointer is part of the presentation.
-6. Check Program and make a short test recording.
+Display and Window sources always request cursor-free capture. On Windows, native capture excludes the cursor before composition, including when it moves over the desktop or other applications. The resulting Program frames are shared by recording, streaming, projectors, and local-network output. Previous source settings that showed the cursor no longer apply.
 
-New Display and Window sources default to Hide Cursor. The setting is applied before the scene is composed, so a hidden pointer does not appear in Program, recording, streaming, projectors, or local-network output.
+Window capture on Windows requires a unique window title; restore minimized windows before capturing. Other operating systems use their existing desktop capture backend and need an output check to confirm cursor exclusion.
+
+Check Program and make a short test recording while moving the pointer over the studio, desktop, and another application.
 
 ### Window capture does not show the window
 
@@ -644,7 +641,7 @@ Complete this checklist before every service.
 - **Audio distorts:** lower any channel showing CLIP, then lower Program Master if needed.
 - **Meters stay at zero:** confirm the source is playing, unmuted, and included in the selected routing mode.
 - **A crop is not live:** crop changes remain in Preview until TAKE.
-- **Mouse cursor appears to the audience:** open the Display/Window source Properties, set Cursor in Program to Hide Cursor, and confirm the capture source was recreated.
+- **Mouse cursor appears to the audience:** restart the updated app to recreate Display/Window captures, then check Program while moving the pointer over another application. Windows capture excludes the pointer at acquisition; other operating systems depend on their capture backend.
 - **Wrong logo appears on Scripture:** set Bible Passage Logo / Image and send the slide from Scripture so its kind is Scripture.
 - **Lower third blocks too much video:** reduce Background Opacity or background-image opacity.
 - **Text layout moved the wrong video:** group the intended Text and visual source, then apply the layout again.

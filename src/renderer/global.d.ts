@@ -45,6 +45,9 @@ import {
 declare global {
   interface Window {
     dualcast: {
+      startCursorFreeCapture: (sourceId: string) => Promise<string | null>;
+      stopCursorFreeCapture: (id: string) => Promise<void>;
+      onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null }) => void) => () => void;
       getProgramState: () => Promise<ProgramState | null>;
       listDisplays: () => Promise<DisplaySource[]>;
       listProjectionDisplays: () => Promise<ProjectionDisplay[]>;

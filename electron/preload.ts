@@ -45,6 +45,13 @@ import {
 } from "../src/shared/types";
 
 const api = {
+  startCursorFreeCapture: (sourceId: string): Promise<string | null> => ipcRenderer.invoke(IpcChannels.startCursorFreeCapture, sourceId),
+  stopCursorFreeCapture: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.stopCursorFreeCapture, id),
+  onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, frame: { id: string; dataUrl: string | null }) => callback(frame);
+    ipcRenderer.on(IpcChannels.cursorFreeFrame, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.cursorFreeFrame, listener);
+  },
   getProgramState: (): Promise<ProgramState | null> => ipcRenderer.invoke(IpcChannels.getProgramState),
   listDisplays: (): Promise<DisplaySource[]> => ipcRenderer.invoke(IpcChannels.listDisplays),
   listProjectionDisplays: (): Promise<ProjectionDisplay[]> => ipcRenderer.invoke(IpcChannels.listProjectionDisplays),

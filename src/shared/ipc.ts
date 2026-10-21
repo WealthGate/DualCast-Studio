@@ -1,4 +1,7 @@
 export const IpcChannels = {
+  startCursorFreeCapture: "dualcast:start-cursor-free-capture",
+  stopCursorFreeCapture: "dualcast:stop-cursor-free-capture",
+  cursorFreeFrame: "dualcast:cursor-free-frame",
   listDisplays: "dualcast:list-displays",
   listProjectionDisplays: "dualcast:list-projection-displays",
   projectionDisplaysChanged: "dualcast:projection-displays-changed",

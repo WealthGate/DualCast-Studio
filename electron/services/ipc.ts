@@ -4,6 +4,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { IpcChannels } from "../../src/shared/ipc";
 import { listDisplays, listProjectionDisplays } from "./displayService";
+import { startCursorFreeCapture, stopCursorFreeCapture } from "./cursorFreeCaptureService";
 import { getSettings, updateSettings } from "./settingsService";
 import {
   appendRecordingChunk,
@@ -81,6 +82,8 @@ import {
 } from "./streamingCredentialService";
 
 export const registerIpcHandlers = () => {
+  ipcMain.handle(IpcChannels.startCursorFreeCapture, (event, sourceId: string) => startCursorFreeCapture(event.sender, sourceId));
+  ipcMain.handle(IpcChannels.stopCursorFreeCapture, (event, id: string) => stopCursorFreeCapture(id, event.sender.id));
   ipcMain.handle(IpcChannels.getProgramState, () => getProgramState());
   setStreamStatusPublisher((payload) => {
     BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(IpcChannels.streamStatus, payload));

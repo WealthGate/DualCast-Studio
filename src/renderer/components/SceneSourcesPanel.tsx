@@ -661,21 +661,8 @@ const SceneSourcesPanel: React.FC = () => {
           ) : null}
           {(selectedSource.type === "display" || selectedSource.type === "window") ? (
             <div className="field">
-              <label htmlFor="selectedCaptureCursor">Cursor in Program</label>
-              <select
-                id="selectedCaptureCursor"
-                value={selectedSource.captureCursor ?? "never"}
-                onChange={(event) => {
-                  updateSource(selectedSource.id, { captureCursor: event.target.value as "never" | "motion" | "always" });
-                  persistStudioState().catch(() => undefined);
-                }}
-                disabled={activeSceneLocked || selectedSource.locked}
-              >
-                <option value="never">Hide Cursor</option>
-                <option value="motion">Show While Moving</option>
-                <option value="always">Always Show</option>
-              </select>
-              <span className="field-help">Hide Cursor prevents the pointer from appearing in Program, recordings, streams, and sanctuary output.</span>
+              <label>Cursor in Program</label>
+              <span className="field-help">Always hidden from live output, recordings, and streams. The operator can still see the pointer on their PC.</span>
             </div>
           ) : null}
           {hasAudioToggle(selectedSource.type) ? (

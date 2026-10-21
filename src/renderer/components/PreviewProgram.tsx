@@ -372,12 +372,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         try {
           let stream: MediaStream;
           try {
-            stream = await getDisplayStream(source.data.captureId, source.audioEnabled, source.captureCursor ?? "never");
+            stream = await getDisplayStream(source.data.captureId, source.audioEnabled);
           } catch (error) {
             if (!source.audioEnabled) {
               throw error;
             }
-            stream = await getDisplayStream(source.data.captureId, false, source.captureCursor ?? "never");
+            stream = await getDisplayStream(source.data.captureId, false);
           }
           entry.stream = stream;
           video.srcObject = stream;
@@ -1520,7 +1520,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   return (
     <section className="display-workspace" aria-label="Preview and Program displays">
       <div className="display-controls-row"><DisplayTextControls /></div>
-      <div className={`preview-program ${settings.hideOutputCursor !== false ? "hide-output-cursor" : ""}`}>
+      <div className="preview-program">
         <div className="pane preview-pane">
           <div className="pane-header">
             <h2 title={`Hold ${settings.trimModifier ?? "Alt"} and drag a source corner to trim. TAKE applies Preview edits to Program.`}>Preview</h2>
