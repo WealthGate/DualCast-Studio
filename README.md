@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.18**.
+Current release: **v0.6.25**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -318,3 +318,7 @@ The workspace supports windows down to 640 × 480. At compact widths the display
 
 
 In **Sanctuary Displays**, choose **Mirror Program** to send the Program picture directly to the congregation screens. Choose **Independent Layout** to give those screens their own color, image, or looping-video background and text style. Follow live Program text (Scripture, lyrics, or scene text) or enter sanctuary-only text. Font, size, color, alignment, text position, background fit, and dimming are independent of Program. Review the sanctuary preview and select **Apply Sanctuary Layout**. The background video is muted. These layout settings are saved between sessions; recordings, streams, and the separate lower-third output keep their Program layout.
+
+## Scrolling text
+
+Add a **Scrolling Text / Ticker** source for customizable announcements with four directions, speed, fonts, colors, background images, positioning, and an optional fixed logo on either side. Edit in Preview, then TAKE to Program. Scene selection shows the associated sources in both Studio Mode and Program Focus. See the [user guide](docs/OpenChurch-Broadcast-Studio-User-Guide.md#scrolling-messages-and-side-logos).

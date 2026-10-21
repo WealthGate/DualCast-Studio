@@ -710,3 +710,13 @@ Complete this checklist before every service.
 - **Lower third:** text and graphics placed over the lower or upper part of video.
 - **Offline Scripture library:** Scripture JSON stored on the computer for use without an internet connection.
 - **RTMP/RTMPS:** common protocols used to send a live stream to a platform.
+
+## Scrolling messages and side logos
+
+Select a scene, open **Sources → Add Source**, choose **Scrolling Text / Ticker**, and enter your message. Its Properties open after adding it. Clicking a scene shows that scene's sources in both Studio Mode and Program Focus.
+
+Use the top/bottom banner or left/right panel presets, drag and resize in Preview, or enter X/Y/W/H for precise placement. Properties include four scroll directions, speed, font, size, bold/italic, text color, background color and opacity, a background image with fill/fit/stretch, padding, repeat gap, and continuous or single-pass scrolling. Font size and speed use a 1920-pixel-wide output as their reference and scale with output resolution.
+
+Choose a local **Logo** image, select its left or right side, and set its area width. The logo remains fixed while the message scrolls beside it; text cannot move underneath it. Choose local background/logo files for reliable playback, or use remote image URLs that allow cross-origin loading. Local image files must remain available at their selected location.
+
+Pause, resume, restart, and appearance changes are staged in Preview. Press **TAKE** to apply them to Program. Scrolling messages are included in the Program picture used for recording, streaming and mirrored live displays, and also appear on the independent sanctuary display. Saved studio settings retain the message and its customization.

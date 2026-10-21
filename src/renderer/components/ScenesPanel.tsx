@@ -92,6 +92,7 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
           <div
             key={scene.id}
             className={`scene-list-item ${scene.id === selectedSceneId ? "active" : ""} ${directToProgram && scene.id === programSceneId ? "program-live" : ""}`}
+            onClick={() => handleSelect(scene.id)}
             onContextMenu={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -100,7 +101,7 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
               setMenu({ x: event.clientX, y: event.clientY, sceneId: scene.id });
             }}
           >
-            <button type="button" className="scene-select" aria-pressed={scene.id === selectedSceneId} onClick={() => handleSelect(scene.id)}>{scene.name}</button>
+            <button type="button" className="scene-select" aria-pressed={scene.id === selectedSceneId} onClick={(event) => { event.stopPropagation(); handleSelect(scene.id); }}>{scene.name}</button>
             {directToProgram && scene.id === programSceneId ? <span className="scene-live-label">LIVE</span> : null}
             {scene.locked ? <span className="scene-lock" aria-label="Locked">◆</span> : null}
             <div className="row-actions">

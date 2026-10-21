@@ -4,6 +4,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { resizeCanvas, useCanvasRenderer } from "../hooks/useCanvasRenderer";
 import { drawSceneTransition } from "../utils/transitions";
 import { createFrameCadence } from "../utils/frameCadence";
+import { ScrollingTextRenderer } from "../utils/scrollingText";
 import { canShareSourceMedia, compositeSceneBlend, registerCapturePreviewProvider, sourceMediaReady, sourceMediaSignature } from "../utils/sourceMedia";
 import { useAppStore } from "../store/useAppStore";
 import { createFrameEncoder } from "../utils/frameEncoder";
@@ -132,6 +133,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const sourceMediaRef = useRef<Map<string, SourceMedia>>(new Map());
   const browserFramesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const browserSizeRef = useRef<Map<string, { width: number; height: number; url: string }>>(new Map());
+  const scrollingTextRef = useRef<ScrollingTextRenderer | null>(null);
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 });
   const [isMultiviewOpen, setIsMultiviewOpen] = useState(false);
   const [mediaRevision, setMediaRevision] = useState(0);
@@ -357,6 +359,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
   useEffect(() => {
     const mediaMap = sourceMediaRef.current;
+    scrollingTextRef.current?.prune(Array.from(activeSourceIds).map(id => allSources[id]).filter(Boolean));
 
     const createMedia = async (source: Source) => {
       const signature = getSignature(source);
@@ -769,6 +772,11 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
     if (source.type === "text" && source.data.role === "lower-third" && useAppStore.getState().isLowerThirdHidden) return;
     if (useAppStore.getState().displayTextMode === "logo") return;
+    if (source.type === "scrolling-text") {
+      if (!scrollingTextRef.current) scrollingTextRef.current = new ScrollingTextRenderer();
+      scrollingTextRef.current.draw(ctx, source, canvasWidth, canvasHeight, performance.now(), useAppStore.getState().displayTextMode === "show");
+      return;
+    }
     let drawable: CanvasImageSource | null = null;
     if (source.type === "image" && media?.imageEl) {
       drawable = media.imageEl;

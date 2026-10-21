@@ -5,6 +5,8 @@ import ContextMenu from "./ContextMenu";
 import RowAction from "./RowAction";
 import CaptureRegionPicker from "./CaptureRegionPicker";
 import { getSourceCapturePreview } from "../utils/sourceMedia";
+import ScrollingTextControls from "./ScrollingTextControls";
+import { defaultScrollingText, normalizeScrollingText } from "../../shared/scrollingText";
 
 type CameraDevice = {
   deviceId: string;
@@ -20,7 +22,7 @@ type SourceMenu = {
 type ToolOverlay = "properties" | "groups" | "add" | null;
 
 const hasAudioToggle = (type: SourceType) => ["display", "window", "video", "audio"].includes(type);
-const isVisualSource = (source: Source) => source.type !== "audio" && source.type !== "text";
+const isVisualSource = (source: Source) => source.type !== "audio" && source.type !== "text" && source.type !== "scrolling-text";
 
 const defaultRect = { x: 10, y: 10, width: 50, height: 50 };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -29,11 +31,12 @@ const parseNumber = (value: string, fallback: number) => {
   return Number.isFinite(next) ? next : fallback;
 };
 
-const SceneSourcesPanel: React.FC = () => {
+const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgram = false }) => {
   const {
     scenes,
     sources,
     previewSceneId,
+    programSceneId,
     selectedSourceId,
     displays,
     refreshDisplays,
@@ -72,11 +75,19 @@ const SceneSourcesPanel: React.FC = () => {
   const [captureRegion, setCaptureRegion] = useState<{ sourceId: string; imageUrl: string } | null>(null);
   const [captureMessage, setCaptureMessage] = useState("");
 
-  const activeScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? scenes[0], [previewSceneId, scenes]);
+  const sourceSceneId = followProgram ? programSceneId : previewSceneId;
+  const activeScene = useMemo(() => scenes.find((scene) => scene.id === sourceSceneId) ?? scenes[0], [sourceSceneId, scenes]);
   const sceneSources = activeScene ? activeScene.sourceIds.map((id) => sources[id]).filter(Boolean) : [];
-  const selectedSource = selectedSourceId ? sources[selectedSourceId] ?? null : null;
+  const selectedSource = selectedSourceId && activeScene?.sourceIds.includes(selectedSourceId) ? sources[selectedSourceId] ?? null : null;
   const activeSceneLocked = Boolean(activeScene?.locked);
   const groupMap = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
+
+  useEffect(() => {
+    setToolOverlay(null);
+    setSourceMenu(null);
+    setCaptureRegion(null);
+    setSelectedSourceId(null);
+  }, [sourceSceneId, setSelectedSourceId]);
 
   useEffect(() => {
     const refreshCameras = async () => {
@@ -197,6 +208,8 @@ const SceneSourcesPanel: React.FC = () => {
         volume: 1,
         data: { url: sourceUrl }
       };
+    } else if (sourceType === "scrolling-text") {
+      source = { type: sourceType, name: sourceName || `Scrolling Message ${sceneSources.length + 1}`, rect: { x: 0, y: 88, width: 100, height: 12 }, enabled: true, audioEnabled: false, data: normalizeScrollingText({ text: sourceText === "Edit this live text" ? defaultScrollingText.text : sourceText }) };
     } else if (sourceType === "text") {
       source = {
         type: sourceType,
@@ -221,11 +234,14 @@ const SceneSourcesPanel: React.FC = () => {
     }
 
     addSourceToScene(activeScene.id, source);
+    const addedId = useAppStore.getState().scenes.find(scene => scene.id === activeScene.id)?.sourceIds.at(-1);
+    if (addedId) setSelectedSourceId(addedId);
+    if (sourceType === "scrolling-text") setToolOverlay("properties");
     setSourceName("");
     if (sourceType !== "display" && sourceType !== "window" && sourceType !== "camera") {
       setSourceUrl("");
     }
-    if (sourceType === "text") {
+    if (sourceType === "text" || sourceType === "scrolling-text") {
       setSourceText("Edit this live text");
     }
     await persistStudioState();
@@ -479,6 +495,7 @@ const SceneSourcesPanel: React.FC = () => {
       }}
     >
       <div className="sources-list">
+        <div className="field-help" aria-live="polite">Sources for {activeScene?.name ?? "selected scene"}</div>
         <div className="row-actions">
           <RowAction icon="+" label="Add Source" disabled={!activeScene || activeSceneLocked} onClick={() => setToolOverlay("add")} />
           <RowAction icon="▤" label="Manage Groups" onClick={() => setToolOverlay("groups")} />
@@ -589,6 +606,11 @@ const SceneSourcesPanel: React.FC = () => {
             </div>
           ) : null}
           <div className="field-help">Edit source content in Preview, then TAKE to apply it to Program.</div>
+          {selectedSource.type === "scrolling-text" && <ScrollingTextControls data={selectedSource.data} paused={Boolean(selectedSource.media?.paused)} disabled={activeSceneLocked || Boolean(selectedSource.locked)}
+            onChange={update => { updateSource(selectedSource.id, { data: normalizeScrollingText({ ...selectedSource.data, ...update }) }); void persistStudioState(); }}
+            onPlace={rect => { updateSourceRect(selectedSource.id, rect); void persistStudioState(); }}
+            onPause={() => { setSourceMediaPaused(selectedSource.id, !selectedSource.media?.paused); void persistStudioState(); }}
+            onRestart={() => { restartSourceMedia(selectedSource.id); void persistStudioState(); }} />}
           {selectedSource.type === "text" ? (
             <div className="text-source-editor">
               <div className="field">
@@ -903,6 +925,7 @@ const SceneSourcesPanel: React.FC = () => {
             <option value="browser">Browser</option>
             <option value="audio">Audio</option>
             <option value="text">Text</option>
+            <option value="scrolling-text">Scrolling Text / Ticker</option>
           </select>
         </div>
         <div className="field">
@@ -976,7 +999,7 @@ const SceneSourcesPanel: React.FC = () => {
             {sourceType === "browser" ? <div className="field-help">Paste a YouTube, website, dashboard, or hosted media URL.</div> : null}
           </div>
         ) : null}
-        {sourceType === "text" ? (
+        {sourceType === "text" || sourceType === "scrolling-text" ? (
           <div className="field">
             <label htmlFor="sourceText">Text</label>
             <textarea

@@ -1,6 +1,7 @@
 import { Scene, Source, SourceCrop, SourceGroup, SourceRect, SourceType, StudioState } from "./types";
+import { normalizeScrollingText } from "./scrollingText";
 
-const sourceTypes = new Set<SourceType>(["display", "window", "camera", "image", "video", "browser", "audio", "text"]);
+const sourceTypes = new Set<SourceType>(["display", "window", "camera", "image", "video", "browser", "audio", "text", "scrolling-text"]);
 const clamp = (value: unknown, fallback: number, min: number, max: number) => {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
@@ -59,6 +60,7 @@ const normalizeSource = (id: string, value: unknown): Source | null => {
     }
   };
 
+  if (type === "scrolling-text") return { ...base, type, audioEnabled: false, data: normalizeScrollingText(data) };
   if (type === "display" || type === "window") {
     return { ...base, type, data: { captureId: cleanString(data.captureId, "", 500) } };
   }

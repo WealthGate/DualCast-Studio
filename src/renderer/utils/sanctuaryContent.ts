@@ -25,6 +25,10 @@ export const getSanctuaryDisplayState = (state: ContentState): SanctuaryDisplayS
       }).join("\n\n");
     }
   }
-  return { settings: config, text, reference, textMode: state.displayTextMode,
+  const scrollingSources = state.programSceneSnapshot?.enabled === false ? [] : (state.programSceneSnapshot?.sourceIds ?? []).flatMap(id => {
+    const source = state.programSources[id];
+    return source?.type === "scrolling-text" && source.enabled ? [source] : [];
+  });
+  return { settings: config, text, reference, textMode: state.displayTextMode, scrollingSources,
     logoUrl: state.settings.lowerThird.imageUrl || state.settings.lowerThird.bibleImageUrl };
 };

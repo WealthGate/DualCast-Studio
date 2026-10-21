@@ -29,7 +29,7 @@ export const canShareSourceMedia = (source: Source) =>
   ["display", "window", "camera", "image"].includes(source.type);
 
 export const sourceMediaReady = (source: Source, media?: { videoEl?: HTMLVideoElement; imageEl?: HTMLImageElement }) => {
-  if (!source.enabled || source.type === "text" || source.type === "audio") return true;
+  if (!source.enabled || source.type === "text" || source.type === "scrolling-text" || source.type === "audio") return true;
   if (source.type === "image") return Boolean(media?.imageEl?.complete && media.imageEl.naturalWidth);
   return Boolean(media?.videoEl && media.videoEl.readyState >= 2 && media.videoEl.videoWidth > 0);
 };

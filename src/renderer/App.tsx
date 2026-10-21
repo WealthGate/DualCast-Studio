@@ -247,7 +247,7 @@ const App: React.FC = () => {
 
   const dockPanels: DockPanelDefinition[] = [
     { id: "scenes", title: "Scenes", content: <ScenesPanel directToProgram={viewMode === "program-focus"} /> },
-    { id: "sources", title: "Sources", content: <SceneSourcesPanel /> },
+    { id: "sources", title: "Sources", content: <SceneSourcesPanel followProgram={viewMode === "program-focus"} /> },
     { id: "audio", title: "Audio Mixer", content: <AudioMixerPanel /> },
     { id: "transitions", title: "Scene Transitions", content: <TransitionsPanel canBlend={viewMode === "studio"} /> },
     {

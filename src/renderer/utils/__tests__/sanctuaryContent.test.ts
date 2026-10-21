@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { getSanctuaryDisplayState } from "../sanctuaryContent";
 import { useAppStore } from "../../store/useAppStore";
 import { defaultSanctuaryDisplay } from "../../../shared/sanctuaryDisplay";
+import { defaultScrollingText } from "../../../shared/scrollingText";
+import { Source } from "../../../shared/types";
 
 const state = () => {
   const base = useAppStore.getState();
@@ -13,6 +15,13 @@ const state = () => {
   }, displayTextMode: "show" as const, isLowerThirdHidden: false };
 };
 describe("Independent sanctuary content", () => {
+  it("includes only enabled committed scrolling messages", () => {
+    const original = state();
+    const ticker: Source = { id: "ticker", name: "Ticker", type: "scrolling-text", enabled: true, audioEnabled: false, rect: { x: 0, y: 88, width: 100, height: 12 }, data: { ...defaultScrollingText, logoUrl: "file:///logo.png" } };
+    const live = { ...original, programSceneSnapshot: { id: "scene", name: "Live", sourceIds: ["ticker", "hidden"] }, programSources: { ticker, hidden: { ...ticker, id: "hidden", enabled: false } } };
+    expect(getSanctuaryDisplayState(live).scrollingSources).toEqual([ticker]);
+    expect(getSanctuaryDisplayState({ ...live, programSceneSnapshot: { ...live.programSceneSnapshot, enabled: false } }).scrollingSources).toEqual([]);
+  });
   it("follows the committed live cue without changing Program styling", () => {
     const original = state();
     const output = getSanctuaryDisplayState(original);

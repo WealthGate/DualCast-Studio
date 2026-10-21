@@ -34,7 +34,7 @@ const toRgba = (hex: string, opacity: number) => {
   return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${clamp(opacity, 0, 1)})`;
 };
 
-const isVisualSource = (source: Source) => source.type !== "audio" && source.type !== "text";
+const isVisualSource = (source: Source) => source.type !== "audio" && source.type !== "text" && source.type !== "scrolling-text";
 
 const ScripturePanel: React.FC = () => {
   const {

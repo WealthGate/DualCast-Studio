@@ -43,7 +43,29 @@ export type YouTubeBroadcastSettings = {
 
 export type CaptureSourceType = "screen" | "window";
 
-export type SourceType = "display" | "window" | "camera" | "image" | "video" | "browser" | "audio" | "text";
+export type SourceType = "display" | "window" | "camera" | "image" | "video" | "browser" | "audio" | "text" | "scrolling-text";
+
+export type ScrollingTextData = {
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  bold: boolean;
+  italic: boolean;
+  textColor: string;
+  backgroundColor: string;
+  backgroundOpacity: number;
+  backgroundImageUrl: string;
+  backgroundFit: "cover" | "contain" | "stretch";
+  direction: "left" | "right" | "up" | "down";
+  speed: number;
+  gap: number;
+  padding: number;
+  loop: boolean;
+  align: "left" | "center" | "right";
+  logoUrl: string;
+  logoPosition: "left" | "right";
+  logoWidthPercent: number;
+};
 
 export type SourceRect = {
   x: number;
@@ -94,6 +116,7 @@ type SourceBase = {
 };
 
 export type Source =
+  | (SourceBase & { type: "scrolling-text"; data: ScrollingTextData })
   | (SourceBase & { type: "display" | "window"; data: { captureId: string } })
   | (SourceBase & { type: "camera"; data: { deviceId: string } })
   | (SourceBase & { type: "image"; data: { url: string } })
@@ -244,6 +267,7 @@ export type SanctuaryDisplaySettings = {
 };
 
 export type SanctuaryDisplayState = {
+  scrollingSources?: Extract<Source, { type: "scrolling-text" }>[];
   settings: SanctuaryDisplaySettings;
   text: string;
   reference: string;

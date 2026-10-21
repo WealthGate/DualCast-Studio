@@ -1,5 +1,6 @@
 import React from "react";
 import { SanctuaryDisplayState } from "../../shared/types";
+import ScrollingTextOverlay from "./ScrollingTextOverlay";
 
 type Props = { state: SanctuaryDisplayState; black?: boolean; preview?: boolean };
 const SanctuaryLayout: React.FC<Props> = ({ state, black = false, preview = false }) => {
@@ -18,6 +19,7 @@ const SanctuaryLayout: React.FC<Props> = ({ state, black = false, preview = fals
         fontWeight: config.bold ? 700 : 400, fontStyle: config.italic ? "italic" : "normal",
         textAlign: config.textAlign, justifyContent: config.verticalAlign === "top" ? "flex-start" : config.verticalAlign === "bottom" ? "flex-end" : "center"
       }}><div>{state.text}</div>{state.reference && <div className="sanctuary-reference">{state.reference}</div>}</div>}
+      {!black && !logoOnly && Boolean(state.scrollingSources?.length) && <ScrollingTextOverlay sources={state.scrollingSources!} showText={state.textMode === "show"} />}
     </div>
   );
 };

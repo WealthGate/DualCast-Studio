@@ -171,6 +171,8 @@ if (!process.versions.electron) {
         }
         return checked;
       })()`);
+      result.scrollingText = await window.webContents.executeJavaScript(`(${require("./verify-scrolling-text.cjs").toString()})(${JSON.stringify("/@fs/" + root.replace(/\\/g, "/") + "/src/shared/scrollingText.ts")})`);
+      fs.writeFileSync(path.join(root, "tmp/scrolling-text-verification.png"), (await window.webContents.capturePage()).toPNG());
       if (process.platform === "win32") {
         const capture = require(path.join(root, "tmp/capture-verification.cjs"));
         const { EventEmitter } = require("events");
