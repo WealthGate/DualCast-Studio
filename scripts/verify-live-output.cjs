@@ -1,0 +1,151 @@
+// Exercise real canvas pixels in Electron, including rapidly moved faders and
+// cold media. Run with: node scripts/verify-live-output.cjs
+const path = require("path");
+const fs = require("fs");
+const { spawn } = require("child_process");
+const root = path.resolve(__dirname, "..");
+
+if (!process.versions.electron) {
+  (async () => {
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+    require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/cursorFreeCaptureService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "ffmpeg-static"], outfile: path.join(root, "tmp/capture-verification.cjs") });
+    const vite = spawn(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5174", "--strictPort"], { cwd: root, env, windowsHide: true, stdio: "ignore" });
+    let electron;
+    try {
+      for (let i = 0; i < 100; i++) {
+        if (await fetch("http://127.0.0.1:5174").then(r => r.ok).catch(() => false)) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (i === 99) throw new Error("Test renderer did not start.");
+      }
+      electron = spawn(require("electron"), [__filename], { cwd: root, env, windowsHide: true, stdio: "inherit" });
+      const code = await new Promise(resolve => electron.once("exit", resolve));
+      process.exitCode = code ?? 1;
+    } finally { vite.kill(); electron?.kill(); }
+  })().catch(error => { console.error(error); process.exitCode = 1; });
+} else {
+  const { app, BrowserWindow, desktopCapturer, nativeImage } = require("electron");
+  const profile = path.join(root, "tmp", `live-output-${process.pid}`);
+  app.setAppPath(root);
+  fs.mkdirSync(profile, { recursive: true });
+  app.setPath("userData", profile);
+  app.commandLine.appendSwitch("use-fake-device-for-media-stream");
+  app.commandLine.appendSwitch("use-fake-ui-for-media-stream");
+  app.whenReady().then(async () => {
+    const window = new BrowserWindow({ show: false, width: 1400, height: 900, webPreferences: { backgroundThrottling: false, contextIsolation: true } });
+    window.webContents.on("console-message", event => { if (event.level === "error") console.error(event.message); });
+    try {
+      await window.loadURL("http://127.0.0.1:5174");
+      window.showInactive();
+      const result = await window.webContents.executeJavaScript(`(async () => {
+        const { useAppStore: store } = await import('/store/useAppStore.ts');
+        const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+        await wait(300);
+        const color = fill => { const canvas = document.createElement('canvas'); canvas.width = 320; canvas.height = 180; const ctx = canvas.getContext('2d'); ctx.fillStyle = fill; ctx.fillRect(0, 0, 320, 180); return canvas.toDataURL(); };
+        const image = (id, url) => ({id, name:id, type:'image', enabled:true, audioEnabled:false, rect:{x:0,y:0,width:100,height:100}, data:{url}});
+        const encodedFrames = [];
+        let monitorEncodedFrames = false;
+        window.dualcast.sendProgramFrame = frame => { if (monitorEncodedFrames) encodedFrames.push(frame); };
+        const red = image('red', color('#ff0000')), blue = image('blue', color('#0000ff')), green = image('green', color('#00ff00'));
+        const scenes = [red, blue, green].map(source => ({id:source.id, name:source.id, sourceIds:[source.id]}));
+        store.setState({ settings:{...store.getState().settings, networkOutput:{...store.getState().settings.networkOutput,enabled:true}, qualityPreset:'low', frameRate:30, lowerThird:{...store.getState().settings.lowerThird, slides:[], activeSlideId:null, programSlideId:null}, swapPreviewProgram:true}, isFrozen:false, isCutToBlack:false, transitionType:'cut', manualBlend:0 });
+        store.getState().setStudioState({scenes, sources:{red,blue,green}, groups:[], previewSceneId:'blue', programSceneId:'red'});
+        const pixel = () => { const canvas = document.querySelector('.program-pane canvas'); return [...canvas.getContext('2d').getImageData(canvas.width/2, canvas.height/2, 1, 1).data]; };
+        const assert = (value, message) => { if (!value) throw Error(message + ' pixel=' + pixel()); };
+        const until = async predicate => { for(let i=0;i<100;i++){ if(predicate())return; await wait(20); } throw Error('Timed out waiting for output; pixel=' + pixel()); };
+        await until(() => pixel()[0] > 245);
+        await wait(200);
+        monitorEncodedFrames = true;
+        store.getState().setManualBlend(0.5);
+        await wait(300);
+        const midpoint = pixel();
+        assert(midpoint[0] > 115 && midpoint[2] > 115 && midpoint[0]+midpoint[2] > 245, 'Blend loses brightness; blend='+store.getState().manualBlend+' state='+JSON.stringify({p:store.getState().previewSceneId,status:document.querySelector('[role=status]')?.textContent}));
+        let blackFrames = 0;
+        const sample = () => { const p = pixel(); if(p[0]+p[1]+p[2]<20) blackFrames++; };
+        for(let i=0;i<60;i++){ store.getState().setManualBlend((i%10)/10); await wait(5); sample(); }
+        store.getState().setManualBlend(1); store.getState().completeManualBlend();
+        await until(() => pixel()[2] > 245);
+        store.getState().setTransitionType('fade'); store.getState().setTransitionDuration(300); store.getState().takeToProgram();
+        for(let i=0;i<30;i++){ await wait(15); sample(); }
+        assert(pixel()[0]>245, 'Fade did not finish on red');
+        const NativeImage = window.Image;
+        window.Image = class extends NativeImage { set src(value) { if(value===green.data.url) setTimeout(()=>{super.src=value;}, 350); else super.src=value; } };
+        store.getState().selectPreviewScene('green'); store.getState().setTransitionType('cut'); store.getState().takeToProgram();
+        await wait(80); assert(pixel()[0]>245, 'Cold capture cleared the live picture');
+        for(let i=0;i<30;i++){ await wait(15); sample(); }
+        assert(pixel()[1]>245, 'Cold capture did not become live');
+        window.Image = NativeImage;
+        monitorEncodedFrames = false;
+        let encodedBlackFrames = 0;
+        for (const url of encodedFrames) {
+          const img = new NativeImage(); await new Promise(resolve => { img.onload=resolve; img.src=url; });
+          const canvas = document.createElement('canvas'); canvas.width=canvas.height=1;
+          const ctx=canvas.getContext('2d'); ctx.drawImage(img, img.width/2, img.height/2, 1, 1, 0, 0, 1, 1);
+          const p=ctx.getImageData(0,0,1,1).data;
+          if(p[0]+p[1]+p[2]<20) encodedBlackFrames++;
+        }
+        assert(encodedFrames.length>10 && encodedBlackFrames===0, 'Encoded output contained blank frames: '+encodedBlackFrames);
+        store.getState().toggleFreeze(); await wait(50); store.getState().cutToBlack();
+        await until(()=>pixel()[0]+pixel()[1]+pixel()[2]<20);
+        store.getState().clearCutToBlack(); await until(()=>pixel()[1]>245);
+        assert(blackFrames===0, 'Unexpected black transition frames: '+blackFrames);
+        store.getState().toggleFreeze();
+        const meetingCanvas=document.createElement('canvas'); meetingCanvas.width=320; meetingCanvas.height=180;
+        const meetingContext=meetingCanvas.getContext('2d'); meetingContext.fillStyle='blue'; meetingContext.fillRect(0,0,320,180);
+        meetingContext.fillStyle='red'; meetingContext.fillRect(0,0,256,144);
+        const meeting={...image('meeting',meetingCanvas.toDataURL()),crop:{top:0,left:0,right:20,bottom:20}};
+        const meetingScene={id:'meeting',name:'Meeting crop',sourceIds:['meeting']};
+        store.getState().setStudioState({scenes:[meetingScene],sources:{meeting},groups:[],previewSceneId:'meeting',programSceneId:'meeting'});
+        await until(()=>pixel()[0]>245);
+        const meetingOutput=document.querySelector('.program-pane canvas'), meetingPixels=meetingOutput.getContext('2d');
+        for(const x of [.1,.9]) for(const y of [.1,.9]) assert(meetingPixels.getImageData(meetingOutput.width*x,meetingOutput.height*y,1,1).data[2]<10,'Crop leaked meeting controls');
+        let cameraRequests = 0;
+        const originalMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = constraints => { cameraRequests++; return originalMedia(constraints); };
+        const camera = {id:'cam',name:'Test camera',type:'camera',enabled:true,audioEnabled:false,rect:{x:0,y:0,width:100,height:100},data:{deviceId:''}};
+        const cameraScene = {id:'camera',name:'Camera',sourceIds:['cam']};
+        store.getState().setStudioState({scenes:[cameraScene],sources:{cam:camera},groups:[],previewSceneId:'camera',programSceneId:'camera'});
+        await wait(700);
+        store.getState().takeToProgram(); store.getState().updateSourceRect('cam',{x:5,y:5,width:90,height:90});
+        await wait(200);
+        assert(cameraRequests===1, 'Camera was reopened for Program or geometry edits: '+cameraRequests);
+        return {midpoint, blackFrames, encodedBlackFrames, encodedFrames:encodedFrames.length, cameraRequests, checks:['rapid fader', 'manual completion', 'fade', 'cold cut hold', 'freeze/black/restore', 'shared camera capture','meeting area crop']};
+      })()`);
+      if (process.platform === "win32") {
+        const capture = require(path.join(root, "tmp/capture-verification.cjs"));
+        const { EventEmitter } = require("events");
+        const target = new BrowserWindow({ show: false, width: 640, height: 400, webPreferences: { backgroundThrottling: false } });
+        await target.loadURL("data:text/html,<title>Meeting capture test</title><body style='margin:0;background:red;height:100vh'></body>");
+        target.showInactive();
+        const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 } });
+        const source = sources.find(item => item.name === "Meeting capture test");
+        if (!source) throw Error("Native test meeting window was not listed.");
+        const frames = [];
+        const owner = Object.assign(new EventEmitter(), { id: 9999, isDestroyed: () => false, send: (_channel, frame) => { if (frame.dataUrl) frames.push(frame.dataUrl); } });
+        const id = await capture.startCursorFreeCapture(owner, source.id);
+        const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+        for (let i=0;i<100&&!frames.length;i++) await wait(50);
+        if (!frames.length) throw Error("Native meeting capture produced no frames.");
+        target.setTitle("Meeting title changed");
+        await target.webContents.executeJavaScript("let tick=0; setInterval(()=>{document.body.style.background='rgb('+(200+(tick++%50))+',0,0)';},33)");
+        const popup = new BrowserWindow({ show: false, ...target.getBounds(), alwaysOnTop: true });
+        await popup.loadURL("data:text/html,<title>Meeting capture test</title><body style='margin:0;background:blue;height:100vh'>Chat / notification overlay</body>");
+        popup.showInactive();
+        target.setSize(1000, 650);
+        const count = frames.length;
+        await wait(700);
+        if (frames.length <= count) throw Error("Native capture stopped after window title changed.");
+        const image = nativeImage.createFromDataURL(frames.at(-1));
+        const size = image.getSize(), pixels = image.toBitmap(), offset = (Math.floor(size.height/2)*size.width+Math.floor(size.width/2))*4;
+        if (pixels[offset+2]<180 || pixels[offset]>60) throw Error("Native meeting window returned blank or wrong pixels.");
+        capture.stopCursorFreeCapture(id, owner.id);
+        capture.stopAllCursorFreeCaptures();
+        popup.destroy();
+        target.destroy();
+        result.nativeWindow = { frames: frames.length, size, renamedWindow: true, resizedWindow: true, separatePopupExcluded: true };
+      }
+      console.log(JSON.stringify(result));
+      app.exit(0);
+    } catch (error) { console.error(error); app.exit(1); }
+  });
+}

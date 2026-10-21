@@ -330,3 +330,17 @@ describe("Whole lower-third visibility", () => {
     expect(useAppStore.getState().isLowerThirdHidden).toBe(false);
   });
 });
+
+describe("settings persistence ordering", () => {
+  it("does not let an old save restore an older cue or fader value", async () => {
+    const original = useAppStore.getState().settings;
+    const replies: ((settings: Settings) => void)[] = [];
+    vi.stubGlobal("window", { dualcast: { updateSettings: vi.fn(() => new Promise<Settings>(resolve => replies.push(resolve))) } });
+    const first = useAppStore.getState().updateSettings({ masterAudioGain: 0.2 });
+    const second = useAppStore.getState().updateSettings({ masterAudioGain: 0.8 });
+    expect(useAppStore.getState().settings.masterAudioGain).toBe(0.8);
+    replies[1]({ ...original, masterAudioGain: 0.8 }); await second;
+    replies[0]({ ...original, masterAudioGain: 0.2 }); await first;
+    expect(useAppStore.getState().settings.masterAudioGain).toBe(0.8);
+  });
+});

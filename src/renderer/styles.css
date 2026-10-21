@@ -3329,6 +3329,10 @@ body {
   background: rgba(0, 0, 0, 0.68);
 }
 
+.capture-region-image { position: relative; width: 100%; touch-action: none; user-select: none; cursor: crosshair; overflow: hidden; }
+.capture-region-image img { display: block; width: 100%; height: auto; pointer-events: none; }
+.capture-region-selection { position: absolute; border: 2px solid #38bdf8; box-shadow: 0 0 0 2000px rgba(0,0,0,.55); pointer-events: none; }
+
 .studio-modal {
   width: min(880px, 96vw);
   max-height: 90vh;

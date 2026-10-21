@@ -47,7 +47,7 @@ declare global {
     dualcast: {
       startCursorFreeCapture: (sourceId: string) => Promise<string | null>;
       stopCursorFreeCapture: (id: string) => Promise<void>;
-      onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null }) => void) => () => void;
+      onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null; error?: string }) => void) => () => void;
       getProgramState: () => Promise<ProgramState | null>;
       listDisplays: () => Promise<DisplaySource[]>;
       listProjectionDisplays: () => Promise<ProjectionDisplay[]>;

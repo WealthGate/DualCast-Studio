@@ -13,7 +13,7 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
     transitionType,
     transitionDurationMs,
     manualBlend,
-    applyTransition,
+    setTransitionType,
     setTransitionDuration,
     setManualBlend,
     completeManualBlend,
@@ -27,8 +27,8 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
         <select
           value={transitionType}
           disabled={!previewSceneId}
-          onChange={(event) => applyTransition(event.target.value as "cut" | "fade" | "crossfade")}
-          aria-label="Apply scene transition"
+          onChange={(event) => setTransitionType(event.target.value as "cut" | "fade" | "crossfade")}
+          aria-label="Scene transition type"
         >
           <option value="cut">Cut</option>
           <option value="fade">Fade</option>
@@ -49,12 +49,7 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
           <span>ms</span>
         </div>
       </label>
-      <div className="quick-transition-buttons">
-        <button onClick={() => applyTransition("cut")} disabled={!previewSceneId}>Cut</button>
-        <button onClick={() => applyTransition("fade")} disabled={!previewSceneId}>Fade</button>
-        <button onClick={() => applyTransition("crossfade")} disabled={!previewSceneId}>Crossfade</button>
-      </div>
-      <p className="field-help">Cut, Fade, and Crossfade immediately send Preview to Program. TAKE uses the most recently selected transition.</p>
+      <p className="field-help">Choose a transition, then press TAKE in Production Controls. Fade and Crossfade keep the picture visible throughout.</p>
       <label><input type="checkbox" checked={settings.swapPreviewProgram !== false} onChange={(event) => updateSettings({ swapPreviewProgram: event.target.checked })} /> Swap Preview and Program after transitions</label>
       <div className="manual-blend-control">
         <div className="manual-blend-heading">

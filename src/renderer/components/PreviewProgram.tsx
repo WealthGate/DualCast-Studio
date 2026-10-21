@@ -1,6 +1,8 @@
 import { createStereoProgramOutput, setProgramChannelMode } from "../utils/audioChannels";
 import DisplayTextControls from "./DisplayTextControls";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { resizeCanvas, useCanvasRenderer } from "../hooks/useCanvasRenderer";
+import { canShareSourceMedia, compositeSceneBlend, registerCapturePreviewProvider, sourceMediaReady, sourceMediaSignature } from "../utils/sourceMedia";
 import { useAppStore } from "../store/useAppStore";
 import { createFrameEncoder } from "../utils/frameEncoder";
 import { isPresentationTextSource, visiblePresentationSourceIds } from "../utils/presentationText";
@@ -24,17 +26,12 @@ type SourceMedia = {
   stream?: MediaStream;
   captureStream?: MediaStream;
   lastRestartToken?: number;
+  error?: string;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-const getSignature = (source: Source) =>
-  JSON.stringify({
-    type: source.type,
-    data: source.data,
-    audioEnabled: source.audioEnabled,
-    captureCursor: source.captureCursor ?? "never"
-  });
+const getSignature = sourceMediaSignature;
 
 export const collectActiveSourceIds = (
   isMultiviewOpen: boolean,
@@ -137,18 +134,20 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const [isMultiviewOpen, setIsMultiviewOpen] = useState(false);
   const [mediaRevision, setMediaRevision] = useState(0);
   const [microphoneRevision, setMicrophoneRevision] = useState(0);
-  const [transitionSources, setTransitionSources] = useState<Record<string, Source>>({});
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
   const transitionRef = useRef<{
     type: "fade" | "crossfade";
-    startAt: number;
+    startAt: number | null;
     duration: number;
-    fromScene: Scene | null;
-    fromSources: Record<string, Source>;
+    fromFrame: HTMLCanvasElement;
     toScene: Scene | null;
     toSources: Record<string, Source>;
   } | null>(null);
   const previousProgramRef = useRef<{ scene: Scene | null; sources: Record<string, Source> } | null>(null);
+  const blendCanvasesRef = useRef<{ from: HTMLCanvasElement; to: HTMLCanvasElement } | null>(null);
+  const frozenFrameRef = useRef<HTMLCanvasElement | null>(null);
+  const publishProgramFrameRef = useRef<(canvas: HTMLCanvasElement, now: number) => void>(() => undefined);
+  useEffect(() => registerCapturePreviewProvider(id => sourceMediaRef.current.get(id)?.videoEl), []);
   const lowerThirdImageRef = useRef<HTMLImageElement | null>(null);
   const bibleImageRef = useRef<HTMLImageElement | null>(null);
   const lowerThirdBackgroundImageRef = useRef<HTMLImageElement | null>(null);
@@ -161,18 +160,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const programScene = programSceneSnapshot;
   const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
   const allSources = useMemo(
-    () => ({ ...sources, ...transitionSources, ...programSources }),
-    [programSources, sources, transitionSources]
+    () => ({ ...sources, ...programSources }),
+    [programSources, sources]
   );
   const previewSceneLocked = Boolean(previewScene?.locked);
   const activeSourceIds = useMemo(
     () => {
       const ids = collectActiveSourceIds(isMultiviewOpen, scenes, programScene, showPreview || manualBlend > 0 ? previewScene : null, allSources);
-      Object.values(transitionSources).forEach((source) => {
-        if (source.enabled) {
-          ids.add(source.id);
-        }
-      });
       Object.values(programSources).forEach((source) => {
         if (source.type === "audio" && source.audioScope === "persistent") {
           ids.delete(source.id);
@@ -180,41 +174,43 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       });
       return ids;
     },
-    [allSources, isMultiviewOpen, manualBlend, programScene, previewScene, programSources, scenes, showPreview, transitionSources]
+    [allSources, isMultiviewOpen, manualBlend, programScene, previewScene, programSources, scenes, showPreview]
   );
 
   const profile = getQualityProfile(settings.qualityPreset);
   const programSize = { width: profile.maxWidth, height: profile.maxHeight };
   const previewCanvasSize = fitToBounds(programSize.width, programSize.height, previewSize.width, previewSize.height);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const canvas = programCanvasRef.current;
+    if (isFrozen && canvas) {
+      const frame = document.createElement("canvas");
+      frame.width = canvas.width; frame.height = canvas.height;
+      frame.getContext("2d")?.drawImage(canvas, 0, 0);
+      frozenFrameRef.current = frame;
+    } else frozenFrameRef.current = null;
+  }, [isFrozen, programCanvasRef]);
+
+  useLayoutEffect(() => {
     const previous = previousProgramRef.current;
-    let cleanupTimer: number | null = null;
-    if (previous?.scene && programScene && transitionType !== "cut" && programTransitionMode === "configured") {
+    const canvas = programCanvasRef.current;
+    if (previous?.scene && programScene && canvas && transitionType !== "cut" && programTransitionMode === "configured") {
+      const fromFrame = document.createElement("canvas");
+      fromFrame.width = canvas.width;
+      fromFrame.height = canvas.height;
+      fromFrame.getContext("2d")?.drawImage(canvas, 0, 0);
       transitionRef.current = {
         type: transitionType === "fade" ? "fade" : "crossfade",
-        startAt: performance.now(),
+        startAt: null,
         duration: transitionDurationMs,
-        fromScene: previous.scene,
-        fromSources: previous.sources,
+        fromFrame,
         toScene: programScene,
         toSources: programSources
       };
-      setTransitionSources(previous.sources);
-      cleanupTimer = window.setTimeout(
-        () => setTransitionSources({}),
-        Math.max(100, transitionDurationMs) + 100
-      );
     } else {
       transitionRef.current = null;
-      setTransitionSources({});
     }
     previousProgramRef.current = { scene: programScene, sources: programSources };
-    return () => {
-      if (cleanupTimer !== null) {
-        window.clearTimeout(cleanupTimer);
-      }
-    };
   }, [programRevision]);
 
   useEffect(() => {
@@ -361,6 +357,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
     const createMedia = async (source: Source) => {
       const signature = getSignature(source);
+      const origin = source.id.replace(/^program:/, "");
+      const shared = canShareSourceMedia(source) ? Array.from(mediaMap.entries()).find(([id, media]) =>
+        id.replace(/^program:/, "") === origin && media.signature === signature && !media.error
+      )?.[1] : undefined;
+      if (shared) {
+        mediaMap.set(source.id, shared);
+        setMediaRevision((revision) => revision + 1);
+        return;
+      }
       const entry: SourceMedia = { signature, type: source.type };
       mediaMap.set(source.id, entry);
 
@@ -380,10 +385,14 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
             stream = await getDisplayStream(source.data.captureId, false);
           }
           entry.stream = stream;
+          stream.getVideoTracks().forEach(track => track.addEventListener("ended", () => {
+            entry.error = "Capture stopped. Restore the source window or reselect it, then retry capture.";
+            setMediaRevision((revision) => revision + 1);
+          }, { once: true }));
           video.srcObject = stream;
           await video.play();
-        } catch {
-          // Ignore capture failures; user can retry.
+        } catch (error) {
+          entry.error = error instanceof Error ? error.message : "Capture failed. Restore the source window and retry.";
         }
         entry.videoEl = video;
       } else if (source.type === "camera") {
@@ -396,12 +405,14 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
           entry.stream = stream;
           video.srcObject = stream;
           await video.play();
-        } catch {
-          // Ignore camera failures; user can retry.
+        } catch (error) {
+          entry.error = error instanceof Error ? error.message : "Camera capture failed. Check camera permissions and retry.";
         }
         entry.videoEl = video;
       } else if (source.type === "image") {
         const img = new Image();
+        img.onload = () => setMediaRevision((revision) => revision + 1);
+        img.onerror = () => { entry.error = "Image could not be loaded."; setMediaRevision((revision) => revision + 1); };
         img.src = source.data.url;
         entry.imageEl = img;
       } else if (source.type === "video") {
@@ -472,7 +483,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       }
 
       if (mediaMap.get(source.id) !== entry) {
-        cleanupSourceMedia(source.id, entry);
+        if (!Array.from(mediaMap.values()).includes(entry)) cleanupSourceMedia(source.id, entry);
+        else setMediaRevision((revision) => revision + 1);
         return;
       }
       setMediaRevision((revision) => revision + 1);
@@ -489,24 +501,27 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         return;
       }
       if (entry) {
-        cleanupSourceMedia(id, entry);
         mediaMap.delete(id);
+        if (!Array.from(mediaMap.values()).includes(entry)) cleanupSourceMedia(id, entry);
       }
       createMedia(source).catch(() => undefined);
     });
 
     Array.from(mediaMap.entries()).forEach(([id, entry]) => {
       if (!activeSourceIds.has(id)) {
-        cleanupSourceMedia(id, entry);
         mediaMap.delete(id);
+        if (!Array.from(mediaMap.values()).includes(entry)) cleanupSourceMedia(id, entry);
         browserFramesRef.current.delete(id);
         browserSizeRef.current.delete(id);
       }
     });
-  }, [activeSourceIds, allSources, programSize.height, programSize.width]);
+  }, [activeSourceIds, allSources, mediaRevision, programSize.height, programSize.width]);
 
   useEffect(() => () => {
-    sourceMediaRef.current.forEach((entry, sourceId) => cleanupSourceMedia(sourceId, entry));
+    const released = new Set<SourceMedia>();
+    sourceMediaRef.current.forEach((entry, sourceId) => {
+      if (!released.has(entry)) { released.add(entry); cleanupSourceMedia(sourceId, entry); }
+    });
     sourceMediaRef.current.clear();
   }, []);
 
@@ -821,6 +836,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     if (!drawable) {
       return;
     }
+    if (drawable instanceof HTMLVideoElement && (drawable.readyState < 2 || !drawable.videoWidth)) return;
+    if (drawable instanceof HTMLImageElement && (!drawable.complete || !drawable.naturalWidth)) return;
 
     ctx.save();
     ctx.translate(x + width / 2, y + height / 2);
@@ -1129,161 +1146,78 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     return () => window.clearInterval(interval);
   }, [isMultiviewOpen, previewSceneId, programSceneId, scenes, sources]);
 
-  useEffect(() => {
-    if (!showPreview) {
+  const sceneReady = (scene: Scene | null, sourceMap: Record<string, Source>) =>
+    !scene || scene.enabled === false || scene.sourceIds.every((id) => {
+      const source = sourceMap[id];
+      if (!source || !source.enabled) return true;
+      return source.type === "browser" ? browserFramesRef.current.has(id) : sourceMediaReady(source, sourceMediaRef.current.get(id));
+    });
+
+  const blendScene = (ctx: CanvasRenderingContext2D, outgoing: HTMLCanvasElement | null, progress: number, eased = false) => {
+    const canvas = ctx.canvas;
+    if (!blendCanvasesRef.current) blendCanvasesRef.current = { from: document.createElement("canvas"), to: document.createElement("canvas") };
+    const { from, to } = blendCanvasesRef.current;
+    resizeCanvas(from, canvas.width, canvas.height);
+    resizeCanvas(to, canvas.width, canvas.height);
+    const fromContext = from.getContext("2d")!;
+    const toContext = to.getContext("2d")!;
+    if (!outgoing) {
+      fromContext.fillStyle = "#000";
+      fromContext.fillRect(0, 0, from.width, from.height);
+      drawScene(fromContext, programScene, programSources, from.width, from.height, settings.lowerThird.programSlideId);
+    }
+    toContext.fillStyle = "#000";
+    toContext.fillRect(0, 0, to.width, to.height);
+    const incoming = outgoing ? programScene : previewScene;
+    const incomingSources = outgoing ? programSources : sources;
+    drawScene(toContext, incoming, incomingSources, to.width, to.height, outgoing ? settings.lowerThird.programSlideId : settings.lowerThird.activeSlideId);
+    compositeSceneBlend(ctx, outgoing ?? from, to, eased ? progress * progress * (3 - 2 * progress) : progress, canvas.width, canvas.height);
+  };
+
+  useCanvasRenderer(previewCanvasRef, programSize.width, programSize.height, Math.min(30, settings.frameRate), (ctx, now) => {
+    const canvas = ctx.canvas;
+    if (!sceneReady(previewScene, sources)) return;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawScene(ctx, previewScene, sources, canvas.width, canvas.height, settings.lowerThird.activeSlideId);
+    if (settings.lowerThird.activeSlideId || useAppStore.getState().displayTextMode === "logo") {
+      drawConfiguredLowerThird(ctx, canvas.width, canvas.height, now, previewLowerThirdCueRef);
+    }
+  }, showPreview);
+
+  useCanvasRenderer(programCanvasRef, programSize.width, programSize.height, settings.frameRate, (ctx, now) => {
+    const canvas = ctx.canvas;
+    if (isFrozen && !isCutToBlack && frozenFrameRef.current) {
+      ctx.drawImage(frozenFrameRef.current, 0, 0, canvas.width, canvas.height);
+      publishProgramFrameRef.current(canvas, now);
       return;
     }
-    const canvas = previewCanvasRef.current;
-    if (!canvas) {
-      return;
+    if (!isCutToBlack && !sceneReady(programScene, programSources)) return;
+    if (!isCutToBlack && manualBlend > 0 && !sceneReady(previewScene, sources)) return;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!isCutToBlack) {
+      const transition = transitionRef.current;
+      if (manualBlend > 0 && previewScene) {
+        blendScene(ctx, null, manualBlend);
+        syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
+        syncBrowserSources(previewScene, sources, canvas.width, canvas.height);
+      } else if (transition) {
+        if (transition.startAt === null) transition.startAt = now;
+        const progress = Math.min(1, (now - transition.startAt) / transition.duration);
+        blendScene(ctx, transition.fromFrame, progress, transition.type === "fade");
+        if (progress >= 1) transitionRef.current = null;
+        syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
+      } else {
+        drawScene(ctx, programScene, programSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
+        syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
+      }
     }
-    canvas.width = programSize.width;
-    canvas.height = programSize.height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      return;
+    if (!isCutToBlack && (useAppStore.getState().displayTextMode === "logo" || (settings.lowerThird.showOnProgram && settings.lowerThird.programSlideId))) {
+      drawConfiguredLowerThird(ctx, canvas.width, canvas.height, now, programLowerThirdCueRef);
     }
-
-    let rafId: number | null = null;
-    let lastRenderedAt = 0;
-    const frameInterval = 1000 / Math.min(30, settings.frameRate);
-
-    const render = (now: number) => {
-      if (now - lastRenderedAt >= frameInterval) {
-        lastRenderedAt = now;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        drawScene(ctx, previewScene, sources, canvas.width, canvas.height, settings.lowerThird.activeSlideId);
-        if (settings.lowerThird.activeSlideId || useAppStore.getState().displayTextMode === "logo") {
-          drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), previewLowerThirdCueRef);
-        }
-      }
-
-      rafId = requestAnimationFrame(render);
-    };
-
-    rafId = requestAnimationFrame(render);
-    return () => {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-      }
-    };
-  }, [previewScene, programSize.height, programSize.width, settings.frameRate, settings.lowerThird, showPreview, sources]);
-
-  useEffect(() => {
-    const canvas = programCanvasRef.current;
-    if (!canvas) {
-      return;
-    }
-    canvas.width = programSize.width;
-    canvas.height = programSize.height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      return;
-    }
-
-    let rafId: number | null = null;
-    let lastRenderedAt = 0;
-    const frameInterval = 1000 / settings.frameRate;
-
-    const render = (now: number) => {
-      if (now - lastRenderedAt < frameInterval) {
-        if (!isFrozen) {
-          rafId = requestAnimationFrame(render);
-        }
-        return;
-      }
-      lastRenderedAt = now;
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      if (!isCutToBlack) {
-        const transition = transitionRef.current;
-        if (manualBlend > 0 && previewScene) {
-          ctx.save();
-          ctx.globalAlpha = 1 - manualBlend;
-          drawScene(ctx, programScene, programSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
-          ctx.globalAlpha = manualBlend;
-          drawScene(ctx, previewScene, sources, canvas.width, canvas.height, settings.lowerThird.activeSlideId);
-          ctx.restore();
-          syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
-          syncBrowserSources(previewScene, sources, canvas.width, canvas.height);
-        } else if (
-          transition &&
-          transition.fromScene &&
-          transition.toScene &&
-          performance.now() - transition.startAt < transition.duration
-        ) {
-          const elapsed = performance.now() - transition.startAt;
-          const progress = Math.min(1, elapsed / transition.duration);
-          const fromScene = transition.fromScene;
-          const toScene = transition.toScene;
-
-          if (transition.type === "crossfade") {
-            ctx.save();
-            ctx.globalAlpha = 1 - progress;
-            drawScene(ctx, fromScene, transition.fromSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
-            ctx.globalAlpha = progress;
-            drawScene(ctx, toScene, transition.toSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
-            ctx.restore();
-          } else {
-            if (progress < 0.5) {
-              ctx.save();
-              ctx.globalAlpha = 1 - progress * 2;
-              drawScene(ctx, fromScene, transition.fromSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
-              ctx.restore();
-            } else {
-              ctx.save();
-              ctx.globalAlpha = (progress - 0.5) * 2;
-              drawScene(ctx, toScene, transition.toSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
-              ctx.restore();
-            }
-          }
-
-          syncBrowserSources(toScene, transition.toSources, canvas.width, canvas.height);
-        } else {
-          if (transition) {
-            transitionRef.current = null;
-          }
-          drawScene(ctx, programScene, programSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
-          syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
-        }
-      }
-      if (!isCutToBlack && (useAppStore.getState().displayTextMode === "logo" || (settings.lowerThird.showOnProgram && settings.lowerThird.programSlideId))) {
-        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), programLowerThirdCueRef);
-      }
-
-      if (!isFrozen) {
-        rafId = requestAnimationFrame(render);
-      }
-    };
-
-    rafId = requestAnimationFrame(render);
-
-    return () => {
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-      }
-    };
-  }, [
-    programScene,
-    programSources,
-    isCutToBlack,
-    isFrozen,
-    manualBlend,
-    previewScene,
-    programCanvasRef,
-    programTransitionMode,
-    programSize.height,
-    programSize.width,
-    settings.frameRate,
-    settings.lowerThird,
-    sources
-  ]);
+    publishProgramFrameRef.current(canvas, now);
+  });
 
   useEffect(() => {
     if (!isProjecting && !settings.networkOutput.enabled) {
@@ -1291,22 +1225,19 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     }
 
     const encoder = createFrameEncoder((frame) => window.dualcast.sendProgramFrame(frame));
-    const sendFrame = () => {
-      const canvas = programCanvasRef.current;
-      if (!canvas) {
-        return;
-      }
+    let lastSentAt = -Infinity;
+    const frameInterval = isFrozen && !isCutToBlack ? 1000 : 1000 / Math.min(30, settings.frameRate);
+    publishProgramFrameRef.current = (canvas, now) => {
+      if (now - lastSentAt < frameInterval) return;
+      lastSentAt = now;
       encoder.encode(canvas);
     };
 
-    sendFrame();
-    const interval = window.setInterval(sendFrame, isFrozen ? 1000 : 1000 / Math.min(30, settings.frameRate));
-
     return () => {
-      window.clearInterval(interval);
+      publishProgramFrameRef.current = () => undefined;
       encoder.stop();
     };
-  }, [isFrozen, isProjecting, programCanvasRef, settings.frameRate, settings.networkOutput.enabled]);
+  }, [isCutToBlack, isFrozen, isProjecting, settings.frameRate, settings.networkOutput.enabled]);
 
   useEffect(() => {
     if (!isLowerThirdProjecting) {
@@ -1520,6 +1451,17 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   return (
     <section className="display-workspace" aria-label="Preview and Program displays">
       <div className="display-controls-row"><DisplayTextControls /></div>
+      {!sceneReady(programScene, programSources) && <p role="status" className="field-help">Preparing Program sources. Holding the last live picture until the next scene is ready.</p>}
+      {Array.from(sourceMediaRef.current.entries()).filter(([, media], index, entries) => media.error && entries.findIndex(([, entry]) => entry === media) === index).map(([id, media]) => (
+        <div key={id} role="alert" className="field-help">
+          {allSources[id]?.name ?? "Source"}: {media.error}
+          <button onClick={() => {
+            for (const [key, entry] of sourceMediaRef.current) if (entry === media) sourceMediaRef.current.delete(key);
+            cleanupSourceMedia(id, media);
+            setMediaRevision((revision) => revision + 1);
+          }}>Retry capture</button>
+        </div>
+      ))}
       <div className="preview-program">
         <div className="pane preview-pane">
           <div className="pane-header">

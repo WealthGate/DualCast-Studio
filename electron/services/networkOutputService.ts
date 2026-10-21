@@ -51,7 +51,8 @@ const programPage = `<!doctype html>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>OpenChurch Program</title>
     <style>
-      html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
+      html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;cursor:none}
+      body *{cursor:none!important}
       img{width:100%;height:100%;object-fit:contain;background:#000}
     </style>
   </head>

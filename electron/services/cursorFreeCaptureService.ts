@@ -3,10 +3,10 @@ import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 import { randomUUID } from "crypto";
 import bundledFfmpegPath from "ffmpeg-static";
 import { resolveFfmpegExecutablePath } from "./ffmpegPathService";
+import { getWindowsCaptureExecutable } from "./windowsCapturePathService";
 import { IpcChannels } from "../../src/shared/ipc";
 
 const captures = new Map<string, { owner: number; process: ChildProcessWithoutNullStreams }>();
-
 export const stopCursorFreeCapture = (id: string, owner?: number) => {
   const entry = captures.get(id);
   if (!entry || (owner !== undefined && owner !== entry.owner)) return;
@@ -24,28 +24,26 @@ export const stopAllCursorFreeCaptures = () => {
 export const startCursorFreeCapture = async (owner: WebContents, sourceId: string) => {
   if (process.platform !== "win32") return null;
   if (typeof sourceId !== "string") throw new Error("Invalid capture source.");
-  const executable = resolveFfmpegExecutablePath(bundledFfmpegPath);
+  const isWindow = sourceId.startsWith("window:");
+  const executable = isWindow ? getWindowsCaptureExecutable() : resolveFfmpegExecutablePath(bundledFfmpegPath);
   if (!executable) throw new Error("Screen capture executable is unavailable.");
   const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } });
   const source = sources.find((item) => item.id === sourceId);
   if (!source || owner.isDestroyed()) throw new Error("Capture source is unavailable.");
-  const input = ["-f", "gdigrab", "-draw_mouse", "0", "-framerate", "30"];
-  if (sourceId.startsWith("screen:")) {
+  let input;
+  if (isWindow) {
+    const handle = /^window:(\d+):\d+$/.exec(sourceId)?.[1];
+    if (!handle) throw new Error("Invalid window capture handle.");
+    input = ["-filter_complex", `gfxcapture=hwnd=${handle}:capture_cursor=0:capture_border=0:display_border=0:max_framerate=30:width=1920:height=1080:resize_mode=scale_aspect,hwdownload,format=bgra`];
+  } else {
     const display = screen.getAllDisplays().find((item) => String(item.id) === source.display_id);
     if (!display) throw new Error("Capture display is unavailable.");
     const bounds = screen.dipToScreenRect(null, display.bounds);
-    input.push("-offset_x", String(bounds.x), "-offset_y", String(bounds.y), "-video_size", `${bounds.width}x${bounds.height}`, "-i", "desktop");
-  } else {
-    // The bundled FFmpeg uses window titles (hwnd input requires newer FFmpeg).
-    // Refuse ambiguous titles instead of capturing an unrelated window.
-    if (!source.name || sources.filter((item) => item.id.startsWith("window:") && item.name === source.name).length !== 1) {
-      throw new Error("Choose a window with a unique title for cursor-free capture.");
-    }
-    input.push("-i", `title=${source.name}`);
+    input = ["-f", "gdigrab", "-draw_mouse", "0", "-framerate", "30", "-offset_x", String(bounds.x), "-offset_y", String(bounds.y), "-video_size", `${bounds.width}x${bounds.height}`, "-i", "desktop"];
   }
   const id = randomUUID();
   const child = spawn(executable, ["-hide_banner", "-loglevel", "error", ...input,
-    "-an", "-vf", "scale=w='min(1920,iw)':h=-2", "-c:v", "mjpeg", "-q:v", "3", "-threads", "1", "-f", "image2pipe", "pipe:1"], { windowsHide: true });
+    "-an", ...(isWindow ? [] : ["-vf", "scale=w='min(1920,iw)':h=-2"]), "-c:v", "mjpeg", "-q:v", "3", "-threads", "1", "-f", "image2pipe", "pipe:1"], { windowsHide: true });
   captures.set(id, { owner: owner.id, process: child });
   const close = () => stopCursorFreeCapture(id);
   owner.once("destroyed", close);
@@ -63,14 +61,16 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
       if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, { id, dataUrl: `data:image/jpeg;base64,${frame.toString("base64")}` });
     }
   });
-  child.stderr.resume();
+  let lastError = "";
+  child.stderr.on("data", (data: Buffer) => { lastError = (lastError + data.toString()).slice(-2000); });
   child.once("error", close);
   child.once("close", () => {
+    const wasActive = captures.has(id);
     captures.delete(id);
     owner.removeListener("destroyed", close);
     owner.removeListener("render-process-gone", close);
     owner.removeListener("did-start-navigation", close);
-    if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, { id, dataUrl: null });
+    if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, { id, dataUrl: null, ...(wasActive ? { error: lastError.trim() || "Capture window closed or became unavailable." } : {}) });
   });
   return id;
 };

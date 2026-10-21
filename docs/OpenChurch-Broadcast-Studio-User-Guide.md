@@ -132,20 +132,20 @@ A scene is one complete arrangement, such as Sermon Camera, Worship Lyrics, Scri
 2. Add, edit, move, or trim its sources.
 3. Check the complete result in Preview.
 4. Set the transition duration before sending the scene live.
-5. Choose **Cut**, **Fade**, or **Crossfade** in Scene Transitions. The selected transition immediately sends Preview to Program; do not press TAKE afterward.
+5. Choose **Cut**, **Fade**, or **Crossfade** in Scene Transitions, then press **TAKE** in Production Controls.
 6. Confirm the Program label and picture are correct.
 
-TAKE remains available as a separate control. It uses the most recently selected transition, so operators can still use the TAKE button, Ctrl/Cmd + Enter, or a remote TAKE command when that workflow is preferred.
+TAKE uses the selected transition. Ctrl/Cmd + Enter and remote TAKE commands follow the same path. Changing the transition selector prepares the next take without sending it live.
 
 ### Make a slow manual blend from Preview to Program
 
 1. Stay in **Studio Mode** and prepare the next scene in Preview.
 2. Open **Scene Transitions** and find **Live Preview Blend**.
 3. Move the fader slowly from Program toward Preview. The projector, recording, stream, and network output immediately see the selected mixture.
-4. Pause anywhere between 1% and 99% when the audience should see both scenes blended together. The fader stays at that intermediate position.
+4. Hold the fader anywhere between 1% and 99% to blend both scenes. Releasing before 100% returns to Program and resets the fader.
 5. Drag the fader fully to 100% to make Preview the new Program scene. The fader automatically returns to 0% after the change is completed. You can also choose **Complete to Preview** without dragging to the end, or **Reset to Program** to cancel the blend safely.
 
-Program audio remains active during the blend and switches only when **Complete to Preview** is chosen. Cut, Fade, and Crossfade immediately send Preview live; TAKE uses the last selected transition. Automatic transition duration can be set from 100 milliseconds up to 15 seconds.
+Program audio remains active during the blend and switches when the take completes. Fade and Crossfade blend complete pictures without dipping through black. Incoming media is prepared before it replaces the last live picture. Automatic transition duration can be set from 100 milliseconds up to 15 seconds.
 
 ### Lock a finished scene
 
@@ -191,9 +191,19 @@ The operator's pointer remains visible throughout the studio, including Preview 
 
 Display and Window sources always request cursor-free capture. On Windows, native capture excludes the cursor before composition, including when it moves over the desktop or other applications. The resulting Program frames are shared by recording, streaming, projectors, and local-network output. Previous source settings that showed the cursor no longer apply.
 
-Window capture on Windows requires a unique window title; restore minimized windows before capturing. Other operating systems use their existing desktop capture backend and need an output check to confirm cursor exclusion.
+Window capture on Windows uses Windows Graphics Capture by window handle. Renaming a window does not change the capture target, and separate desktop windows are excluded. Restore minimized windows before capturing. Other operating systems use their existing desktop capture backend and need an output check to confirm cursor exclusion.
 
 Check Program and make a short test recording while moving the pointer over the studio, desktop, and another application.
+
+### Capture meeting video without surrounding controls
+
+1. Add a **Window** source, rather than a Display source, and select the meeting's video window.
+2. Enter the meeting app's full-screen video view before checking Preview. Keep the video window restored, even when another application covers it.
+3. Window capture excludes separate desktop/chat/notification windows. If the meeting app draws controls or chat inside its own video surface, hide those controls in that app.
+4. For a fixed layout with controls beside the video, open source Properties and choose **Select video-only area**. Drag around the video and choose **Apply to Preview**.
+5. Review Preview, then TAKE. The crop is shared by the projector, recording, stream, and network output. Keep the meeting layout fixed after cropping, or select the region again.
+
+Content drawn inside the selected video pixels cannot be separated by window capture or cropping. Test the actual meeting app and notification settings before a service. If capture stops, the source displays an error with **Retry capture**; reselect the meeting window if the app created a new full-screen window.
 
 ### Window capture does not show the window
 

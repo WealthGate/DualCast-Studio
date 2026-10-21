@@ -1,6 +1,8 @@
 import SanctuaryLayout from "./components/SanctuaryLayout";
 import React, { useEffect, useRef, useState } from "react";
 import { ProgramState } from "../shared/types";
+import { resizeCanvas } from "./hooks/useCanvasRenderer";
+import { createFrameDecoder } from "./utils/frameDecoder";
 
 const defaultState: ProgramState = {
   programSceneId: null,
@@ -46,17 +48,15 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
 
   useEffect(() => {
     const subscribe = mode === "lower-third" ? window.dualcast.onLowerThirdFrame : window.dualcast.onProgramFrame;
-    const unsubscribe = subscribe((dataUrl) => {
-      const img = new Image();
-      img.onload = () => {
-        latestFrameRef.current = img;
-        drawFrameRef.current();
-      };
-      img.src = dataUrl;
+    const decoder = createFrameDecoder((image) => {
+      latestFrameRef.current = image;
+      drawFrameRef.current();
     });
+    const unsubscribe = subscribe(decoder.decode);
 
     return () => {
       unsubscribe();
+      decoder.stop();
     };
   }, [mode]);
 
@@ -67,8 +67,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
     }
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      resizeCanvas(canvas, window.innerWidth, window.innerHeight);
       drawFrameRef.current();
     };
 

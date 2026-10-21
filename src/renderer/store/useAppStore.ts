@@ -95,6 +95,8 @@ const defaultSettings: Settings = {
   studioState: defaultStudioState
 };
 
+let settingsWriteRevision = 0;
+
 const getId = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
 type ProgramSnapshot = {
@@ -262,10 +264,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   persistStudioState: async () => {
     const { scenes, sources, groups, previewSceneId, programSceneId } = get();
-    const updated = await window.dualcast.updateSettings({
+    await get().updateSettings({
       studioState: { scenes, sources, groups, previewSceneId, programSceneId }
     });
-    set({ settings: updated });
   },
   addScene: () => {
     const id = getId();
@@ -327,7 +328,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           previewSceneId: state.previewSceneId,
           programSceneId: sceneId
         };
-        void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);
+        void get().updateSettings({ lowerThird, studioState }).catch(() => undefined);
       }
     }
   },
@@ -361,7 +362,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         previewSceneId,
         programSceneId: scene.id
       };
-      void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);
+      void get().updateSettings({ lowerThird, studioState }).catch(() => undefined);
     }
   },
   stageLowerThird: async (slides, activeSlideId, live = false) => {
@@ -387,16 +388,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     set({ settings: { ...state.settings, lowerThird }, scenes, sources });
     if (typeof window === "undefined" || !window.dualcast) return;
-    const settings = await window.dualcast.updateSettings({ lowerThird, studioState });
-    set({ settings });
+    await get().updateSettings({ lowerThird, studioState });
   },
   takeLowerThirdToProgram: async () => {
     const state = get();
     const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
     set({ settings: { ...state.settings, lowerThird } });
     if (typeof window === "undefined" || !window.dualcast) return;
-    const settings = await window.dualcast.updateSettings({ lowerThird });
-    set({ settings });
+    await get().updateSettings({ lowerThird });
   },
   hideScripture: async () => {
     const state = get();
@@ -409,16 +408,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     set({ settings: { ...state.settings, lowerThird } });
     if (typeof window === "undefined" || !window.dualcast) return;
-    const settings = await window.dualcast.updateSettings({ lowerThird });
-    set({ settings });
+    await get().updateSettings({ lowerThird });
   },
   clearProgramText: async () => {
     const state = get();
     const lowerThird = { ...state.settings.lowerThird, programSlideId: null };
     set({ settings: { ...state.settings, lowerThird } });
     if (typeof window === "undefined" || !window.dualcast) return;
-    const settings = await window.dualcast.updateSettings({ lowerThird });
-    set({ settings });
+    await get().updateSettings({ lowerThird });
   },
   addPresentationSourceToScene: async (sceneId, source) => {
     const state = get();
@@ -459,8 +456,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     set({ scenes, sources, settings: { ...state.settings, lowerThird } });
     if (typeof window === "undefined" || !window.dualcast) return;
-    const settings = await window.dualcast.updateSettings({ lowerThird, studioState });
-    set({ settings });
+    await get().updateSettings({ lowerThird, studioState });
   },
   addSourceToScene: (sceneId, source) => {
     const id = getId();
@@ -661,7 +657,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         previewSceneId,
         programSceneId: scene.id
       };
-      void window.dualcast.updateSettings({ lowerThird, studioState }).then((settings) => set({ settings })).catch(() => undefined);
+      void get().updateSettings({ lowerThird, studioState }).catch(() => undefined);
     }
   },
   setSourceMediaPaused: (sourceId, paused) =>
@@ -718,7 +714,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setRecordingError: (message) => set({ recordingError: message }),
   setSettings: (settings) => set({ settings }),
   updateSettings: async (update) => {
+    const revision = ++settingsWriteRevision;
+    set((state) => ({ settings: { ...state.settings, ...update } }));
     const updated = await window.dualcast.updateSettings(update);
-    set({ settings: updated });
+    if (revision === settingsWriteRevision) set({ settings: updated });
   }
 }));

@@ -244,6 +244,7 @@ This approach works across display brands that can show a web page. Native Mirac
 
 ```bash
 npm install
+npm run prepare:windows-capture
 npm run dev
 ```
 
@@ -260,7 +261,10 @@ Run tests:
 
 ```bash
 npm test
+npm run verify:live-output
 ```
+
+Windows window capture uses a bundled Windows Graphics Capture runtime, downloaded and checksum-verified by `prepare:windows-capture` and included in PC installers. It captures the selected window without the cursor, window border, or separate desktop notification windows. For meeting apps, enter full-screen video and review Preview before TAKE. Source Properties includes **Select video-only area** for fixed layouts; UI drawn inside the selected video must be hidden in the meeting app. See [the live-output audit](docs/live-output-audit.md) for verification and limits.
 
 ## Provider Configuration
 

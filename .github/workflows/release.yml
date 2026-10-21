@@ -45,6 +45,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare native Windows Graphics Capture
+        if: runner.os == 'Windows'
+        run: npm run prepare:windows-capture
+
       - name: Verify release tag matches package version
         shell: bash
         env:

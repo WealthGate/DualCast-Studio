@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({ spawn: vi.fn(), getSources: vi.fn(), getAllDis
 vi.mock("electron", () => ({ desktopCapturer: { getSources: mocks.getSources }, screen: { getAllDisplays: mocks.getAllDisplays, dipToScreenRect: mocks.dipToScreenRect } }));
 vi.mock("child_process", () => ({ spawn: mocks.spawn }));
 vi.mock("../ffmpegPathService", () => ({ resolveFfmpegExecutablePath: () => "ffmpeg.exe" }));
+vi.mock("../windowsCapturePathService", () => ({ getWindowsCaptureExecutable: () => "window-capture.exe" }));
 import { startCursorFreeCapture, stopCursorFreeCapture, stopAllCursorFreeCaptures } from "../cursorFreeCaptureService";
 import type { WebContents } from "electron";
 
@@ -22,7 +23,7 @@ describe("cursor-free capture", () => {
     mocks.getAllDisplays.mockReturnValue([{ id: 10, bounds: { x: -1280, y: 0, width: 1280, height: 720 } }]);
     mocks.dipToScreenRect.mockReturnValue({ x: -1920, y: 0, width: 1920, height: 1080 });
   });
-  afterEach(() => { stopAllCursorFreeCaptures(); vi.unstubAllGlobals(); });
+  afterEach(() => { stopAllCursorFreeCaptures(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
   it("excludes the pointer at capture and uses physical monitor coordinates", async () => {
     await startCursorFreeCapture(owner, "screen:0:0");
@@ -30,9 +31,12 @@ describe("cursor-free capture", () => {
     expect(args).toEqual(expect.arrayContaining(["-draw_mouse", "0", "-offset_x", "-1920", "-video_size", "1920x1080"]));
     expect(mocks.spawn.mock.calls[0][2]).toEqual({ windowsHide: true });
   });
-  it("captures a uniquely named external window with the pointer excluded", async () => {
-    await startCursorFreeCapture(owner, "window:42:0");
-    expect(mocks.spawn.mock.calls[0][1]).toEqual(expect.arrayContaining(["-draw_mouse", "0", "title=Slides"]));
+  it("captures windows by id even when titles change or are duplicated", async () => {
+    const id = await startCursorFreeCapture(owner, "window:42:0");
+    expect(mocks.spawn.mock.calls[0][0]).toBe("window-capture.exe");
+    expect(mocks.spawn.mock.calls[0][1]).toContain("gfxcapture=hwnd=42:capture_cursor=0:capture_border=0:display_border=0:max_framerate=30:width=1920:height=1080:resize_mode=scale_aspect,hwdownload,format=bgra");
+    stopCursorFreeCapture(id!, owner.id);
+    expect(child.kill).toHaveBeenCalledOnce();
   });
   it("rejects stale source ids without starting a capture", async () => {
     await expect(startCursorFreeCapture(owner, "window:99:0")).rejects.toThrow("unavailable");

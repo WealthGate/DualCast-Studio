@@ -3,6 +3,8 @@ import { useAppStore } from "../store/useAppStore";
 import { Source, SourceCrop, SourceRect, SourceType } from "../../shared/types";
 import ContextMenu from "./ContextMenu";
 import RowAction from "./RowAction";
+import CaptureRegionPicker from "./CaptureRegionPicker";
+import { getSourceCapturePreview } from "../utils/sourceMedia";
 
 type CameraDevice = {
   deviceId: string;
@@ -67,6 +69,8 @@ const SceneSourcesPanel: React.FC = () => {
   const [captureFilter, setCaptureFilter] = useState("");
   const [sourceMenu, setSourceMenu] = useState<SourceMenu | null>(null);
   const [toolOverlay, setToolOverlay] = useState<ToolOverlay>(null);
+  const [captureRegion, setCaptureRegion] = useState<{ sourceId: string; imageUrl: string } | null>(null);
+  const [captureMessage, setCaptureMessage] = useState("");
 
   const activeScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? scenes[0], [previewSceneId, scenes]);
   const sceneSources = activeScene ? activeScene.sourceIds.map((id) => sources[id]).filter(Boolean) : [];
@@ -566,10 +570,22 @@ const SceneSourcesPanel: React.FC = () => {
                   updateSource(selectedSource.id, { data: { ...selectedSource.data, ...(selectedSource.type === "camera" ? { deviceId: event.target.value } : { captureId: event.target.value }) } } as Partial<Source>);
                   void persistStudioState();
                 }}>
-                <option value={selectedSource.type === "camera" ? selectedSource.data.deviceId : selectedSource.data.captureId}>Current selection</option>
+                {(selectedSource.type === "camera" ? !cameras.some(camera => camera.deviceId === selectedSource.data.deviceId) : !displays.some(display => display.id === selectedSource.data.captureId)) && <option value={selectedSource.type === "camera" ? selectedSource.data.deviceId : selectedSource.data.captureId}>Current selection (refresh if unavailable)</option>}
                 {selectedSource.type === "camera" ? cameras.map(camera => <option key={camera.deviceId} value={camera.deviceId}>{camera.label}</option>) : displays.filter(display => selectedSource.type === "display" ? display.id.startsWith('screen:') : display.id.startsWith('window:')).map(display => <option key={display.id} value={display.id}>{display.name}</option>)}
               </select>
               <button className="btn btn-outline btn-compact" onClick={() => void refreshDisplays()}>Refresh captures</button>
+              {selectedSource.type !== "camera" && <>
+                <button disabled={activeSceneLocked || selectedSource.locked} onClick={() => {
+                  setCaptureMessage("");
+                  try {
+                    const imageUrl = getSourceCapturePreview(selectedSource.id);
+                    if (!imageUrl) { setCaptureMessage("Wait for the capture to appear in Preview. Restore or reselect the meeting window if needed."); return; }
+                    setCaptureRegion({ sourceId: selectedSource.id, imageUrl });
+                  } catch { setCaptureMessage("Could not refresh captures. Check screen-recording permissions and retry."); }
+                }}>Select video-only area</button>
+                <span className="field-help">For Zoom and similar apps, choose a separate video-only window, or crop away controls and chat. Review Preview before TAKE.</span>
+                {captureMessage && <p role="status">{captureMessage}</p>}
+              </>}
             </div>
           ) : null}
           <div className="field-help">Edit source content in Preview, then TAKE to apply it to Program.</div>
@@ -1022,6 +1038,11 @@ const SceneSourcesPanel: React.FC = () => {
           <button onClick={() => runMenuAction(() => setToolOverlay("groups"))}>Manage Groups</button>
         </ContextMenu>
       ) : null}
+      {captureRegion && sources[captureRegion.sourceId] && <CaptureRegionPicker imageUrl={captureRegion.imageUrl} crop={sources[captureRegion.sourceId].crop} onClose={() => setCaptureRegion(null)} onApply={crop => {
+        updateSource(captureRegion.sourceId, { crop });
+        void persistStudioState();
+        setCaptureRegion(null);
+      }} />}
     </div>
   );
 };

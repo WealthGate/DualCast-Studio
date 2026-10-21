@@ -22,7 +22,8 @@ export const getCursorFreeStream = async (sourceId: string): Promise<MediaStream
   const unsubscribe = window.dualcast.onCursorFreeFrame((frame) => {
     if (frame.id !== id || stopped) return;
     if (!frame.dataUrl) {
-      rejectReady(new Error("Cursor-free screen capture ended."));
+      rejectReady(new Error(frame.error || "Cursor-free screen capture ended."));
+      stream?.getVideoTracks().forEach(track => track.dispatchEvent(new Event("ended")));
       stop();
       return;
     }
