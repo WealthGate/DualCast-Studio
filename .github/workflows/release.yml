@@ -62,6 +62,7 @@ jobs:
         run: npm run verify:streaming
 
       - name: Verify production streaming service and local RTMP startup
+        timeout-minutes: 3
         run: npm run verify:stream-startup
 
       - name: Build application
