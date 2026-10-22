@@ -4,15 +4,17 @@ import type { NativeCaptureFrame } from "../../../shared/types";
 
 describe("bounded encoded frame decoding", () => {
   const instances: any[] = [];
+  let flushOutput: unknown;
   beforeEach(() => {
     instances.length = 0;
+    flushOutput = undefined;
     vi.stubGlobal("EncodedVideoChunk", class { constructor(public data: unknown) {} });
     vi.stubGlobal("VideoDecoder", class {
-      state = "configured"; decodeQueueSize = 0; configure = vi.fn(); decode = vi.fn(); close = vi.fn(() => { this.state = "closed"; });
+      state = "configured"; decodeQueueSize = 0; configure = vi.fn(); decode = vi.fn(); flush = vi.fn(async () => { if (flushOutput) this.callbacks.output(flushOutput); }); close = vi.fn(() => { this.state = "closed"; });
       constructor(public callbacks: any) { instances.push(this); }
     });
   });
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
   const packet = (keyFrame = false): NativeCaptureFrame => ({ id: "test", dataUrl: null, data: new Uint8Array([1]), codec: "avc1.42002a", keyFrame, timestamp: 100 });
   it("waits for a keyframe and discards dependent frames after a congested decoder resets", () => {
     const decoder = createVideoFrameDecoder(vi.fn(), vi.fn());
@@ -36,5 +38,21 @@ describe("bounded encoded frame decoding", () => {
     expect(fail).not.toHaveBeenCalled(); decoder.decode(packet(true));
     expect(instances[1].configure).toHaveBeenCalledWith(expect.objectContaining({ hardwareAcceleration: "no-preference" }));
     instances[1].callbacks.error(Error("decoder")); expect(fail).toHaveBeenCalledOnce(); decoder.stop();
+  });
+  it("drains a still window's buffered picture without waiting for another repaint", async () => {
+    vi.useFakeTimers();
+    const draw = vi.fn(), decoder = createVideoFrameDecoder(draw, vi.fn());
+    decoder.decode(packet(true));
+    const frame = { close: vi.fn() };
+    flushOutput = frame;
+    await vi.advanceTimersByTimeAsync(150);
+    expect(draw).toHaveBeenCalledWith(frame);
+    expect(instances[0].flush).not.toHaveBeenCalled();
+    expect(instances[1].flush).toHaveBeenCalledOnce();
+    decoder.decode(packet());
+    expect(instances[0].decode).toHaveBeenCalledTimes(2);
+    decoder.decode(packet(true));
+    expect(instances[0].decode).toHaveBeenCalledTimes(3);
+    decoder.stop();
   });
 });

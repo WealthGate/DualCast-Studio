@@ -7,6 +7,7 @@ import { createFrameCadence } from "../utils/frameCadence";
 import { ScrollingTextRenderer } from "../utils/scrollingText";
 import { canShareSourceMedia, compositeSceneBlend, registerCapturePreviewProvider, sourceMediaReady, sourceMediaSignature } from "../utils/sourceMedia";
 import { useAppStore } from "../store/useAppStore";
+import { useShallow } from "zustand/react/shallow";
 import { createFrameEncoder } from "../utils/frameEncoder";
 import { createFrameDecoder, DecodedFrame } from "../utils/frameDecoder";
 import { getNativeCaptureCanvas, nativeCaptureVersion } from "../utils/cursorFreeCapture";
@@ -128,7 +129,35 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     transitionDurationMs,
     manualBlend,
     programTransitionMode
-  } = useAppStore();
+  } = useAppStore(useShallow(state => ({
+    scenes: state.scenes,
+    sources: state.sources,
+    previewSceneId: state.previewSceneId,
+    programSceneId: state.programSceneId,
+    programSceneSnapshot: state.programSceneSnapshot,
+    programSources: state.programSources,
+    programRevision: state.programRevision,
+    selectedSourceId: state.selectedSourceId,
+    isCutToBlack: state.isCutToBlack,
+    isFrozen: state.isFrozen,
+    settings: state.settings,
+    isProjecting: state.isProjecting,
+    isLowerThirdProjecting: state.isLowerThirdProjecting,
+    updateSourceRect: state.updateSourceRect,
+    updateSource: state.updateSource,
+    setSelectedSourceId: state.setSelectedSourceId,
+    takeToProgram: state.takeToProgram,
+    persistStudioState: state.persistStudioState,
+    setProgramAudioStream: state.setProgramAudioStream,
+    isProgramAudioMonitoring: state.isProgramAudioMonitoring,
+    programAudioMonitorGain: state.programAudioMonitorGain,
+    setIsProjecting: state.setIsProjecting,
+    setIsLowerThirdProjecting: state.setIsLowerThirdProjecting,
+    transitionType: state.transitionType,
+    transitionDurationMs: state.transitionDurationMs,
+    manualBlend: state.manualBlend,
+    programTransitionMode: state.programTransitionMode,
+  })));
   const showPreview = viewMode === "studio";
   const captureFps = Math.max(settings.frameRate, settings.streamFps);
   const getSignature = (source: Source) => sourceMediaSignature(source) + (["display", "window", "camera"].includes(source.type) ? `:${captureFps}:${programSize.width}:${programSize.height}:${settings.captureEncoder ?? "auto"}` : "");
@@ -1626,4 +1655,4 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   );
 };
 
-export default PreviewProgram;
+export default React.memo(PreviewProgram);

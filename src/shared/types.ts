@@ -560,6 +560,25 @@ export type StreamingAuthorizationResult = {
   broadcastUrl?: string;
 };
 
+export type YouTubeBroadcastStatus = {
+  ok: boolean;
+  message: string;
+  lifeCycleStatus?: string;
+  streamStatus?: string;
+  privacyStatus?: string;
+  liveChatId?: string;
+};
+
+export type YouTubeChatMessage = { id: string; author: string; text: string; publishedAt?: string };
+export type YouTubeChatResult = {
+  ok: boolean;
+  message?: string;
+  messages?: YouTubeChatMessage[];
+  nextPageToken?: string;
+  pollingIntervalMillis?: number;
+  offline?: boolean;
+};
+
 export type StreamingCredentialInput = {
   provider: StreamingCredentialProvider;
   clientId: string;

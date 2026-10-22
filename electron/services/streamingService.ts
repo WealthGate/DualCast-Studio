@@ -204,7 +204,7 @@ export const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingE
   }
 
   args.push("-i", "pipe:0", "-map", "0:v:0");
-  if (copyVideo) args.push("-c:v", "copy");
+  if (copyVideo) args.push("-c:v", "copy", "-copytb", "1");
   else {
     args.push(
       "-vf",

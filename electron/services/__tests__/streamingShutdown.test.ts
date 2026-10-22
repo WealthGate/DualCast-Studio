@@ -161,6 +161,7 @@ describe("stream shutdown", () => {
   it("reuses compatible H.264 without scaling, duplicating or encoding video a second time", () => {
     const args=buildFfmpegArgs({...payload,copyVideo:true,inputVideoCodec:"h264"},"x264");
     expect(args[args.indexOf("-c:v")+1]).toBe("copy");
+    expect(args[args.indexOf("-copytb")+1]).toBe("1");
     expect(args).not.toContain("-vf");expect(args).not.toContain("-r");expect(args).not.toContain("-preset");
     expect(buildFfmpegArgs({...payload,copyVideo:true,inputVideoCodec:"other"},"x264")).toContain("libx264");
   });

@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.30**.
+Current release: **v0.6.31**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,17 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.30
+### What's new in v0.6.31
+
+- Fix browser H.264 passthrough timestamp collisions by retaining the original millisecond time base for variable-rate video.
+- Fix delayed still-window pictures and refresh after covering/uncovering a captured browser window. Stop stale duplicate capture frames, release buffered pictures without resetting the primary decoder, and bound startup fallback.
+- Correct a cadence boundary that discarded valid frames, avoid a redundant full-resolution canvas copy, and limit unrelated compositor/streamer UI updates.
+- Show **Sending video** separately from YouTube's confirmed broadcast status. Connected YouTube destinations provide **Open this broadcast**, ingest/publication checks, visibility guidance and ended-broadcast detection. The default **Unlisted** visibility requires the broadcast link; choose **Public** before creating a broadcast if it should appear publicly on the channel.
+- Open **Stream Setup > your YouTube destination > Open YouTube live chat** to read and send messages through the connected account. Refresh runs only while chat is open; messages send only when you press **Send to YouTube**. Chat availability and posting permission depend on the broadcast/account.
+
+See [the streaming audit](docs/streaming-stability-audit.md) for reproduction, verification and test limits.
+
+### Included from v0.6.30
 
 - Reuse compatible H.264 video instead of decoding and encoding it a second time, reducing streaming CPU work. The selected encoder still applies when conversion is required; H.264 reuse can be disabled in Stream Setup.
 - Scale bitrate to the selected resolution: High quality at 720p/30 uses about 2.89 Mbps video instead of 6.5 Mbps. Program and display settings remain independent.

@@ -7,7 +7,7 @@ export const createFrameCadence = (fps: number) => {
   return (now: number) => {
     if (nextAt === null) { nextAt = now + interval; return true; }
     if (now + tolerance < nextAt) return false;
-    nextAt += interval * (Math.floor(Math.max(0, now + tolerance - nextAt) / interval) + 1);
+    nextAt += interval * (Math.floor(Math.max(0, now - nextAt) / interval + 1e-6) + 1);
     return true;
   };
 };

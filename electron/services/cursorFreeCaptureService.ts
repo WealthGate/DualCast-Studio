@@ -41,7 +41,7 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
   const encodedVideo = options.format === "h264";
   const encoder = encodedVideo ? await selectCaptureEncoder(executable, options.encoder) : null;
   if (owner.isDestroyed()) throw new Error("Capture owner closed.");
-  const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } });
+  const sources = await desktopCapturer.getSources({ types: [isWindow ? "window" : "screen"], thumbnailSize: { width: 0, height: 0 } });
   const source = sources.find((item) => item.id === sourceId);
   if (!source || owner.isDestroyed()) throw new Error("Capture source is unavailable.");
   let input;
@@ -57,7 +57,7 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
   }
   const id = randomUUID();
   const child = spawn(executable, ["-hide_banner", "-loglevel", "error", "-filter_threads", "1", "-filter_complex_threads", "1", ...input,
-    "-an", ...(isWindow ? [] : ["-vf", `scale=w='min(${maxWidth},iw)':h='min(${maxHeight},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=${encodedVideo ? "nv12" : "yuvj420p"}`]),
+    "-an", "-fps_mode", "passthrough", ...(isWindow ? [] : ["-vf", `scale=w='min(${maxWidth},iw)':h='min(${maxHeight},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=${encodedVideo ? "nv12" : "yuvj420p"}`]),
     ...(encoder ? h264CaptureArgs(encoder, fps) : ["-c:v", "mjpeg", "-pix_fmt", "yuvj420p", "-q:v", "3", "-threads", "1", "-f", "image2pipe", "pipe:1"])], { windowsHide: true });
   const relay = createLatestFrameRelay(frame => { if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, { id, ...frame }); });
   const videoRelay = createH264Relay(frame => { if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, frame); }, Math.max(2 * 1024 * 1024, maxWidth * maxHeight));

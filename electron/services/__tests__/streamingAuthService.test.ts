@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("electron", () => ({ shell: { openExternal: mocks.openExternal } }));
 vi.mock("../streamingCredentialService", () => mocks);
-import { authorizeStreaming, hasYouTubeWritePermission } from "../streamingAuthService";
+import { authorizeStreaming, hasYouTubeWritePermission, getYouTubeBroadcastStatus, openYouTubeBroadcast } from "../streamingAuthService";
 import { normalizeYouTubeBroadcastSettings } from "../../../src/shared/streamingPlatforms";
 
 const scope = "https://www.googleapis.com/auth/youtube.force-ssl";
@@ -72,5 +72,26 @@ describe("YouTube streaming permissions", () => {
       .mockResolvedValueOnce(json({ id: "broadcast" })));
     expect(await authorizeStreaming(payload)).toMatchObject({ ok: true, broadcastId: "broadcast", rtmpUrl: "rtmps://example.test/live", streamKey: "key" });
     expect(mocks.openExternal).not.toHaveBeenCalled();
+  });
+  it("distinguishes incoming video from a published broadcast and explains unlisted visibility", async () => {
+    mocks.getStoredProviderToken.mockReturnValue({ accessToken: "access", expiresAt: Date.now()+60000 });
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(json({ items: [{ status: { lifeCycleStatus: "ready", privacyStatus: "unlisted" }, contentDetails: { boundStreamId: "stream", enableAutoStart: false } }] }))
+      .mockResolvedValueOnce(json({ items: [{ status: { streamStatus: "active" } }] })));
+    const result = await getYouTubeBroadcastStatus("broadcast");
+    expect(result).toMatchObject({ ok: true, lifeCycleStatus: "ready", streamStatus: "active", privacyStatus: "unlisted" });
+    expect(result.message).toContain("Click Go Live"); expect(result.message).toContain("viewers need the broadcast link");
+    expect(mocks.openExternal).not.toHaveBeenCalled();
+  });
+  it("does not claim a broadcast is live or open sign-in when status cannot be checked", async () => {
+    mocks.getStoredProviderToken.mockReturnValue(null);
+    expect(await getYouTubeBroadcastStatus("broadcast")).toMatchObject({ ok: false });
+    expect(mocks.openExternal).not.toHaveBeenCalled();
+    await expect(openYouTubeBroadcast("https://invalid.test")).rejects.toThrow("Invalid");
+  });
+  it("reports completed broadcasts rather than treating encoder output as live", async () => {
+    mocks.getStoredProviderToken.mockReturnValue({ accessToken: "access", expiresAt: Date.now()+60000 });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ items: [{ status: { lifeCycleStatus: "complete", privacyStatus: "public" } }] })));
+    expect((await getYouTubeBroadcastStatus("broadcast")).message).toContain("has ended");
   });
 });

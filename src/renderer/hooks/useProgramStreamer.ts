@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
+import { useShallow } from "zustand/react/shallow";
 import { pickStreamingRecorderMimeType, stopMediaStream } from "../utils/media";
 import { StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "../../shared/types";
 import { isValidRtmpUrl } from "../../shared/streamingValidation";
@@ -9,7 +10,9 @@ import { streamingProfile } from "../../shared/streamingProfile";
 import { supports8KEncoding } from "./use8KSupport";
 
 export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
-  const { programSceneId, programSceneSnapshot, settings, programAudioStream } = useAppStore();
+  const { programSceneId, programSceneSnapshot, settings, programAudioStream } = useAppStore(useShallow(state => ({
+    programSceneId: state.programSceneId, programSceneSnapshot: state.programSceneSnapshot, settings: state.settings, programAudioStream: state.programAudioStream
+  })));
   const [status, setStatus] = useState<StreamingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);

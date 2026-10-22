@@ -120,16 +120,17 @@ export const buildYouTubeBroadcastResource = (
 
 export const buildYouTubeStreamResource = (
   title: string,
-  preset: StreamingPreset = "medium",
-  fps: StreamingFps = 30
+  _preset: StreamingPreset = "medium",
+  _fps: StreamingFps = 30
 ) => {
-  const variableRate = fps < 30 || fps === 50;
   return {
     snippet: { title: `${title.trim()} - OpenChurch encoder` },
     cdn: {
       ingestionType: "rtmp",
-      resolution: variableRate ? "variable" : preset === "low" ? "720p" : "1080p",
-      frameRate: variableRate ? "variable" : fps === 60 ? "60fps" : "30fps"
+      // Accept the explicit stream raster and automatic lower-load recovery,
+      // rather than incorrectly inferring resolution from compression quality.
+      resolution: "variable",
+      frameRate: "variable"
     },
     contentDetails: { isReusable: true }
   };

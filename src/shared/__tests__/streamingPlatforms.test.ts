@@ -57,7 +57,7 @@ describe("YouTube broadcast setup", () => {
     expect(resource.contentDetails).toMatchObject({ latencyPreference: "ultraLow", enableDvr: false });
   });
 
-  it("uses variable CDN detection for lower frame rates and fixed settings for 60 fps", () => {
+  it("uses automatic ingest detection across quality and frame-rate choices", () => {
     expect(buildYouTubeStreamResource("Service", "medium", 24).cdn).toEqual({
       ingestionType: "rtmp",
       resolution: "variable",
@@ -65,8 +65,8 @@ describe("YouTube broadcast setup", () => {
     });
     expect(buildYouTubeStreamResource("Service", "high", 60).cdn).toEqual({
       ingestionType: "rtmp",
-      resolution: "1080p",
-      frameRate: "60fps"
+      resolution: "variable",
+      frameRate: "variable"
     });
   });
 });

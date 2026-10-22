@@ -46,6 +46,10 @@ import {
 } from "../src/shared/types";
 
 const api = {
+  readYouTubeChat: (id: string, pageToken?: string): Promise<import("../src/shared/types").YouTubeChatResult> => ipcRenderer.invoke(IpcChannels.readYouTubeChat, id, pageToken),
+  sendYouTubeChat: (id: string, text: string): Promise<import("../src/shared/types").YouTubeChatResult> => ipcRenderer.invoke(IpcChannels.sendYouTubeChat, id, text),
+  getYouTubeBroadcastStatus: (id: string): Promise<import("../src/shared/types").YouTubeBroadcastStatus> => ipcRenderer.invoke(IpcChannels.getYouTubeBroadcastStatus, id),
+  openYouTubeBroadcast: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.openYouTubeBroadcast, id),
   sendProgramVideoFrame: (frame: NativeCaptureFrame) => ipcRenderer.send(IpcChannels.programVideoFrame,frame),
   onProgramVideoFrame: (callback:(frame:NativeCaptureFrame)=>void) => {
     const listener=(_event:Electron.IpcRendererEvent,frame:NativeCaptureFrame&{sequence:number})=>{

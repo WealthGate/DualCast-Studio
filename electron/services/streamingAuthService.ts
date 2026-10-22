@@ -2,7 +2,7 @@ import { shell } from "electron";
 import { createServer } from "http";
 import { createHash, randomBytes } from "crypto";
 import { AddressInfo } from "net";
-import { StreamingAuthorizationPayload, StreamingAuthorizationResult } from "../../src/shared/types";
+import { StreamingAuthorizationPayload, StreamingAuthorizationResult, YouTubeBroadcastStatus } from "../../src/shared/types";
 import {
   buildYouTubeBroadcastResource,
   buildYouTubeStreamResource,
@@ -262,6 +262,64 @@ const authorizeYouTube = async (
     broadcastUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(broadcast.id)}`,
     message: "YouTube connected. The broadcast and reusable stream endpoint were created and bound with these settings."
   };
+};
+
+const validateBroadcastId = (id: string) => {
+  if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) throw Error("Invalid YouTube broadcast identifier.");
+};
+
+export const openYouTubeBroadcast = async (id: string) => {
+  validateBroadcastId(id);
+  await shell.openExternal(`https://www.youtube.com/watch?v=${encodeURIComponent(id)}`);
+};
+
+export const getYouTubeSessionToken = async () => {
+  const stored = getStoredProviderToken("youtube");
+  let token = stored?.accessToken;
+  if (!token || (stored?.expiresAt ?? 0) < Date.now() + 30000) {
+    const credentials = resolveStreamingCredentials("youtube");
+    if (!stored?.refreshToken || !credentials) throw Error("Reconnect your YouTube account to verify broadcast status. RTMP delivery alone does not confirm a live broadcast.");
+    const body = new URLSearchParams({ client_id: credentials.clientId, refresh_token: stored.refreshToken, grant_type: "refresh_token" });
+    if (credentials.clientSecret) body.set("client_secret", credentials.clientSecret);
+    const refreshed = await readYouTubeResponse<GoogleTokenResponse>(await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body, signal: AbortSignal.timeout(8000)
+    }), "YouTube status sign-in");
+    token = refreshed.access_token;
+    setStoredProviderToken("youtube", { ...stored, accessToken: token, expiresAt: Date.now() + (refreshed.expires_in ?? 3600) * 1000 });
+  }
+  return token!;
+};
+
+// Read-only monitoring must never open an OAuth window or publish a broadcast.
+export const getYouTubeBroadcastStatus = async (id: string): Promise<YouTubeBroadcastStatus> => {
+  try {
+    validateBroadcastId(id);
+    const token = await getYouTubeSessionToken();
+    const headers = { Authorization: `Bearer ${token}` };
+    const broadcast = await readYouTubeResponse<{ items?: Array<{ snippet?: { liveChatId?: string }; status?: { lifeCycleStatus?: string; privacyStatus?: string }; contentDetails?: { boundStreamId?: string; enableAutoStart?: boolean } }> }>(await fetch(
+      `https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status,contentDetails&id=${encodeURIComponent(id)}`, { headers, signal: AbortSignal.timeout(8000) }
+    ), "YouTube broadcast status");
+    const item = broadcast.items?.[0];
+    if (!item) throw Error("This broadcast is unavailable for the connected account. Check the channel and create a new broadcast if the previous one ended.");
+    let streamStatus: string | undefined;
+    if (item.contentDetails?.boundStreamId) {
+      const streams = await readYouTubeResponse<{ items?: Array<{ status?: { streamStatus?: string } }> }>(await fetch(
+        `https://www.googleapis.com/youtube/v3/liveStreams?part=status&id=${encodeURIComponent(item.contentDetails.boundStreamId)}`, { headers, signal: AbortSignal.timeout(8000) }
+      ), "YouTube ingest status");
+      streamStatus = streams.items?.[0]?.status?.streamStatus;
+    }
+    const lifeCycleStatus = item.status?.lifeCycleStatus, privacyStatus = item.status?.privacyStatus;
+    const visibility = privacyStatus === "unlisted" ? " Unlisted: viewers need the broadcast link; it will not appear as a public channel broadcast."
+      : privacyStatus === "private" ? " Private: only invited viewers can watch." : "";
+    const message = lifeCycleStatus === "live" ? `YouTube confirms this broadcast is live.${visibility}`
+      : lifeCycleStatus === "complete" || lifeCycleStatus === "revoked" ? "This YouTube broadcast has ended. Create another broadcast before streaming again."
+      : streamStatus !== "active" ? `YouTube has not confirmed incoming video (${streamStatus ?? "unknown"}). Check the stream key and YouTube Studio ingest health.${visibility}`
+      : item.contentDetails?.enableAutoStart === false ? `YouTube is receiving video. Click Go Live in YouTube Studio to publish this broadcast.${visibility}`
+      : `YouTube is receiving video, but the broadcast is not live yet (${lifeCycleStatus ?? "pending"}). Check YouTube Studio.${visibility}`;
+    return { ok: true, lifeCycleStatus, streamStatus, privacyStatus, liveChatId: item.snippet?.liveChatId, message };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "YouTube broadcast status could not be verified." };
+  }
 };
 
 const authorizeFacebook = async (

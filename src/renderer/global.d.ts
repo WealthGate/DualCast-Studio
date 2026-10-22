@@ -108,6 +108,10 @@ declare global {
       downloadSong: (payload: SongDownloadPayload) => Promise<SongLibraryEntry>;
       removeSong: (payload: SongRemovePayload) => Promise<boolean>;
       authorizeStreaming: (payload: StreamingAuthorizationPayload) => Promise<StreamingAuthorizationResult>;
+      getYouTubeBroadcastStatus: (id: string) => Promise<import("../shared/types").YouTubeBroadcastStatus>;
+      openYouTubeBroadcast: (id: string) => Promise<void>;
+      readYouTubeChat: (id: string, pageToken?: string) => Promise<import("../shared/types").YouTubeChatResult>;
+      sendYouTubeChat: (id: string, text: string) => Promise<import("../shared/types").YouTubeChatResult>;
       getStreamingCredentialStatus: (provider: StreamingCredentialProvider) => Promise<StreamingCredentialStatus>;
       setStreamingCredentials: (payload: StreamingCredentialInput) => Promise<StreamingCredentialStatus>;
       clearStreamingCredentials: (provider: StreamingCredentialProvider) => Promise<StreamingCredentialStatus>;

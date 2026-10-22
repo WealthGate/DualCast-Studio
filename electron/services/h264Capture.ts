@@ -23,6 +23,7 @@ export const availableCaptureEncoders = (executable: string) => {
   return result;
 };
 export const selectCaptureEncoder = async (executable: string, preference = "auto") => {
+  if (preference === "x264") return "libx264" as const;
   const encoders = await availableCaptureEncoders(executable);
   if (preference === "auto") return encoders[0];
   const selected = preference === "x264" ? "libx264" : `h264_${preference}`;

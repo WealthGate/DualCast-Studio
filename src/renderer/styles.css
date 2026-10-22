@@ -1321,6 +1321,10 @@ textarea:focus-visible {
   margin-bottom: 12px;
 }
 
+.youtube-live-chat { margin-top: 8px; }
+.youtube-chat-messages { max-height: 240px; overflow-y: auto; overflow-wrap: anywhere; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+.youtube-chat-messages p { margin: 4px 0; }
+
 .streaming-status {
   display: flex;
   align-items: center;

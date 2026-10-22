@@ -18,6 +18,10 @@ export const installDevelopmentBridge = () => {
   }
 
   window.dualcast = {
+    readYouTubeChat: async () => ({ ok: false, message: "YouTube chat requires the desktop app." }),
+    sendYouTubeChat: async () => ({ ok: false, message: "YouTube chat requires the desktop app." }),
+    getYouTubeBroadcastStatus: async () => ({ ok: false, message: "YouTube status requires the desktop app." }),
+    openYouTubeBroadcast: async () => undefined,
     sendProgramVideoFrame: () => undefined,
     onProgramVideoFrame: () => () => undefined,
     getHardwareCapabilities: async () => ({ platform: "browser", graphicsMode: "auto", accelerated: false, devices: [], streamEncoders: ["x264"], captureEncoders: [] }),

@@ -75,7 +75,8 @@ import {
   saveScripturePassage
 } from "./scriptureService";
 import { downloadSong, importSong, listSongs, removeSong } from "./songService";
-import { authorizeStreaming } from "./streamingAuthService";
+import { authorizeStreaming, getYouTubeBroadcastStatus, openYouTubeBroadcast } from "./streamingAuthService";
+import { readYouTubeChat, sendYouTubeChat } from "./youtubeChatService";
 import {
   clearStreamingCredentials,
   disconnectStreamingAccount,
@@ -225,6 +226,10 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IpcChannels.downloadSong, async (_event, payload) => downloadSong(payload));
   ipcMain.handle(IpcChannels.removeSong, async (_event, payload) => removeSong(payload));
   ipcMain.handle(IpcChannels.authorizeStreaming, async (_event, payload) => authorizeStreaming(payload));
+  ipcMain.handle(IpcChannels.getYouTubeBroadcastStatus, (_event, id: string) => getYouTubeBroadcastStatus(id));
+  ipcMain.handle(IpcChannels.openYouTubeBroadcast, (_event, id: string) => openYouTubeBroadcast(id));
+  ipcMain.handle(IpcChannels.readYouTubeChat, (_event, id: string, pageToken?: string) => readYouTubeChat(id, pageToken));
+  ipcMain.handle(IpcChannels.sendYouTubeChat, (_event, id: string, text: string) => sendYouTubeChat(id, text));
   ipcMain.handle(IpcChannels.getStreamingCredentialStatus, async (_event, provider: StreamingCredentialProvider) =>
     getStreamingCredentialStatus(provider)
   );

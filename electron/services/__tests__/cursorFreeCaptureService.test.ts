@@ -34,6 +34,7 @@ describe("cursor-free capture", () => {
   it("captures windows by id even when titles change or are duplicated", async () => {
     const id = await startCursorFreeCapture(owner, "window:42:0");
     expect(mocks.spawn.mock.calls[0][0]).toBe("window-capture.exe");
+    expect(mocks.spawn.mock.calls[0][1]).toEqual(expect.arrayContaining(["-fps_mode", "passthrough"]));
     expect(mocks.spawn.mock.calls[0][1]).toContain("gfxcapture=hwnd=42:capture_cursor=0:capture_border=0:display_border=0:max_framerate=30:width=-2:height=-2:resize_mode=scale_aspect,hwdownload,format=bgra,scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuvj420p");
     stopCursorFreeCapture(id!, owner.id);
     expect(child.kill).toHaveBeenCalledOnce();

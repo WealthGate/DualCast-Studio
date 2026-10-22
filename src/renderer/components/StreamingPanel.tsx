@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import YouTubeLiveChat from "./YouTubeLiveChat";
 import { ProgramStreamerController } from "../hooks/useProgramStreamer";
 import { useAppStore } from "../store/useAppStore";
 import { VIDEO_RESOLUTIONS } from "../../shared/recording";
@@ -58,6 +59,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
   const [logLoading, setLogLoading] = useState(false);
   const [authorizingId, setAuthorizingId] = useState<string | null>(null);
   const [handledStartRequest, setHandledStartRequest] = useState(startRequest);
+  const [youtubeStatuses, setYoutubeStatuses] = useState<Record<string, import("../../shared/types").YouTubeBroadcastStatus>>({});
   const destinationIds = settings.streamDestinations.map((destination) => destination.id).join("|");
 
   useEffect(() => {
@@ -103,6 +105,22 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
     status === "live" ||
     status === "reconnecting" ||
     (status === "error" && destinationStatuses.length > 0);
+
+  useEffect(() => {
+    let cancelled = false, timer = 0;
+    const check = async () => {
+      const destinations = settings.streamDestinations.filter(item => item.enabled && item.platform === "youtube" && item.providerBroadcastId);
+      const results = await Promise.all(destinations.map(async item => {
+        const result = await window.dualcast.getYouTubeBroadcastStatus(item.providerBroadcastId!).catch(() => ({ ok: false, message: "YouTube status could not be verified. Check YouTube Studio." }));
+        return [item.id, result] as const;
+      }));
+      if (cancelled) return;
+      setYoutubeStatuses(Object.fromEntries(results));
+      if (isActive) timer = window.setTimeout(check, 15000);
+    };
+    void check();
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [isActive, settings.streamDestinations]);
 
   const handleStart = async () => {
     setLocalMessage(null);
@@ -467,11 +485,18 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
                     <label><input type="checkbox" checked={broadcast.enableEmbed} onChange={(event) => updateYouTubeBroadcast(destination, { enableEmbed: event.target.checked })} /> Allow embedding</label>
                   </div>
                   {destination.providerBroadcastId ? (
-                    <div className="broadcast-ready-note">Broadcast ready: {destination.providerBroadcastId}</div>
+                    <div className="broadcast-ready-note">Broadcast created: {destination.providerBroadcastId}</div>
                   ) : null}
                 </fieldset>
               );
             })() : null}
+            {destination.platform === "youtube" && destination.providerBroadcastId ? (
+              <div className="field" role="status">
+                <span>{youtubeStatuses[destination.id]?.message ?? "Checking YouTube broadcast status…"}</span>
+                <button className="btn btn-outline btn-compact" onClick={() => void window.dualcast.openYouTubeBroadcast(destination.providerBroadcastId!).catch(() => setLocalMessage("Could not open the broadcast link."))}>Open this broadcast</button>
+                <YouTubeLiveChat chatId={youtubeStatuses[destination.id]?.liveChatId} account={destination.authorizedAccount} />
+              </div>
+            ) : null}
             {destination.platform === "youtube" || destination.platform === "facebook" ? (
               <div className="stream-authorization">
                 <button className="btn btn-outline" onClick={() => authorizeDestination(destination)} disabled={isActive || authorizingId === destination.id}>
@@ -601,7 +626,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
       <div className="streaming-status-row">
         <div className="streaming-status">
           <span className={`indicator ${status === "live" ? "live" : ""}`} />
-          <span className="streaming-status-text">{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+          <span className="streaming-status-text">{status === "live" ? "Sending video" : status.charAt(0).toUpperCase() + status.slice(1)}</span>
           {status === "live" ? <span className="timer">{formattedElapsed}</span> : null}
         </div>
         {stats?.bitrateKbps ? <span className="tag">Bitrate: {stats.bitrateKbps.toFixed(0)} kbps</span> : null}
@@ -614,6 +639,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
           <span className="warn-pill">{lastError}</span>
         ) : null}
       </div>
+      {status === "live" ? <p className="field-help">Video output is running. Confirm publication on the destination's live page; YouTube verification appears on its destination card.</p> : null}
       {status === "live" && elapsedSeconds >= 15 && stats?.speed != null && stats.speed < 0.9 ? (
         <div className="profile-message" role="status">
           Stream delivery is behind real time ({stats.speed.toFixed(2)}×). Choose a lower streaming quality or fewer destinations to reduce buffering.
@@ -624,7 +650,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
           {destinationStatuses.map((destination) => (
             <div key={destination.id} className={`destination-status ${destination.status}`}>
               <strong>{destination.name}</strong>
-              <span>{destination.status}</span>
+              <span>{destination.status === "live" ? "Sending video" : destination.status}</span>
               {destination.message ? <small>{destination.message}</small> : null}
             </div>
           ))}

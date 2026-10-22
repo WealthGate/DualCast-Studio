@@ -38,11 +38,12 @@ export const createStreamingCapture = (source: HTMLCanvasElement, preset: Stream
       if (!initial && !shouldDraw(now)) { stats.cadenceDrops++; return; }
       if (stopped || writing >= 3) { stats.busyDrops++; return; }
       stats.accepted++;
-      context.drawImage(source, 0, 0, canvas.width, canvas.height);
+      const frameSource = writer && source.width === size.width && source.height === size.height ? source : canvas;
+      if (frameSource === canvas) context.drawImage(source, 0, 0, canvas.width, canvas.height);
       if (writer) {
         writing++;
         const began=performance.now();
-        const frame = new VideoFrame(canvas, { timestamp: Math.round(now * 1000) });
+        const frame = new VideoFrame(frameSource, { timestamp: Math.round(now * 1000) });
         void writer.write(frame).catch(() => undefined).finally(() => { frame.close(); writing--; stats.maxWriteMs=Math.max(stats.maxWriteMs,performance.now()-began); });
       } else track.requestFrame();
     };

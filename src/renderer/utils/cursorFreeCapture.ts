@@ -17,6 +17,7 @@ export const getCursorFreeStream = async (sourceId: string, fps = 30, maxWidth =
   let id: string | null = null;
   let stopped = false;
   let stream: MediaStream | null = null;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   let rejectReady: (error: Error) => void = () => undefined;
   let resolveReady: () => void = () => undefined;
   const ready = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
@@ -63,10 +64,6 @@ export const getCursorFreeStream = async (sourceId: string, fps = 30, maxWidth =
     }
     return decoder.decode(frame.dataUrl);
   });
-  const timeout = setTimeout(() => {
-    rejectReady(new Error("Cursor-free screen capture timed out."));
-    stop();
-  }, 10000);
   // Attach a handler immediately, including while awaiting the IPC response.
   void ready.catch(() => undefined);
   try {
@@ -77,6 +74,10 @@ export const getCursorFreeStream = async (sourceId: string, fps = 30, maxWidth =
       throw new Error("Cursor-free screen capture timed out.");
     }
     if (!id) { stop(); return null; }
+    timeout = setTimeout(() => {
+      rejectReady(new Error("Cursor-free screen capture timed out. Restore the source window or try another capture encoder."));
+      stop();
+    }, 3000);
     await ready;
     if (stopped) throw new Error("Cursor-free screen capture ended.");
     clearTimeout(timeout);
@@ -90,7 +91,10 @@ export const getCursorFreeStream = async (sourceId: string, fps = 30, maxWidth =
     return stream;
   } catch (error) {
     stop();
-    if (!legacy && encoder === "auto" && typeof VideoDecoder !== "undefined") return getCursorFreeStream(sourceId, fps, maxWidth, maxHeight, encoder, true);
+    if (!legacy && typeof VideoDecoder !== "undefined" && (encoder === "auto" || encoder === "x264")) {
+      console.warn("Native video capture fallback:", error);
+      return getCursorFreeStream(sourceId, fps, maxWidth, maxHeight, "x264", encoder === "x264");
+    }
     throw error;
   }
 };

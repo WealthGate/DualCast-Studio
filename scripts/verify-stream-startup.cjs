@@ -9,6 +9,7 @@ const ci = process.argv.includes('--ci');
 const width = ci ? 1280 : 1920, height = ci ? 720 : 1080, fps = ci ? 30 : 60;
 const seconds = Number(process.argv.find(arg => arg.startsWith('--seconds='))?.split('=')[1]) || (ci ? 6 : 10);
 const copyVideo = process.argv.includes('--copy-video');
+const inputFile = process.argv.find(arg => arg.startsWith('--input='))?.slice(8);
 fs.mkdirSync(temp, { recursive: true });
 let service, source, receiver;
 const cleanup = () => { service?.forceStopStreaming(); source?.kill('SIGKILL'); receiver?.kill('SIGKILL'); };
@@ -21,7 +22,7 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
     build.onLoad({ filter: /[\\/]logger\.ts$/ }, () => ({ contents: 'export default {info(){},warn(){}};', loader: 'ts' }));
   } }] });
   console.log('Streaming integration: production service bundled.');
-  const fixture = path.join(temp, `input-${width}-${fps}-${seconds}.mkv`);
+  const fixture = inputFile ? path.resolve(inputFile) : path.join(temp, `input-${width}-${fps}-${seconds}.mkv`);
   if (!fs.existsSync(fixture)) {
     const generated = spawnSync(ffmpeg, ['-hide_banner','-loglevel','error','-y','-f','lavfi','-i',`testsrc2=size=${width}x${height}:rate=${fps}`,'-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t',String(seconds),'-c:v','libx264','-preset','ultrafast','-threads','2','-crf','24','-g',String(fps*2),'-bf','0','-c:a','libopus','-f','matroska',fixture], { windowsHide: true, encoding: 'utf8', timeout: 60000 });
     if (generated.status !== 0) throw Error(generated.stderr);
@@ -34,7 +35,7 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
   const reservation = net.createServer(); await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
   const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
   const endpoint = `rtmp://127.0.0.1:${port}/live/probe`;
-  const received = path.join(temp, `${encoder}.flv`);
+  const received = path.join(temp, `${encoder}-${process.pid}.flv`);
   receiver = spawn(ffmpeg, ['-hide_banner','-y','-loglevel','error','-listen','1','-i',endpoint,'-map','0:v:0','-map','0:a:0?','-c','copy','-progress','pipe:1','-nostats','-f','flv',received], {windowsHide:true});
   let receivedFrames = 0, receiverError = '';
   receiver.stdout.on('data', data => { for(const match of data.toString().matchAll(/frame=\s*(\d+)/g)) receivedFrames=Number(match[1]); });
@@ -54,10 +55,14 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
     source.stderr.resume(); source.stdout.on('data', chunk => pieces.push(chunk));
     source.once('close', () => { clearInterval(timer); flush(); });
     const ended = new Promise(resolve => source.once('close', resolve));
-    await Promise.race([ended, wait((seconds+4)*1000)]); await wait(500);
+    const sourceCode = await Promise.race([ended, wait((seconds+4)*1000).then(()=>-1)]);
+    if(sourceCode!==0)throw Error('Timed source failed or exceeded its deadline: '+sourceCode);
+    await wait(500);
     console.log('Streaming integration: timed source finished.');
     await service.stopStreaming(); await wait(1500);
     const decoded = spawnSync(ffmpeg,['-hide_banner','-i',received,'-an','-f','null','-','-progress','pipe:1'],{encoding:'utf8',windowsHide:true,timeout:15000});
+    const transportLog = fs.readFileSync(service.getStreamLogPath(),'utf8');
+    if(/Non-monoton(?:ic|ous).*DTS/i.test(transportLog))throw Error('Output timestamps moved backwards or collided.');
     const count = [...(decoded.stdout||'').matchAll(/frame=\s*(\d+)/g)];
     receivedFrames = Number(count.at(-1)?.[1] || receivedFrames);
     const result = {encoder,copyVideo,width,height,fps,seconds,firstLiveMs:firstLive,receivedFrames,statuses:[...new Set(states)],error:fatal};
