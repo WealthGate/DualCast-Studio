@@ -6,6 +6,7 @@ import { app } from "electron";
 import bundledFfmpegPath from "ffmpeg-static";
 import log from "./logger";
 import { resolveFfmpegExecutablePath } from "./ffmpegPathService";
+import { supportsStreamResolution } from "./encoderResolution";
 import {
   buildEncoderProbeArgs,
   probedStreamingEncoders,
@@ -27,6 +28,7 @@ import {
 import { buildRecoverableRtmpOutputArgs } from "../../src/shared/streamingOutputs";
 import { isValidRtmpUrl } from "../../src/shared/streamingValidation";
 import { createMediaInputQueue } from "./mediaInputQueue";
+import { resolutionSize } from "../../src/shared/recording";
 
 type StatusPublisher = (payload: StreamStatusPayload) => void;
 
@@ -175,7 +177,9 @@ const detectEncoders = () => {
 };
 
 const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder) => {
-  const preset = presetConfig[payload.preset];
+  const base = presetConfig[payload.preset];
+  const size = resolutionSize(payload.resolution, { width: base.maxWidth, height: base.maxWidth * 9 / 16 });
+  const preset = { maxWidth: size.width, videoBitrateKbps: Math.round(base.videoBitrateKbps * Math.max(1, size.width * size.height / (1920 * 1080))) };
   const gop = payload.fps * 2;
   const bitrate = `${preset.videoBitrateKbps}k`;
   const args = [
@@ -351,7 +355,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     process.kill("SIGINT");
     writeStreamLog(runtime.destination.name, error.message);
     publishAggregateStatus();
-  });
+  }, Math.max(4 * 1024 * 1024, resolutionSize(lastStartPayload.resolution).width * resolutionSize(lastStartPayload.resolution).height / (1920 * 1080) * 4 * 1024 * 1024));
   // A failed write also emits an asynchronous stream error, even when the
   // write callback handles it. Keep this listener through process shutdown.
   process.stdin.on("error", (error: Error) => {
@@ -416,7 +420,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     runtime.lastError =
       runtime.lastError ?? `FFmpeg exited (code ${code ?? "?"}, signal ${signal ?? "?"}).`;
     log.warn(`${runtime.destination.name} stopped unexpectedly.`);
-    if (runtime.encoderFallbackPending && runtime.encoder !== "x264") {
+    if (runtime.encoderFallbackPending && runtime.encoder !== "x264" && lastStartPayload?.resolution !== "8k") {
       const failedEncoder = runtime.encoder;
       availableEncoders.delete(failedEncoder);
       runtime.encoder = resolveStreamingEncoder("auto", availableEncoders);
@@ -505,6 +509,17 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   );
   if (invalid) {
     return { ok: false, message: `Check the RTMP URL and stream key for ${invalid.name}.` };
+  }
+
+  if (payload.resolution === "8k") {
+    const encoder = resolveStreamingEncoder(payload.encoder, availableEncoders);
+    if (encoder === "x264" && payload.encoder !== "x264") {
+      return { ok: false, message: "8K streaming has no usable hardware encoder on this device. Choose a lower resolution or explicitly select Software x264 if the CPU can sustain it." };
+    }
+    if (!await supportsStreamResolution(ffmpegPath, encoder, payload.fps, vaapiDevice)) {
+      return { ok: false, message: `${mapStreamingEncoder(encoder)} cannot encode 8K with this driver/runtime. Choose another detected encoder or a lower stream resolution.` };
+    }
+    if (runtimes.size > 0) return { ok: false, message: "Streaming is already active." };
   }
 
   stopRequested = false;

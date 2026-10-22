@@ -1,10 +1,17 @@
 import { RefObject, useEffect, useState } from "react";
 import { createStreamingCapture } from "../utils/streamingCapture";
 import { applyProjectionSignal, localProjectionDescription } from "../utils/projectionPeer";
+import type { VideoResolution } from "../../shared/types";
+import { useEncodedProjection } from "./useEncodedProjection";
 
 // Local WebRTC keeps video on Chromium's media path instead of JPEG encoding,
 // base64 IPC and image decoding for every frame on every sanctuary display.
-export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps: number, enabled: boolean) => {
+export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps: number, enabled: boolean, resolution?: VideoResolution) => {
+  const direct = useEncodedProjection(canvasRef, fps, enabled, resolution);
+  const connected = useRtcProjection(canvasRef, fps, enabled && direct.fallback, resolution);
+  return direct.ready || connected;
+};
+const useRtcProjection = (canvasRef: RefObject<HTMLCanvasElement>, fps: number, enabled: boolean, resolution?: VideoResolution) => {
   const [allConnected, setAllConnected] = useState(false);
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -35,7 +42,7 @@ export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps:
           // Capture at the delivery resolution BEFORE Chromium's video encoder.
           // Feeding a 1440p/60 Program track to a software encoder overloads
           // frame conversion even after WebRTC's congestion controller scales it.
-          const capture = createStreamingCapture(canvas, "low", fps);
+          const capture = createStreamingCapture(canvas, "low", fps, resolution);
           stream = capture.stream;
           stopCapture = capture.stop;
           const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
@@ -75,6 +82,6 @@ export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps:
     });
     window.dualcast.sendProjectionSignal({ type: "register" });
     return () => { active = false; unsubscribe(); stopCapture?.(); connectionTimers.forEach(timer => window.clearTimeout(timer)); peers.forEach(peer => peer.close()); };
-  }, [canvasRef, fps, enabled]);
+  }, [canvasRef, fps, enabled, resolution]);
   return allConnected;
 };

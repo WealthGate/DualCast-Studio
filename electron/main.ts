@@ -1,5 +1,6 @@
 import { getSettings } from "./services/settingsService";
 import { stopAllCursorFreeCaptures } from "./services/cursorFreeCaptureService";
+import { configureGraphics } from "./services/hardwareService";
 import { app, BrowserWindow, screen } from "electron";
 import path from "path";
 import { registerIpcHandlers } from "./services/ipc";
@@ -24,6 +25,7 @@ if (isDev) {
 } else {
   app.setPath("userData", path.join(app.getPath("appData"), "DualCast Studio"));
 }
+configureGraphics(getSettings().graphicsMode);
 
 let mainWindow: BrowserWindow | null = null;
 app.on("browser-window-created", (_event, window) => {

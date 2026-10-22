@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { ProgramStreamerController } from "../hooks/useProgramStreamer";
 import { useAppStore } from "../store/useAppStore";
+import { VIDEO_RESOLUTIONS } from "../../shared/recording";
+import type { VideoResolution } from "../../shared/types";
+import { use8KSupport, supports8KEncoding } from "../hooks/use8KSupport";
 import {
   StreamDestinationConfig,
   StreamingAudioBitrate,
@@ -44,6 +47,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
     stopStream
   } = streamer;
   const { settings, updateSettings } = useAppStore();
+  const eightK = use8KSupport(settings.streamFps);
   const [streamKeys, setStreamKeys] = useState<Record<string, string>>({});
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [logPath, setLogPath] = useState<string | null>(null);
@@ -192,6 +196,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
   };
 
   const handleFpsChange = async (value: StreamingFps) => {
+    if(settings.streamResolution==="8k" && !await supports8KEncoding(value)){setLocalMessage(`8K at ${value} fps requires a supported hardware encoder.`);return;}
     await updateSettings({ streamFps: value });
   };
 
@@ -522,18 +527,25 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
       </div>
       {secureStorageAvailable === false ? <div className="field-help">Stream keys stay in memory for this session because secure OS credential storage is unavailable.</div> : null}
       <div className="field">
-        <label htmlFor="preset">Preset</label>
+          <label htmlFor="preset">Compression preset</label>
         <select
           id="preset"
           value={settings.streamPreset}
           onChange={(event) => handlePresetChange(event.target.value as StreamingPreset)}
         >
-          <option value="low">Low (720p30 ~2500k)</option>
-          <option value="medium">Medium (1080p30 ~4500k)</option>
-          <option value="high">High (1080p60 ~6500k)</option>
+            <option value="low">Low bandwidth</option>
+            <option value="medium">Balanced</option>
+            <option value="high">High quality</option>
         </select>
       </div>
       <div className="field">
+          <label htmlFor="streamResolution">Stream resolution</label>
+          <select id="streamResolution" value={settings.streamResolution ?? "auto"} onChange={event => updateSettings({ streamResolution: event.target.value as VideoResolution })}>
+            {VIDEO_RESOLUTIONS.map(item => <option key={item.value} value={item.value} disabled={item.value==="8k"&&eightK!==true}>{item.label}{item.value==="8k"&&eightK===false?" — hardware encoding unavailable":""}</option>)}
+          </select>
+          <p className="field-help">The Program resolution and source determine the available detail. 4K and 8K need a capable encoder and sufficient upload bandwidth.</p>
+        </div>
+        <div className="field">
         <label htmlFor="streamFps">FPS</label>
         <select
           id="streamFps"

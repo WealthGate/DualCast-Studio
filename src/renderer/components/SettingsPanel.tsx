@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { FrameRatePreset, QualityPreset, StreamingCredentialProvider, StreamingCredentialStatus, ThemePreference } from "../../shared/types";
+import { FrameRatePreset, QualityPreset, StreamingCredentialProvider, StreamingCredentialStatus, ThemePreference, VideoResolution, GraphicsMode, HardwareCapabilities, StreamingEncoder } from "../../shared/types";
+import { VIDEO_RESOLUTIONS } from "../../shared/recording";
+import { STREAMING_ENCODER_OPTIONS } from "../../shared/streamingEncoders";
+import { use8KSupport, supports8KEncoding } from "../hooks/use8KSupport";
 
 const SettingsPanel: React.FC = () => {
   const { settings, updateSettings } = useAppStore();
+  const eightK = use8KSupport(settings.frameRate);
+  const [hardware, setHardware] = useState<HardwareCapabilities | null>(null);
+  const [hardwareError, setHardwareError] = useState("");
   const [credentialStatus, setCredentialStatus] = useState<Record<StreamingCredentialProvider, StreamingCredentialStatus | null>>({ youtube: null, facebook: null });
   const [credentials, setCredentials] = useState({ youtube: { clientId: "", clientSecret: "" }, facebook: { clientId: "", clientSecret: "" } });
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
@@ -21,6 +27,7 @@ const SettingsPanel: React.FC = () => {
   };
 
   useEffect(() => { void refreshCredentialStatus(); }, []);
+  useEffect(() => { void window.dualcast.getHardwareCapabilities().then(setHardware).catch(error => setHardwareError(String(error))); }, []);
 
   const saveCredentials = async (provider: StreamingCredentialProvider) => {
     try {
@@ -64,6 +71,38 @@ const SettingsPanel: React.FC = () => {
     <section className="panel settings-panel">
       <h2>Settings</h2>
       <h3>General</h3>
+      <details className="settings-section" open>
+        <summary>Graphics and video acceleration</summary>
+        <p className="field-help">{hardware ? hardware.devices.length ? hardware.devices.map(device => `${device.name}${device.active ? " (active)" : ""}`).join(" · ") : "No graphics device was reported." : hardwareError || "Detecting graphics devices and usable encoders…"}</p>
+        {hardware && <p className="field-help">{hardware.accelerated ? "Hardware graphics acceleration is active." : "Software graphics rendering is active."}</p>}
+        {hardware && hardwareError && <p role="alert" className="field-help">{hardwareError}</p>}
+        <div className="field">
+          <label htmlFor="graphicsMode">Graphics device preference</label>
+          <select id="graphicsMode" value={settings.graphicsMode ?? "auto"} onChange={event => updateSettings({ graphicsMode: event.target.value as GraphicsMode })}>
+            <option value="auto">Automatic (system choice)</option>
+            <option value="high-performance">High-performance GPU (NVIDIA / AMD / discrete graphics)</option>
+            <option value="power-saving">Power-saving GPU (integrated graphics)</option>
+            <option value="software">Software rendering (CPU)</option>
+          </select>
+          <p className="field-help">Close and reopen the app to apply graphics-device changes. The operating system chooses the matching available device.</p>
+          {hardware && (settings.graphicsMode ?? "auto") !== hardware.graphicsMode && <p role="status" className="field-help">Graphics preference saved. Restart the app when your live session is finished.</p>}
+        </div>
+        <div className="field">
+          <label htmlFor="hardwareStreamEncoder">Streaming video encoder</label>
+          <select id="hardwareStreamEncoder" value={settings.streamEncoder} onChange={event => updateSettings({ streamEncoder: event.target.value as StreamingEncoder })}>
+            <option value="auto">Automatic (best usable hardware)</option>
+            {STREAMING_ENCODER_OPTIONS.map(option => <option key={option.id} value={option.id} disabled={!hardware?.streamEncoders.includes(option.id)}>{option.label}{hardware?.streamEncoders.includes(option.id) ? "" : " — unavailable on this device"}</option>)}
+          </select>
+        </div>
+        {hardware?.platform === "win32" && <div className="field">
+          <label htmlFor="captureEncoder">Window and screen capture encoder</label>
+          <select id="captureEncoder" value={settings.captureEncoder ?? "auto"} onChange={event => updateSettings({ captureEncoder: event.target.value as StreamingEncoder })}>
+            <option value="auto">Automatic (best usable hardware)</option>
+            {STREAMING_ENCODER_OPTIONS.filter(option => ["nvenc", "qsv", "amf", "x264"].includes(option.id)).map(option => <option key={option.id} value={option.id} disabled={!hardware.captureEncoders.includes(option.id)}>{option.label}{hardware.captureEncoders.includes(option.id) ? "" : " — unavailable with this driver/runtime"}</option>)}
+          </select>
+        </div>}
+        <p className="field-help">Encoder options are tested on this device. Windows, macOS and Linux offer their supported hardware backends; a detected graphics card alone does not guarantee driver support for every encoder.</p>
+      </details>
       <p className="field-help">The pointer stays visible to the operator. Live displays always hide it.</p>
       <div className="field">
         <label htmlFor="theme">Interface Theme</label>
@@ -127,7 +166,7 @@ const SettingsPanel: React.FC = () => {
       </div>
       <p className="field-help">Adjust Master Program Audio in Audio Mixer.</p>
       <div className="field">
-        <label htmlFor="quality">Quality</label>
+        <label htmlFor="quality">Recording compression quality</label>
         <select
           id="quality"
           value={settings.qualityPreset}
@@ -139,11 +178,29 @@ const SettingsPanel: React.FC = () => {
         </select>
       </div>
       <div className="field">
+        <label htmlFor="outputResolution">Program and recording resolution</label>
+        <select id="outputResolution" value={settings.outputResolution ?? "auto"} onChange={event => updateSettings({ outputResolution: event.target.value as VideoResolution })}>
+          {VIDEO_RESOLUTIONS.map(item => <option key={item.value} value={item.value} disabled={item.value === "8k" && eightK !== true}>{item.label}{item.value === "8k" && eightK === false ? " — hardware encoding unavailable" : ""}</option>)}
+        </select>
+        <p className="field-help">Automatic uses 720p with Low compression quality and 1080p otherwise. Choose QHD, 4K or 8K explicitly when the device can sustain it.</p>
+      </div>
+      <div className="field">
+        <label htmlFor="displayResolution">Live display resolution</label>
+        <select id="displayResolution" value={settings.displayResolution ?? "auto"} onChange={event => updateSettings({ displayResolution: event.target.value as VideoResolution })}>
+          {VIDEO_RESOLUTIONS.map(item => <option key={item.value} value={item.value} disabled={item.value === "8k" && eightK !== true}>{item.label}{item.value === "8k" && eightK === false ? " — hardware encoding unavailable" : ""}</option>)}
+        </select>
+        <p className="field-help">Automatic keeps local displays efficient. Explicit resolutions up to 8K use the selected output size, limited by the source, screen and device capabilities.</p>
+      </div>
+      <div className="field">
         <label htmlFor="frameRate">Frame rate</label>
         <select
           id="frameRate"
           value={settings.frameRate}
-          onChange={(event) => updateSettings({ frameRate: Number(event.target.value) as FrameRatePreset })}
+          onChange={async event => {
+            const frameRate=Number(event.target.value) as FrameRatePreset;
+            if((settings.outputResolution==="8k"||settings.displayResolution==="8k") && !await supports8KEncoding(frameRate)){setHardwareError(`8K at ${frameRate} fps is not supported by this device's hardware encoder.`);return;}
+            void updateSettings({frameRate});
+          }}
         >
           <option value={15}>15 fps</option>
           <option value={24}>24 fps</option>

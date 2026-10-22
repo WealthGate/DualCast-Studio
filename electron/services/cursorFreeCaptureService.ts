@@ -6,8 +6,11 @@ import { resolveFfmpegExecutablePath } from "./ffmpegPathService";
 import { getWindowsCaptureExecutable } from "./windowsCapturePathService";
 import { IpcChannels } from "../../src/shared/ipc";
 import { createLatestFrameRelay } from "./latestFrameRelay";
+import { createH264Parser, h264CaptureArgs, selectCaptureEncoder } from "./h264Capture";
+import type { NativeCaptureOptions } from "../../src/shared/types";
+import { createH264Relay } from "./h264Relay";
 
-const captures = new Map<string, { owner: number; process: ChildProcessWithoutNullStreams; relay: ReturnType<typeof createLatestFrameRelay> }>();
+const captures = new Map<string, { owner: number; process: ChildProcessWithoutNullStreams; relay: { acknowledge: (sequence: number) => void } }>();
 export const acknowledgeCursorFreeFrame = (ownerId: number, id: string, sequence: number) => {
   const capture = captures.get(id);
   if (capture?.owner === ownerId) capture.relay.acknowledge(sequence);
@@ -26,13 +29,18 @@ export const stopAllCursorFreeCaptures = () => {
 // The legacy Chromium desktop capturer composes the cursor regardless of the
 // renderer cursor constraint. GDI excludes it at acquisition, including over
 // windows owned by other applications; the operator's real pointer is untouched.
-export const startCursorFreeCapture = async (owner: WebContents, sourceId: string, requestedFps = 30) => {
+export const startCursorFreeCapture = async (owner: WebContents, sourceId: string, requestedFps = 30, options: NativeCaptureOptions = {}) => {
   if (process.platform !== "win32") return null;
   if (typeof sourceId !== "string") throw new Error("Invalid capture source.");
   const fps = Number.isFinite(requestedFps) ? Math.max(1, Math.min(60, Math.round(requestedFps))) : 30;
   const isWindow = sourceId.startsWith("window:");
-  const executable = isWindow ? getWindowsCaptureExecutable() : resolveFfmpegExecutablePath(bundledFfmpegPath);
+  const executable = getWindowsCaptureExecutable() ?? (isWindow ? null : resolveFfmpegExecutablePath(bundledFfmpegPath));
   if (!executable) throw new Error("Screen capture executable is unavailable.");
+  const maxWidth = Math.max(320, Math.min(7680, Math.round(Number(options.maxWidth) || 1920)));
+  const maxHeight = Math.max(180, Math.min(4320, Math.round(Number(options.maxHeight) || 1080)));
+  const encodedVideo = options.format === "h264";
+  const encoder = encodedVideo ? await selectCaptureEncoder(executable, options.encoder) : null;
+  if (owner.isDestroyed()) throw new Error("Capture owner closed.");
   const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 0, height: 0 } });
   const source = sources.find((item) => item.id === sourceId);
   if (!source || owner.isDestroyed()) throw new Error("Capture source is unavailable.");
@@ -40,7 +48,7 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
   if (isWindow) {
     const handle = /^window:(\d+):\d+$/.exec(sourceId)?.[1];
     if (!handle) throw new Error("Invalid window capture handle.");
-    input = ["-filter_complex", `gfxcapture=hwnd=${handle}:capture_cursor=0:capture_border=0:display_border=0:max_framerate=${fps}:width=1920:height=1080:resize_mode=scale_aspect,hwdownload,format=bgra`];
+    input = ["-filter_complex", `gfxcapture=hwnd=${handle}:capture_cursor=0:capture_border=0:display_border=0:max_framerate=${fps}:width=-2:height=-2:resize_mode=scale_aspect,hwdownload,format=bgra,scale=w='min(${maxWidth},iw)':h='min(${maxHeight},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=${encodedVideo ? "nv12" : "yuvj420p"}`];
   } else {
     const display = screen.getAllDisplays().find((item) => String(item.id) === source.display_id);
     if (!display) throw new Error("Capture display is unavailable.");
@@ -49,9 +57,11 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
   }
   const id = randomUUID();
   const child = spawn(executable, ["-hide_banner", "-loglevel", "error", "-filter_threads", "1", "-filter_complex_threads", "1", ...input,
-    "-an", ...(isWindow ? [] : ["-vf", "scale=w='min(1920,iw)':h=-2"]), "-c:v", "mjpeg", "-pix_fmt", "yuvj420p", "-q:v", "3", "-threads", "1", "-f", "image2pipe", "pipe:1"], { windowsHide: true });
+    "-an", ...(isWindow ? [] : ["-vf", `scale=w='min(${maxWidth},iw)':h='min(${maxHeight},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=${encodedVideo ? "nv12" : "yuvj420p"}`]),
+    ...(encoder ? h264CaptureArgs(encoder, fps) : ["-c:v", "mjpeg", "-pix_fmt", "yuvj420p", "-q:v", "3", "-threads", "1", "-f", "image2pipe", "pipe:1"])], { windowsHide: true });
   const relay = createLatestFrameRelay(frame => { if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, { id, ...frame }); });
-  captures.set(id, { owner: owner.id, process: child, relay });
+  const videoRelay = createH264Relay(frame => { if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, frame); }, Math.max(2 * 1024 * 1024, maxWidth * maxHeight));
+  captures.set(id, { owner: owner.id, process: child, relay: encodedVideo ? videoRelay : relay });
   const close = () => stopCursorFreeCapture(id);
   owner.once("destroyed", close);
   owner.once("render-process-gone", close);
@@ -60,7 +70,21 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
   let pendingBytes = 0;
   let previousByte = -1;
   const jpegEnd = Buffer.from([0xff, 0xd9]);
+  let sequence = 0;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  const h264 = encodedVideo ? createH264Parser((data, keyFrame, codec) => {
+    videoRelay.offer({ id, dataUrl: null, data, keyFrame, codec, timestamp: Math.round(++sequence * 1_000_000 / fps) });
+  }) : null;
   child.stdout.on("data", (chunk: Buffer) => {
+    if (h264) {
+      try {
+        h264.push(chunk);
+        if (flushTimer) clearTimeout(flushTimer);
+        // Static windows may not repaint again to delimit the final AUD.
+        flushTimer = setTimeout(() => { h264.flush(); flushTimer = null; }, 100);
+      } catch { close(); }
+      return;
+    }
     if (!chunk.length) return;
     let start = 0;
     let marker = chunk.indexOf(jpegEnd);
@@ -85,6 +109,7 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
   child.stderr.on("data", (data: Buffer) => { lastError = (lastError + data.toString()).slice(-2000); });
   child.once("error", close);
   child.once("close", () => {
+    if (flushTimer) clearTimeout(flushTimer);
     const wasActive = captures.has(id);
     captures.delete(id);
     owner.removeListener("destroyed", close);

@@ -23,13 +23,14 @@ export const sourceMediaSignature = (source: Source) => {
     case "display": case "window": return JSON.stringify([source.type, source.data.captureId, source.audioEnabled]);
     case "camera": return JSON.stringify([source.type, source.data.deviceId]);
     case "image": case "browser": return JSON.stringify([source.type, source.data.url]);
-    case "audio": case "video": return JSON.stringify([source.type, source.data.url, source.data.loop]);
+    case "audio": return JSON.stringify([source.type, source.data.url, source.data.loop]);
+    case "video": return JSON.stringify([source.type, source.data.url, source.data.loop, source.media?.paused ?? false, source.media?.restartToken ?? 0]);
     default: return source.type;
   }
 };
 
 export const canShareSourceMedia = (source: Source) =>
-  ["display", "window", "camera", "image"].includes(source.type);
+  ["display", "window", "camera", "image", "video"].includes(source.type);
 
 export const sourceMediaReady = (source: Source, media?: { videoEl?: HTMLVideoElement; imageEl?: HTMLImageElement; canvas?: HTMLCanvasElement; error?: string }) => {
   if (!source.enabled || source.type === "text" || source.type === "scrolling-text" || source.type === "audio") return true;

@@ -1,7 +1,9 @@
 import { useCallback, useRef } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { pickRecorderMimeType, stopMediaStream } from "../utils/media";
-import { getQualityProfile } from "../../shared/recording";
+import { pickRecorderMimeType } from "../utils/media";
+import { createStreamingCapture } from "../utils/streamingCapture";
+import { getOutputProfile } from "../../shared/recording";
+import { supports8KEncoding } from "./use8KSupport";
 
 export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
   const {
@@ -46,11 +48,17 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
       return;
     }
 
+    if (settings.outputResolution === "8k" && !(await supports8KEncoding(settings.frameRate))) {
+      setRecordingError("8K recording requires a compatible hardware encoder. Choose a lower resolution in Settings.");
+      return;
+    }
+
     setRecordingError(null);
     setRecordingResult(null);
     setRecordingSeconds(0);
 
-    const canvasStream = canvasRef.current.captureStream(settings.frameRate);
+    const capture = createStreamingCapture(canvasRef.current, settings.qualityPreset, settings.frameRate, settings.outputResolution);
+    const canvasStream = capture.stream;
     const tracks = [...canvasStream.getVideoTracks()];
 
     const captureAudio = settings.audioMode !== "none" && Boolean(programAudioStream?.getAudioTracks().length);
@@ -72,8 +80,8 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
     }
 
     const outputStream = new MediaStream(tracks);
-    const mimeType = pickRecorderMimeType();
-    const { videoBitsPerSecond } = getQualityProfile(settings.qualityPreset);
+    const mimeType = pickRecorderMimeType(canvasRef.current.width);
+    const { videoBitsPerSecond } = getOutputProfile(settings.qualityPreset, settings.outputResolution);
 
     let recorder: MediaRecorder;
     try {
@@ -82,7 +90,7 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
         videoBitsPerSecond
       });
     } catch {
-      stopMediaStream(canvasStream);
+      capture.stop();
       audioContextRef.current?.close().catch(() => undefined);
       audioContextRef.current = null;
       setRecordingError("Unable to start the recording encoder.");
@@ -98,7 +106,7 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
       sessionIdRef.current = session.sessionId;
     } catch (error) {
       recorderRef.current = null;
-      stopMediaStream(canvasStream);
+      capture.stop();
       audioContextRef.current?.close().catch(() => undefined);
       audioContextRef.current = null;
       setRecordingError(error instanceof Error ? error.message : "Unable to prepare the recording file.");
@@ -141,7 +149,7 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
         const message = error instanceof Error ? error.message : "Failed to save recording.";
         setRecordingError(message);
       } finally {
-        stopMediaStream(canvasStream);
+        capture.stop();
         audioContextRef.current?.close().catch(() => undefined);
         audioContextRef.current = null;
         recorderRef.current = null;
@@ -154,7 +162,7 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
       recorderRef.current = null;
-      stopMediaStream(canvasStream);
+      capture.stop();
       audioContextRef.current?.close().catch(() => undefined);
       audioContextRef.current = null;
       if (sessionId) await window.dualcast.cancelRecording({ sessionId }).catch(() => undefined);
@@ -177,7 +185,8 @@ export const useProgramRecorder = (canvasRef: React.RefObject<HTMLCanvasElement>
     setRecordingState,
     settings.audioMode,
     settings.frameRate,
-    settings.qualityPreset
+    settings.qualityPreset,
+    settings.outputResolution
   ]);
 
   const stopRecording = useCallback(() => {

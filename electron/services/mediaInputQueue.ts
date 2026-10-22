@@ -1,6 +1,6 @@
 // WebM chunks are dependent: preserve ordering and fail a stalled destination
 // instead of dropping arbitrary chunks or delaying every other destination.
-export const createMediaInputQueue = (write: (data: Buffer) => Promise<void>, fail: (error: Error) => void) => {
+export const createMediaInputQueue = (write: (data: Buffer) => Promise<void>, fail: (error: Error) => void, maxBytes = 4 * 1024 * 1024) => {
   let tail = Promise.resolve();
   let bytes = 0;
   let count = 0;
@@ -10,7 +10,7 @@ export const createMediaInputQueue = (write: (data: Buffer) => Promise<void>, fa
     stop: () => { stopped = true; },
     enqueue: (data: Buffer) => {
       if (stopped) return;
-      if (bytes + data.length > 4 * 1024 * 1024 || count >= 8) {
+      if (bytes + data.length > maxBytes || count >= 8) {
         stopped = true;
         fail(new Error("Stream destination cannot keep up. Its input queue was stopped before growing live delay; reduce quality or check the connection."));
         return;

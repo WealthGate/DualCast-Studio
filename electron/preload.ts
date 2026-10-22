@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { ProjectionSignal } from "../src/shared/types";
+import type { ProjectionSignal, NativeCaptureFrame, NativeCaptureOptions, HardwareCapabilities } from "../src/shared/types";
 import { IpcChannels } from "../src/shared/ipc";
 import {
   SaveRecordingPayload,
@@ -46,10 +46,18 @@ import {
 } from "../src/shared/types";
 
 const api = {
-  startCursorFreeCapture: (sourceId: string, fps?: number): Promise<string | null> => ipcRenderer.invoke(IpcChannels.startCursorFreeCapture, sourceId, fps),
+  sendProgramVideoFrame: (frame: NativeCaptureFrame) => ipcRenderer.send(IpcChannels.programVideoFrame,frame),
+  onProgramVideoFrame: (callback:(frame:NativeCaptureFrame)=>void) => {
+    const listener=(_event:Electron.IpcRendererEvent,frame:NativeCaptureFrame&{sequence:number})=>{
+      try{callback(frame);}finally{ipcRenderer.send(IpcChannels.programVideoPresented,frame.sequence);}
+    };
+    ipcRenderer.on(IpcChannels.programVideoFrame,listener);return()=>ipcRenderer.removeListener(IpcChannels.programVideoFrame,listener);
+  },
+  getHardwareCapabilities: (): Promise<HardwareCapabilities> => ipcRenderer.invoke(IpcChannels.getHardwareCapabilities),
+  startCursorFreeCapture: (sourceId: string, fps?: number, options?: NativeCaptureOptions): Promise<string | null> => ipcRenderer.invoke(IpcChannels.startCursorFreeCapture, sourceId, fps, options),
   stopCursorFreeCapture: (id: string): Promise<void> => ipcRenderer.invoke(IpcChannels.stopCursorFreeCapture, id),
-  onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null; error?: string }) => void | Promise<void>) => {
-    const listener = (_event: Electron.IpcRendererEvent, frame: { id: string; dataUrl: string | null; error?: string; sequence?: number }) => {
+  onCursorFreeFrame: (callback: (frame: NativeCaptureFrame) => void | Promise<void>) => {
+    const listener = (_event: Electron.IpcRendererEvent, frame: NativeCaptureFrame & { sequence?: number }) => {
       void Promise.resolve().then(() => callback(frame)).finally(() => {
         if (frame.sequence !== undefined) ipcRenderer.send(IpcChannels.cursorFreeFramePresented, frame.id, frame.sequence);
       }).catch(() => undefined);

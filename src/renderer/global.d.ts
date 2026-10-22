@@ -1,5 +1,8 @@
 import {
   ProjectionSignal,
+  NativeCaptureFrame,
+  NativeCaptureOptions,
+  HardwareCapabilities,
   DisplaySource,
   ProjectionDisplay,
   SaveRecordingPayload,
@@ -46,9 +49,12 @@ import {
 declare global {
   interface Window {
     dualcast: {
-      startCursorFreeCapture: (sourceId: string, fps?: number) => Promise<string | null>;
+      sendProgramVideoFrame: (frame: NativeCaptureFrame) => void;
+      onProgramVideoFrame: (callback:(frame:NativeCaptureFrame)=>void)=>()=>void;
+      getHardwareCapabilities: () => Promise<HardwareCapabilities>;
+      startCursorFreeCapture: (sourceId: string, fps?: number, options?: NativeCaptureOptions) => Promise<string | null>;
       stopCursorFreeCapture: (id: string) => Promise<void>;
-      onCursorFreeFrame: (callback: (frame: { id: string; dataUrl: string | null; error?: string }) => void | Promise<void>) => () => void;
+      onCursorFreeFrame: (callback: (frame: NativeCaptureFrame) => void | Promise<void>) => () => void;
       getProgramState: () => Promise<ProgramState | null>;
       listDisplays: () => Promise<DisplaySource[]>;
       listProjectionDisplays: () => Promise<ProjectionDisplay[]>;

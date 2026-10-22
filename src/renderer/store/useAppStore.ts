@@ -26,6 +26,11 @@ const defaultStudioState: StudioState = {
 const defaultSettings: Settings = {
   saveDirectory: "",
   qualityPreset: "medium",
+  outputResolution: "auto",
+  graphicsMode: "auto",
+  captureEncoder: "auto",
+  displayResolution: "auto",
+  streamResolution: "auto",
   frameRate: 30,
   audioMode: "system",
   microphoneDeviceId: null,

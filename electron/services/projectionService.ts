@@ -1,13 +1,15 @@
 import { app, BrowserWindow, screen } from "electron";
 import path from "path";
-import { ProgramState, ProjectionSignal } from "../../src/shared/types";
+import { ProgramState, ProjectionSignal, NativeCaptureFrame } from "../../src/shared/types";
 import { IpcChannels } from "../../src/shared/ipc";
 import { createLatestFrameRelay } from "./latestFrameRelay";
+import { createH264Relay } from "./h264Relay";
 
 const programWindows = new Map<string, BrowserWindow>();
 const lowerThirdWindows = new Map<string, BrowserWindow>();
 let lastProgramState: ProgramState | null = null;
 const relays = new Map<number, ReturnType<typeof createLatestFrameRelay>>();
+const videoRelays = new Map<number, ReturnType<typeof createH264Relay>>();
 let videoProducer: Electron.WebContents | null = null;
 export const routeProjectionSignal = (sender: Electron.WebContents, signal: ProjectionSignal) => {
   if (!signal || typeof signal !== "object") return;
@@ -21,11 +23,17 @@ export const routeProjectionSignal = (sender: Electron.WebContents, signal: Proj
   } else if (sender === videoProducer) {
     const target = outputs.find(window => window.webContents.id === signal.peerId);
     if (target && ["offer", "candidate"].includes(signal.type)) target.webContents.send(IpcChannels.projectionSignal, signal);
-  } else if (output && videoProducer && !videoProducer.isDestroyed() && ["ready", "answer", "candidate", "closed"].includes(signal.type)) {
+  } else if (output && videoProducer && !videoProducer.isDestroyed() && ["ready", "answer", "candidate", "closed", "fallback"].includes(signal.type)) {
     videoProducer.send(IpcChannels.projectionSignal, { ...signal, peerId: sender.id });
   }
 };
 export const acknowledgeProjectionFrame = (senderId: number, sequence: number) => relays.get(senderId)?.acknowledge(sequence);
+export const acknowledgeProgramVideo = (senderId: number, sequence: number) => videoRelays.get(senderId)?.acknowledge(sequence);
+export const forwardProgramVideo = (sender: Electron.WebContents, frame: NativeCaptureFrame) => {
+  if(sender !== videoProducer || !frame || !(frame.data instanceof Uint8Array) || !frame.data.byteLength || frame.data.byteLength>32*1024*1024 || typeof frame.codec!=="string" || !/^(avc1\.|av01\.)/.test(frame.codec) || !Number.isFinite(frame.timestamp))return;
+  if(lastProgramState?.sanctuary?.settings.mode==="independent")return;
+  programWindows.forEach(window=>{if(!window.isDestroyed())videoRelays.get(window.webContents.id)?.offer(frame);});
+};
 export const hasProjectionWindows = () =>
   [...programWindows.values(), ...lowerThirdWindows.values()].some((window) => !window.isDestroyed());
 export const getProgramState = () => lastProgramState;
@@ -88,6 +96,7 @@ const createOutputWindow = async (
   });
 
   collection.set(displayId, outputWindow);
+  if(mode === "program") videoRelays.set(outputWindow.webContents.id,createH264Relay(frame=>{if(!outputWindow.isDestroyed())outputWindow.webContents.send(IpcChannels.programVideoFrame,frame);},32*1024*1024));
   relays.set(outputWindow.webContents.id, createLatestFrameRelay(payload => {
     if (!outputWindow.isDestroyed()) outputWindow.webContents.send(mode === "program" ? IpcChannels.programFrame : IpcChannels.lowerThirdFrame, payload);
   }));
@@ -98,6 +107,7 @@ const createOutputWindow = async (
   outputWindow.on("closed", () => {
     if (mode === "program" && videoProducer && !videoProducer.isDestroyed()) videoProducer.send(IpcChannels.projectionSignal, { type: "closed", peerId: contentsId });
     relays.delete(contentsId);
+    videoRelays.delete(contentsId);
     collection.delete(displayId);
     if (collection.size === 0) {
       notifyMainWindows(mode === "program" ? IpcChannels.projectionClosed : IpcChannels.lowerThirdClosed);

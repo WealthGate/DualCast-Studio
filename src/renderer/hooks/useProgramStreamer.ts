@@ -5,6 +5,8 @@ import { StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "..
 import { isValidRtmpUrl } from "../../shared/streamingValidation";
 import { formatElapsedTimer } from "../utils/time";
 import { createStreamingCapture } from "../utils/streamingCapture";
+import { resolutionSize } from "../../shared/recording";
+import { supports8KEncoding } from "./use8KSupport";
 
 const presetBitrateMap: Record<string, number> = {
   low: 2_500_000,
@@ -120,12 +122,16 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       }
 
       startInFlightRef.current = true;
+      if (settings.streamResolution === "8k" && !(await supports8KEncoding(settings.streamFps))) {
+        startInFlightRef.current = false;
+        return { ok: false, message: "8K streaming requires a compatible hardware encoder. Choose a lower resolution." };
+      }
       setStatusMessage(null);
       setElapsedSeconds(0);
 
       let capture: ReturnType<typeof createStreamingCapture>;
       try {
-        capture = createStreamingCapture(canvasRef.current, settings.streamPreset, settings.streamFps);
+        capture = createStreamingCapture(canvasRef.current, settings.streamPreset, settings.streamFps, settings.streamResolution);
       } catch (error) {
         startInFlightRef.current = false;
         return { ok: false, message: error instanceof Error ? error.message : "Streaming capture failed." };
@@ -162,6 +168,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
           destinations: enabledDestinations,
           hasAudio,
           preset: settings.streamPreset,
+          resolution: settings.streamResolution,
           fps: settings.streamFps,
           audioBitrate: settings.streamAudioBitrate,
           encoder: settings.streamEncoder
@@ -182,8 +189,10 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       }
 
       try {
-        const mimeType = pickStreamingRecorderMimeType();
-        const bitrate = presetBitrateMap[settings.streamPreset] ?? presetBitrateMap.medium;
+        const mimeType = pickStreamingRecorderMimeType(resolutionSize(settings.streamResolution).width);
+        const size = resolutionSize(settings.streamResolution);
+        const bitrate = (presetBitrateMap[settings.streamPreset] ?? presetBitrateMap.medium) * Math.max(1, size.width * size.height / (1920 * 1080));
+        const byteLimit = Math.max(4 * 1024 * 1024, bitrate / 8 * 1.5);
         const recorder = new MediaRecorder(outputStream, {
           mimeType: mimeType || undefined,
           videoBitsPerSecond: bitrate
@@ -204,7 +213,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
           // Stop with a useful error instead of accumulating minutes of delay.
           pendingBytes += event.data.size;
           pendingChunks += 1;
-          if (pendingBytes > 4 * 1024 * 1024 || pendingChunks > 8) {
+          if (pendingBytes > byteLimit || pendingChunks > 8) {
             deliveryFailed = true;
             const message = "Streaming cannot keep up. Choose a lower streaming quality or fewer destinations, then restart the stream.";
             setLastError(message);
@@ -259,6 +268,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       settings.audioMode,
       settings.streamFps,
       settings.streamPreset,
+      settings.streamResolution,
       settings.streamAudioBitrate,
       settings.streamEncoder
     ]

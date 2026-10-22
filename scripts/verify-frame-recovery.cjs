@@ -5,13 +5,14 @@ module.exports = async function verifyFrameRecovery() {
   let sourceVideo;
   document.createElement = function(name, ...args) { const element = create(name, ...args); if (name === 'video') sourceVideo = element; return element; };
   const camera = {id:'recovery-cam',name:'Recovery camera',type:'camera',enabled:true,audioEnabled:false,rect:{x:0,y:0,width:100,height:100},data:{deviceId:''}};
-  const scene = {id:'recovery',name:'Recovery',sourceIds:[camera.id]};
+  const ticker = {id:'recovery-ticker',name:'Recovery ticker',type:'scrolling-text',enabled:true,audioEnabled:false,rect:{x:0,y:80,width:100,height:20},data:{text:'Keep moving',fontFamily:'Segoe UI',fontSize:48,textColor:'#fff',backgroundColor:'#000',backgroundOpacity:1,direction:'left',speed:100,padding:12,gap:40,loop:true,logoUrl:'',logoSide:'left',logoWidth:100,backgroundImageUrl:'',backgroundImageOpacity:1}};
+  const scene = {id:'recovery',name:'Recovery',sourceIds:[camera.id,ticker.id]};
   const settings = store.getState().settings;
   let previewDraws = 0, programDraws = 0;
   let previewContext, programContext, previewFill, programFill;
   try {
     store.setState({isFrozen:false,isCutToBlack:false,manualBlend:0,settings:{...settings,qualityPreset:'low',frameRate:30}});
-    store.getState().setStudioState({scenes:[scene],sources:{[camera.id]:camera},groups:[],previewSceneId:scene.id,programSceneId:scene.id});
+    store.getState().setStudioState({scenes:[scene],sources:{[camera.id]:camera,[ticker.id]:ticker},groups:[],previewSceneId:scene.id,programSceneId:scene.id});
     for(let i=0;i<100 && !(sourceVideo?.readyState>=2);i++) await wait(30);
     if (!(sourceVideo?.readyState>=2)) throw Error('Recovery test camera did not start');
     await wait(200);
@@ -30,7 +31,7 @@ module.exports = async function verifyFrameRecovery() {
     delete sourceVideo.readyState; await wait(200);
     // A new, permanently unavailable overlay must not freeze the healthy camera.
     const unavailable={id:'never-ready',name:'Unavailable',type:'image',enabled:true,audioEnabled:false,rect:{x:80,y:80,width:10,height:10},data:{url:'data:image/png;base64,invalid'}};
-    store.getState().setStudioState({scenes:[{...scene,sourceIds:[camera.id,unavailable.id]}],sources:{[camera.id]:camera,[unavailable.id]:unavailable},groups:[],previewSceneId:scene.id,programSceneId:scene.id});
+    store.getState().setStudioState({scenes:[{...scene,sourceIds:[camera.id,ticker.id,unavailable.id]}],sources:{[camera.id]:camera,[ticker.id]:ticker,[unavailable.id]:unavailable},groups:[],previewSceneId:scene.id,programSceneId:scene.id});
     previewDraws=programDraws=0; await wait(1800);
     if(previewDraws<minimumPreview||programDraws<minimumProgram) throw Error('An unavailable overlay froze healthy layers: '+JSON.stringify({previewDraws,programDraws,samePreview:previewContext.canvas===document.querySelector('.preview-pane canvas'),sameProgram:programContext.canvas===document.querySelector('.program-pane canvas'),status:document.querySelector('[role=status]')?.textContent,alerts:[...document.querySelectorAll('[role=alert]')].map(e=>e.textContent),ready:sourceVideo.readyState,scene:store.getState().programSceneSnapshot}));
     return {bufferingSource:'other layers continue',unavailableOverlay:'other layers continue',previewDraws,programDraws};

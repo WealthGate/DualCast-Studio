@@ -3,6 +3,32 @@ import { createStreamingCapture, streamingCaptureSize } from "../streamingCaptur
 import { publishCanvasFrame, requestedCanvasFrameRate } from "../canvasFrames";
 
 describe("streaming capture", () => {
+  it("preserves explicit 8K and 4K dimensions without upscaling a smaller source", () => {
+    expect(streamingCaptureSize(7680, 4320, "low", "8k")).toEqual({ width: 7680, height: 4320 });
+    expect(streamingCaptureSize(7680, 4320, "low", "4k")).toEqual({ width: 3840, height: 2160 });
+    expect(streamingCaptureSize(1920, 1080, "high", "8k")).toEqual({ width: 1920, height: 1080 });
+  });
+  it("bounds generated frame writes and closes frames after completion", async () => {
+    const pending: (() => void)[] = [], frames: { close: ReturnType<typeof vi.fn> }[] = [];
+    const writer = { write: vi.fn(() => new Promise<void>(resolve => pending.push(resolve))), close: vi.fn(() => Promise.resolve()) };
+    const stop = vi.fn();
+    vi.stubGlobal("MediaStreamTrackGenerator", class { writable = { getWriter: () => writer }; stop = stop; });
+    vi.stubGlobal("MediaStream", class {
+      constructor(public tracks: MediaStreamTrack[]) {}
+      getVideoTracks() { return this.tracks; } getTracks() { return this.tracks; }
+    });
+    vi.stubGlobal("VideoFrame", class { close = vi.fn(); constructor() { frames.push(this); } });
+    vi.stubGlobal("document", { createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage: vi.fn() }) }) });
+    const source = { width: 1920, height: 1080 } as HTMLCanvasElement;
+    const capture = createStreamingCapture(source, "medium", 60), start = performance.now();
+    for(let i=1;i<=10;i++) publishCanvasFrame(source, start+i*1000/60);
+    expect(writer.write).toHaveBeenCalledTimes(3);
+    expect(capture.stats.busyDrops).toBeGreaterThan(0);
+    pending.splice(0).forEach(resolve => resolve());
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    frames.forEach(frame => expect(frame.close).toHaveBeenCalledOnce());
+    capture.stop(); expect(writer.close).toHaveBeenCalledOnce(); expect(stop).toHaveBeenCalledOnce();
+  });
   afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
   it("downscales a 1440p Program canvas before browser encoding", () => {

@@ -4,6 +4,7 @@ import { ProgramState } from "../shared/types";
 import { resizeCanvas } from "./hooks/useCanvasRenderer";
 import { createFrameDecoder, DecodedFrame } from "./utils/frameDecoder";
 import { applyProjectionSignal, localProjectionDescription } from "./utils/projectionPeer";
+import { createVideoFrameDecoder } from "./utils/videoFrameDecoder";
 
 const defaultState: ProgramState = {
   programSceneId: null,
@@ -19,7 +20,8 @@ type ProjectionProps = {
 const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   const [programState, setProgramState] = useState<ProgramState>(defaultState);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const latestFrameRef = useRef<DecodedFrame | null>(null);
+  const latestFrameRef = useRef<DecodedFrame | HTMLCanvasElement | null>(null);
+  const encodedAtRef = useRef(-Infinity);
   const drawFrameRef = useRef<() => void>(() => undefined);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoReady, setVideoReady] = useState(false);
@@ -65,6 +67,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
       const video = videoRef.current;
       const decoded = video?.getVideoPlaybackQuality().totalVideoFrames ?? 0;
       const now = performance.now();
+      if(now-encodedAtRef.current<750)return;
       if (decoded !== frames && video && video.readyState >= 2 && peer?.connectionState === "connected") {
         frames = decoded; lastFrameAt = now; setVideoReady(true);
       } else if (now - lastFrameAt > 750) {
@@ -82,6 +85,18 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
     window.dualcast.sendProjectionSignal({ type: "ready" });
     return () => { active = false; window.clearInterval(watchdog); unsubscribe(); peer?.close(); setVideoReady(false); const video = videoRef.current; if (video) video.srcObject = null; window.dualcast.sendProjectionSignal({ type: "closed" }); };
   }, [mode, independent]);
+
+  useEffect(()=>{
+    if(mode!=="program"||independent)return;
+    const buffer=document.createElement("canvas"),context=buffer.getContext("2d",{alpha:false});
+    const decoder=createVideoFrameDecoder(frame=>{
+      if(!context)return;
+      resizeCanvas(buffer,frame.displayWidth,frame.displayHeight);context.drawImage(frame,0,0);
+      latestFrameRef.current=buffer;encodedAtRef.current=performance.now();setVideoReady(false);drawFrameRef.current();
+    },()=>{encodedAtRef.current=-Infinity;window.dualcast.sendProjectionSignal({type:"fallback"});});
+    const off=window.dualcast.onProgramVideoFrame(frame=>decoder.decode(frame));
+    return()=>{off();decoder.stop();encodedAtRef.current=-Infinity;if(latestFrameRef.current===buffer)latestFrameRef.current=null;};
+  },[mode,independent]);
 
   useEffect(() => {
     document.body.classList.add("projection-mode");
@@ -114,7 +129,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
       latestFrameRef.current = image;
       drawFrameRef.current();
     });
-    const unsubscribe = subscribe(frame => mode === "program" && videoReadyRef.current ? Promise.resolve() : decoder.decode(frame));
+    const unsubscribe = subscribe(frame => mode === "program" && (videoReadyRef.current || performance.now()-encodedAtRef.current<750) ? Promise.resolve() : decoder.decode(frame));
 
     return () => {
       unsubscribe();

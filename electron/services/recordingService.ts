@@ -40,12 +40,20 @@ const normalizeRecordingData = (data: SaveRecordingPayload["data"]) => {
   return null;
 };
 
-const transcodeWebmToMp4 = (inputPath: string, outputPath: string) =>
-  new Promise<void>((resolve, reject) => {
+const transcodeWebmToMp4 = async (inputPath: string, outputPath: string) => {
+  const file = await fs.promises.open(inputPath,"r");
+  let copyVideo = false;
+  try {
+    const header = Buffer.alloc(256 * 1024);
+    const { bytesRead } = await file.read(header, 0, header.length, 0);
+    const tracks = header.subarray(0, bytesRead);
+    copyVideo = ["V_MPEG4/ISO/AVC", "V_AV1", "V_VP9"].some(codec => tracks.includes(Buffer.from(codec)));
+  }
+  finally {await file.close();}
+  return new Promise<void>((resolve, reject) => {
     const command = ffmpeg(inputPath)
       .outputOptions([
-        "-c:v libx264",
-        "-preset veryfast",
+        ...(copyVideo ? ["-c:v copy"] : ["-c:v libx264", "-preset veryfast", "-threads 2"]),
         "-pix_fmt yuv420p",
         "-c:a aac",
         "-b:a 192k",
@@ -62,6 +70,7 @@ const transcodeWebmToMp4 = (inputPath: string, outputPath: string) =>
       .save(outputPath);
     activeRecordingCommands.add(command);
   });
+};
 
 const availableOutputPath = async (directory: string, fileName: string) => {
   const parsed = path.parse(fileName);

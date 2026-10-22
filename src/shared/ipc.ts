@@ -1,4 +1,7 @@
 export const IpcChannels = {
+  getHardwareCapabilities: "dualcast:get-hardware-capabilities",
+  programVideoFrame: "dualcast:program-video-frame",
+  programVideoPresented: "dualcast:program-video-presented",
   projectionFramePresented: "dualcast:projection-frame-presented",
   projectionSignal: "dualcast:projection-signal",
   startCursorFreeCapture: "dualcast:start-cursor-free-capture",

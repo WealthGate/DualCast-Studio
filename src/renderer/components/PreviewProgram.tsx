@@ -9,12 +9,13 @@ import { canShareSourceMedia, compositeSceneBlend, registerCapturePreviewProvide
 import { useAppStore } from "../store/useAppStore";
 import { createFrameEncoder } from "../utils/frameEncoder";
 import { createFrameDecoder, DecodedFrame } from "../utils/frameDecoder";
-import { getNativeCaptureCanvas } from "../utils/cursorFreeCapture";
+import { getNativeCaptureCanvas, nativeCaptureVersion } from "../utils/cursorFreeCapture";
+import { createFrameInvalidation } from "../utils/frameInvalidation";
 import { createSceneWarmup } from "../utils/sceneWarmup";
 import { useProjectionVideo } from "../hooks/useProjectionVideo";
 import { isPresentationTextSource, visiblePresentationSourceIds } from "../utils/presentationText";
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
-import { fitToBounds, getQualityProfile } from "../../shared/recording";
+import { fitToBounds, getOutputProfile } from "../../shared/recording";
 import { LowerThirdAnimation, LowerThirdSlide, MultiviewTile, Scene, SceneTransitionType, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
 import { AudioMeterSnapshot, publishAudioMeters } from "../audioMeterBus";
 import { createProgramAudioMonitor, updateProgramAudioMonitor } from "../utils/audioMonitoring";
@@ -130,7 +131,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   } = useAppStore();
   const showPreview = viewMode === "studio";
   const captureFps = Math.max(settings.frameRate, settings.streamFps);
-  const getSignature = (source: Source) => sourceMediaSignature(source) + (source.type === "display" || source.type === "window" ? `:${captureFps}` : "");
+  const getSignature = (source: Source) => sourceMediaSignature(source) + (["display", "window", "camera"].includes(source.type) ? `:${captureFps}:${programSize.width}:${programSize.height}:${settings.captureEncoder ?? "auto"}` : "");
 
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -160,6 +161,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const previewWarmupRef = useRef(createSceneWarmup());
   const programWarmupRef = useRef(createSceneWarmup());
   const blendWarmupRef = useRef(createSceneWarmup());
+  const previewInvalidationRef = useRef(createFrameInvalidation());
+  const programInvalidationRef = useRef(createFrameInvalidation());
   useEffect(() => registerCapturePreviewProvider(id => {
     const media = sourceMediaRef.current.get(id);
     return media?.canvas ?? media?.videoEl;
@@ -194,9 +197,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     [allSources, isMultiviewOpen, needsPreviewMedia, programScene, previewScene, programSources, scenes]
   );
 
-  const profile = getQualityProfile(settings.qualityPreset);
+  const profile = getOutputProfile(settings.qualityPreset, settings.outputResolution);
   const programSize = { width: profile.maxWidth, height: profile.maxHeight };
-  const projectionVideoConnected = useProjectionVideo(programCanvasRef, settings.frameRate, settings.sanctuaryDisplay?.mode !== "independent");
+  const projectionVideoConnected = useProjectionVideo(programCanvasRef, settings.frameRate, settings.sanctuaryDisplay?.mode !== "independent", settings.displayResolution);
   const previewCanvasSize = fitToBounds(programSize.width, programSize.height, previewSize.width, previewSize.height);
   const previewBitmapSize = fitToBounds(programSize.width, programSize.height, Math.max(2, previewCanvasSize.width * window.devicePixelRatio), Math.max(2, previewCanvasSize.height * window.devicePixelRatio));
 
@@ -389,6 +392,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         return;
       }
       const entry: SourceMedia = { signature, type: source.type };
+      const previousVideo = source.type === "video" ? Array.from(mediaMap.entries()).find(([id, media]) => id.replace(/^program:/, "") === source.id.replace(/^program:/, "") && media.type === "video")?.[1] : undefined;
       mediaMap.set(source.id, entry);
 
       if (source.type === "display" || source.type === "window") {
@@ -399,12 +403,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         try {
           let stream: MediaStream;
           try {
-            stream = await getDisplayStream(source.data.captureId, source.audioEnabled, captureFps);
+            stream = await getDisplayStream(source.data.captureId, source.audioEnabled, captureFps, programSize.width, programSize.height, settings.captureEncoder);
           } catch (error) {
             if (!source.audioEnabled) {
               throw error;
             }
-            stream = await getDisplayStream(source.data.captureId, false, captureFps);
+            stream = await getDisplayStream(source.data.captureId, false, captureFps, programSize.width, programSize.height, settings.captureEncoder);
           }
           entry.stream = stream;
           entry.canvas = getNativeCaptureCanvas(stream);
@@ -426,7 +430,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         video.muted = true;
         video.autoplay = true;
         try {
-          const stream = await getCameraStream(source.data.deviceId);
+          const stream = await getCameraStream(source.data.deviceId, captureFps, programSize.width, programSize.height);
           entry.stream = stream;
           video.srcObject = stream;
           await video.play();
@@ -443,14 +447,17 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         entry.imageEl = img;
       } else if (source.type === "video") {
         const video = document.createElement("video");
+        entry.lastRestartToken = source.media?.restartToken;
+        const startAt = (previousVideo?.lastRestartToken ?? 0) === (source.media?.restartToken ?? 0) ? previousVideo?.videoEl?.currentTime ?? 0 : 0;
         video.src = source.data.url;
         video.loop = source.data.loop;
         video.muted = true;
         video.playsInline = true;
-        video.autoplay = true;
+        video.autoplay = !source.media?.paused;
         video.crossOrigin = "anonymous";
         video.addEventListener("loadedmetadata", () => {
-          if (video.paused) {
+          if (startAt > 0) video.currentTime = startAt;
+          if (!source.media?.paused && video.paused) {
             video.play().catch(() => undefined);
           }
           try {
@@ -462,7 +469,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
             // captureStream is optional.
           }
         });
-        video.play().catch(() => undefined);
+        if (!source.media?.paused) video.play().catch(() => undefined);
         entry.videoEl = video;
         try {
           entry.captureStream = (
@@ -527,6 +534,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       if (entry && entry.signature === signature) {
         return;
       }
+      if (entry && source.type === "video" && entry.videoEl?.getAttribute("src") === source.data.url && Array.from(mediaMap.values()).filter(value => value === entry).length === 1) {
+        entry.signature = signature;
+        return;
+      }
       if (entry) {
         mediaMap.delete(id);
         if (!Array.from(mediaMap.values()).includes(entry)) cleanupSourceMedia(id, entry);
@@ -544,7 +555,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         browserSizeRef.current.delete(id);
       }
     });
-  }, [activeSourceIds, allSources, mediaRevision, programSize.height, programSize.width, captureFps]);
+  }, [activeSourceIds, allSources, mediaRevision, programSize.height, programSize.width, captureFps, settings.captureEncoder]);
 
   useEffect(() => () => {
     const released = new Set<SourceMedia>();
@@ -1225,8 +1236,21 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     else compositeSceneBlend(ctx, from, to, progress, canvas.width, canvas.height);
   };
 
-  useCanvasRenderer(previewCanvasRef, previewBitmapSize.width, previewBitmapSize.height, Math.min(30, settings.frameRate), (ctx, now) => {
-    if (!previewWarmupRef.current(previewScene, sceneReady(previewScene, sources), now)) return;
+  const scenePixels = (scene: Scene | null, sourceMap: Record<string, Source>): unknown[] => (scene?.sourceIds ?? []).flatMap<unknown>(id => {
+    const source = sourceMap[id], media = sourceMediaRef.current.get(id);
+    if (!source?.enabled) return [];
+    if (media?.canvas) return [media.canvas, nativeCaptureVersion(media.canvas)];
+    if (media?.videoEl) return [media.videoEl, media.videoEl.readyState, media.videoEl.getVideoPlaybackQuality?.().totalVideoFrames ?? media.videoEl.currentTime];
+    if (media?.imageEl) return [media.imageEl, media.imageEl.complete];
+    return [browserFramesRef.current.get(id)];
+  });
+  const animatedScene = (scene: Scene | null, sourceMap: Record<string, Source>) => (scene?.sourceIds ?? []).some(id => sourceMap[id]?.enabled && sourceMap[id].type === "scrolling-text" && !sourceMap[id].media?.paused);
+
+  useCanvasRenderer(previewCanvasRef, previewBitmapSize.width, previewBitmapSize.height, settings.frameRate, (ctx, now) => {
+    if (!previewWarmupRef.current(previewScene, sceneReady(previewScene, sources), now)) return false;
+    const state = useAppStore.getState();
+    if (!previewInvalidationRef.current([previewScene, sources, mediaRevision, settings.lowerThird, state.displayTextMode, state.isLowerThirdHidden, previewBitmapSize.width, previewBitmapSize.height, ...scenePixels(previewScene, sources)], now,
+      animatedScene(previewScene, sources) || now - previewLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs)) return false;
     ctx.save();
     ctx.scale(previewBitmapSize.width / programSize.width, previewBitmapSize.height / programSize.height);
     ctx.fillStyle = "#000";
@@ -1240,6 +1264,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
   useCanvasRenderer(programCanvasRef, programSize.width, programSize.height, settings.frameRate, (ctx, now) => {
     const canvas = ctx.canvas;
+    const state = useAppStore.getState();
+    if (!programInvalidationRef.current([programScene, programSources, mediaRevision, settings.lowerThird, state.displayTextMode, state.isLowerThirdHidden, isFrozen, isCutToBlack, manualBlend, programSize.width, programSize.height, ...(isFrozen || isCutToBlack ? [] : scenePixels(programScene, programSources)), ...(!isFrozen && !isCutToBlack && manualBlend > 0 ? scenePixels(previewScene, sources) : [])], now,
+      !isFrozen && !isCutToBlack && (Boolean(transitionRef.current) || manualBlend > 0 || animatedScene(programScene, programSources) || now - programLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs))) return false;
     if (isFrozen && !isCutToBlack && frozenFrameRef.current) {
       ctx.drawImage(frozenFrameRef.current, 0, 0, canvas.width, canvas.height);
       publishProgramFrameRef.current(canvas, now);

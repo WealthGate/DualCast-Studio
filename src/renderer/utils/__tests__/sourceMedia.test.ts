@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { Source } from "../../../shared/types";
-import { compositeSceneBlend, sourceMediaReady, sourceMediaSignature } from "../sourceMedia";
+import { canShareSourceMedia, compositeSceneBlend, sourceMediaReady, sourceMediaSignature } from "../sourceMedia";
 import { resizeCanvas } from "../../hooks/useCanvasRenderer";
 
 const camera: Source = { id: "cam", name: "Camera", type: "camera", rect: { x: 0, y: 0, width: 100, height: 100 }, enabled: true, audioEnabled: false, data: { deviceId: "camera-1" } };
 describe("live canvas continuity", () => {
+  it("shares file-video decoding only while playback commands match", () => {
+    const video = { ...camera, type: "video" as const, data: { url: "file:///clip.mp4", loop: true } };
+    expect(canShareSourceMedia(video)).toBe(true);
+    expect(sourceMediaSignature({ ...video, id: "program:video" })).toBe(sourceMediaSignature(video));
+    expect(sourceMediaSignature({ ...video, media: { paused: true } })).not.toBe(sourceMediaSignature(video));
+    expect(sourceMediaSignature({ ...video, media: { restartToken: 1 } })).not.toBe(sourceMediaSignature(video));
+  });
   it("does not clear the bitmap when its dimensions are unchanged", () => {
     const width = vi.fn();
     const canvas = { get width() { return 1920; }, set width(value: number) { width(value); }, height: 1080 };

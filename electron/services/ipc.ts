@@ -5,8 +5,9 @@ import { pathToFileURL } from "url";
 import { IpcChannels } from "../../src/shared/ipc";
 import { listDisplays, listProjectionDisplays } from "./displayService";
 import { acknowledgeCursorFreeFrame, startCursorFreeCapture, stopCursorFreeCapture } from "./cursorFreeCaptureService";
-import { acknowledgeProjectionFrame, routeProjectionSignal } from "./projectionService";
+import { acknowledgeProjectionFrame, routeProjectionSignal, forwardProgramVideo, acknowledgeProgramVideo } from "./projectionService";
 import { getSettings, updateSettings } from "./settingsService";
+import { getHardwareCapabilities } from "./hardwareService";
 import {
   appendRecordingChunk,
   beginRecording,
@@ -83,7 +84,8 @@ import {
 } from "./streamingCredentialService";
 
 export const registerIpcHandlers = () => {
-  ipcMain.handle(IpcChannels.startCursorFreeCapture, (event, sourceId: string, fps?: number) => startCursorFreeCapture(event.sender, sourceId, fps));
+  ipcMain.handle(IpcChannels.getHardwareCapabilities, () => getHardwareCapabilities());
+  ipcMain.handle(IpcChannels.startCursorFreeCapture, (event, sourceId: string, fps?: number, options?: import("../../src/shared/types").NativeCaptureOptions) => startCursorFreeCapture(event.sender, sourceId, fps, options ?? {}));
   ipcMain.on(IpcChannels.cursorFreeFramePresented, (event, id: string, sequence: number) => {
     if (typeof id === "string" && Number.isSafeInteger(sequence)) acknowledgeCursorFreeFrame(event.sender.id, id, sequence);
   });
@@ -302,6 +304,8 @@ export const registerIpcHandlers = () => {
     if (Number.isSafeInteger(sequence)) acknowledgeProjectionFrame(event.sender.id, sequence);
   });
   ipcMain.on(IpcChannels.projectionSignal, (event, signal) => routeProjectionSignal(event.sender, signal));
+  ipcMain.on(IpcChannels.programVideoFrame,(event,frame)=>forwardProgramVideo(event.sender,frame));
+  ipcMain.on(IpcChannels.programVideoPresented,(event,sequence)=>{if(Number.isSafeInteger(sequence))acknowledgeProgramVideo(event.sender.id,sequence);});
 
   ipcMain.on(IpcChannels.lowerThirdFrame, (_event, dataUrl: string) => {
     if (typeof dataUrl === "string" && dataUrl.length > 0) {

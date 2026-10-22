@@ -9,6 +9,9 @@ import {
 import { StreamingEncoder } from "../../../src/shared/types";
 
 describe("streaming encoder selection", () => {
+  it("probes the requested 8K dimensions and frame rate rather than assuming a small probe is sufficient", () => {
+    expect(buildEncoderProbeArgs("nvenc", { width: 7680, height: 4320, fps: 60 })).toContain("color=c=black:s=7680x4320:r=60");
+  });
   it("falls back to x264 when a requested or automatic hardware encoder is unavailable", () => {
     const softwareOnly = new Set<StreamingEncoder>(["x264"]);
 

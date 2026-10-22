@@ -18,6 +18,9 @@ export const installDevelopmentBridge = () => {
   }
 
   window.dualcast = {
+    sendProgramVideoFrame: () => undefined,
+    onProgramVideoFrame: () => () => undefined,
+    getHardwareCapabilities: async () => ({ platform: "browser", graphicsMode: "auto", accelerated: false, devices: [], streamEncoders: ["x264"], captureEncoders: [] }),
     startCursorFreeCapture: async () => null,
     stopCursorFreeCapture: async () => undefined,
     onCursorFreeFrame: () => () => undefined,

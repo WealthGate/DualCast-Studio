@@ -3,6 +3,9 @@ export type SceneTransitionType = "cut" | "fade" | "crossfade" | "wipe-left" | "
 export type AudioMode = "system" | "microphone" | "both" | "none";
 export type AudioRoutingScope = "scene" | "persistent";
 export type QualityPreset = "low" | "medium" | "high";
+export type VideoResolution = "auto" | "720p" | "1080p" | "1440p" | "4k" | "8k";
+export type GraphicsMode = "auto" | "high-performance" | "power-saving" | "software";
+export type HardwareCapabilities = { platform: string; graphicsMode: GraphicsMode; accelerated: boolean; devices: { name: string; active: boolean }[]; streamEncoders: StreamingEncoder[]; captureEncoders: StreamingEncoder[] };
 export type FrameRatePreset = 15 | 24 | 25 | 30 | 50 | 60;
 export type StreamingPreset = "low" | "medium" | "high";
 export type StreamingFps = 15 | 24 | 25 | 30 | 50 | 60;
@@ -285,6 +288,11 @@ export type Settings = {
   trimModifier?: "Alt" | "Control" | "Shift" | "Meta";
   saveDirectory: string;
   qualityPreset: QualityPreset;
+  outputResolution?: VideoResolution;
+  displayResolution?: VideoResolution;
+  streamResolution?: VideoResolution;
+  graphicsMode?: GraphicsMode;
+  captureEncoder?: StreamingEncoder;
   frameRate: FrameRatePreset;
   audioMode: AudioMode;
   microphoneDeviceId: string | null;
@@ -308,6 +316,9 @@ export type Settings = {
 };
 
 export type SettingsUpdate = Partial<Settings>;
+
+export type NativeCaptureOptions = { format?: "jpeg" | "h264"; maxWidth?: number; maxHeight?: number; encoder?: StreamingEncoder };
+export type NativeCaptureFrame = { id: string; dataUrl: string | null; error?: string; data?: Uint8Array; codec?: string; timestamp?: number; keyFrame?: boolean };
 
 export type SaveRecordingPayload = {
   data: Uint8Array | ArrayBuffer | number[];
@@ -351,6 +362,7 @@ export type HotkeyAction = "toggle-record" | "take" | "cut-black";
 export type StreamingStatus = "idle" | "connecting" | "live" | "reconnecting" | "error";
 
 export type StreamStartPayload = {
+  resolution?: VideoResolution;
   rtmpUrl?: string;
   streamKey?: string;
   destinations?: StreamDestinationInput[];
@@ -425,7 +437,7 @@ export type ProgramState = {
 };
 
 export type ProjectionSignal = {
-  type: "register" | "ready" | "offer" | "answer" | "candidate" | "closed";
+  type: "register" | "ready" | "offer" | "answer" | "candidate" | "closed" | "fallback";
   peerId?: number;
   description?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;

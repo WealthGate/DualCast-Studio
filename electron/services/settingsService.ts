@@ -19,6 +19,7 @@ import {
 import { STREAMING_ENCODER_OPTIONS } from "../../src/shared/streamingEncoders";
 import { normalizeYouTubeBroadcastSettings } from "../../src/shared/streamingPlatforms";
 import { normalizeStudioState } from "../../src/shared/settings";
+import { normalizeVideoResolution } from "../../src/shared/recording";
 
 let store: Store<Settings> | null = null;
 
@@ -105,6 +106,11 @@ const createStore = () => {
     defaults: {
       saveDirectory: getDefaultSaveDirectory(),
       qualityPreset: "medium",
+      outputResolution: "auto",
+      graphicsMode: "auto",
+      captureEncoder: "auto",
+      displayResolution: "auto",
+      streamResolution: "auto",
       frameRate: 30,
       audioMode: "system",
       microphoneDeviceId: null,
@@ -133,6 +139,11 @@ const createStore = () => {
     schema: {
       saveDirectory: { type: "string" },
       qualityPreset: { type: "string" },
+      outputResolution: { type: "string" },
+      graphicsMode: { type: "string" },
+      captureEncoder: { type: "string" },
+      displayResolution: { type: "string" },
+      streamResolution: { type: "string" },
       frameRate: { type: "number" },
       audioMode: { type: "string" },
       microphoneDeviceId: { type: ["string", "null"] },
@@ -268,6 +279,11 @@ export const getSettings = (): Settings => {
     ...stored,
     saveDirectory: typeof stored.saveDirectory === "string" && stored.saveDirectory ? stored.saveDirectory : getDefaultSaveDirectory(),
     qualityPreset: allowedQuality.includes(stored.qualityPreset) ? stored.qualityPreset : "medium",
+    outputResolution: normalizeVideoResolution(stored.outputResolution),
+    graphicsMode: ["high-performance", "power-saving", "software"].includes(stored.graphicsMode ?? "") ? stored.graphicsMode : "auto",
+    captureEncoder: ["nvenc", "qsv", "amf", "x264"].includes(stored.captureEncoder ?? "") ? stored.captureEncoder : "auto",
+    displayResolution: normalizeVideoResolution(stored.displayResolution),
+    streamResolution: normalizeVideoResolution(stored.streamResolution),
     frameRate: allowedFrameRates.includes(stored.frameRate) ? stored.frameRate : 30,
     audioMode: allowedAudio.includes(stored.audioMode) ? stored.audioMode : "system",
     streamPreset: allowedStreamingPresets.includes(stored.streamPreset) ? stored.streamPreset : "medium",
@@ -301,6 +317,11 @@ export const getSettings = (): Settings => {
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (["auto", "high-performance", "power-saving", "software"].includes(update.graphicsMode ?? "")) sanitized.graphicsMode = update.graphicsMode;
+  if (["auto", "nvenc", "qsv", "amf", "x264"].includes(update.captureEncoder ?? "")) sanitized.captureEncoder = update.captureEncoder;
+  for (const key of ["outputResolution", "displayResolution", "streamResolution"] as const) {
+    if (update[key] !== undefined) sanitized[key] = normalizeVideoResolution(update[key]);
+  }
   if (update.sanctuaryDisplay) sanitized.sanctuaryDisplay = normalizeSanctuaryDisplay(update.sanctuaryDisplay);
   if (update.audioChannelMode === "mono" || update.audioChannelMode === "stereo") sanitized.audioChannelMode = update.audioChannelMode;
   if (typeof update.swapPreviewProgram === "boolean") sanitized.swapPreviewProgram = update.swapPreviewProgram;

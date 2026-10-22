@@ -13,13 +13,13 @@ export const mapStreamingEncoder = (encoder: StreamingEncoder) =>
 
 export const buildEncoderProbeArgs = (
   encoder: StreamingEncoder,
-  options?: { vaapiDevice?: string | null }
+  options?: { vaapiDevice?: string | null; width?: number; height?: number; fps?: number }
 ) => {
   const args = ["-hide_banner", "-loglevel", "error"];
   if (encoder === "vaapi" && options?.vaapiDevice) {
     args.push("-vaapi_device", options.vaapiDevice);
   }
-  args.push("-f", "lavfi", "-i", "color=c=black:s=64x64:r=1");
+  args.push("-f", "lavfi", "-i", `color=c=black:s=${options?.width ?? 64}x${options?.height ?? 64}:r=${options?.fps ?? 1}`);
   if (encoder === "vaapi") {
     args.push("-vf", "format=nv12,hwupload");
   } else if (encoder === "mediafoundation") {

@@ -1,12 +1,16 @@
 import { getCursorFreeStream } from "./cursorFreeCapture";
+import type { StreamingEncoder } from "../../shared/types";
 
 export const getDisplayStream = async (
   sourceId: string,
   includeAudio: boolean,
-  fps = 30
+  fps = 30,
+  maxWidth = 1920,
+  maxHeight = 1080,
+  encoder: StreamingEncoder = "auto"
 ) => {
   const captureCursor = "never";
-  const cursorFreeStream = await getCursorFreeStream(sourceId, fps);
+  const cursorFreeStream = await getCursorFreeStream(sourceId, fps, maxWidth, maxHeight, encoder);
   if (cursorFreeStream && !includeAudio) return cursorFreeStream;
   const constraints = {
     audio: includeAudio
@@ -50,9 +54,9 @@ export const getDisplayStream = async (
   return stream;
 };
 
-export const getCameraStream = async (deviceId: string) => {
+export const getCameraStream = async (deviceId: string, fps = 30, width = 1920, height = 1080) => {
   return navigator.mediaDevices.getUserMedia({
-    video: deviceId ? { deviceId: { exact: deviceId } } : true,
+    video: { ...(deviceId ? { deviceId: { exact: deviceId } } : {}), frameRate: { ideal: fps, max: fps }, width: { ideal: width }, height: { ideal: height } },
     audio: false
   });
 };
@@ -74,14 +78,14 @@ export const pickSupportedRecorderMimeType = (
   return "";
 };
 
-export const pickRecorderMimeType = () => pickSupportedRecorderMimeType([
-    "video/webm;codecs=vp9,opus",
+export const pickRecorderMimeType = (width = 1920) => pickSupportedRecorderMimeType(width > 4096 ? [
+    "video/webm;codecs=av1,opus",
+    "video/webm;codecs=vp9,opus"
+  ] : [
+    "video/webm;codecs=h264,opus",
     "video/webm;codecs=vp8,opus",
+    "video/webm;codecs=vp9,opus",
     "video/webm"
   ]);
 
-export const pickStreamingRecorderMimeType = () => pickSupportedRecorderMimeType([
-  "video/webm;codecs=vp8,opus",
-  "video/webm;codecs=vp9,opus",
-  "video/webm"
-]);
+export const pickStreamingRecorderMimeType = (width = 1920) => pickRecorderMimeType(width);

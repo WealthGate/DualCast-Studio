@@ -10,11 +10,12 @@ if (!process.versions.electron) {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     fs.mkdirSync(path.join(root, "tmp"), { recursive: true });
-    const motion = spawnSync(require("ffmpeg-static"), ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30", "-t", "4", "-an", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "2M", "-threads", "2", path.join(root, "tmp/freeze-regression.webm")], { windowsHide: true });
+    const motion = spawnSync(require("ffmpeg-static"), ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=60", "-t", "4", "-an", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "2M", "-threads", "2", path.join(root, "tmp/freeze-regression.webm")], { windowsHide: true });
     if (motion.status !== 0) throw Error("Could not generate moving-video fixture: " + motion.stderr);
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/cursorFreeCaptureService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "ffmpeg-static"], outfile: path.join(root, "tmp/capture-verification.cjs") });
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/projectionService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron"], outfile: path.join(root, "tmp/projection-verification.cjs") });
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/browserSourceService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "electron-log"], outfile: path.join(root, "tmp/browser-verification.cjs") });
+    if(process.argv.includes("--settings-only")) require("esbuild").buildSync({entryPoints:[path.join(root,"electron/services/hardwareService.ts")],bundle:true,platform:"node",format:"cjs",external:["electron","electron-log","ffmpeg-static"],outfile:path.join(root,"tmp/hardware-verification.cjs")});
     const vite = spawn(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5174", "--strictPort"], { cwd: root, env, windowsHide: true, stdio: "ignore" });
     let electron;
     try {
@@ -33,16 +34,25 @@ if (!process.versions.electron) {
   const profile = path.join(require('os').tmpdir(), `openchurch-live-output-${process.pid}`);
   app.setAppPath(root);
   fs.mkdirSync(profile, { recursive: true });
+  fs.writeFileSync(path.join(root,"tmp/output-test-preload.js"),`const {contextBridge,ipcRenderer}=require('electron');contextBridge.exposeInMainWorld('__outputTest',{send:frame=>ipcRenderer.send('dualcast:program-video-frame',frame)});`);
   app.setPath("userData", profile);
   app.commandLine.appendSwitch("use-fake-device-for-media-stream");
   app.commandLine.appendSwitch("use-fake-ui-for-media-stream");
   app.whenReady().then(async () => {
-    const window = new BrowserWindow({ show: false, width: 1400, height: 900, webPreferences: { backgroundThrottling: false, contextIsolation: true } });
+    const window = new BrowserWindow({ show: false, width: 1400, height: 900, webPreferences: { backgroundThrottling: false, contextIsolation: true, preload:path.join(root,"tmp/output-test-preload.js") } });
     window.webContents.on("console-message", event => { if (event.level === "error") console.error(event.message); });
     try {
       await window.loadURL("http://127.0.0.1:5174");
       window.showInactive();
       let result = {};
+      if(process.argv.includes("--video-only")){console.log(JSON.stringify(await window.webContents.executeJavaScript(`(${require('./verify-video-sharing.cjs').toString()})(${JSON.stringify('/@fs/'+root.replace(/\\/g,'/')+'/tmp/freeze-regression.webm')})`)));app.exit(0);return;}
+      if(process.argv.includes("--settings-only")){const hardware=await require('./../tmp/hardware-verification.cjs').getHardwareCapabilities();console.log(JSON.stringify(await require('./verify-hardware-settings.cjs')(window,hardware)));app.exit(0);return;}
+      if(process.argv.includes("--recording-only")){console.log(JSON.stringify(await require('./verify-recording-track.cjs')(window,root)));app.exit(0);return;}
+      if(process.argv.includes("--native-video-only")){console.log(JSON.stringify(await require('./verify-native-h264.cjs')(root)));app.exit(0);return;}
+      if (process.argv.includes("--hardware-only")) {
+        console.log(JSON.stringify(await window.webContents.executeJavaScript(`(async()=>({mimes:Object.fromEntries(['video/mp4;codecs=avc1.42E02A,mp4a.40.2','video/webm;codecs=h264,opus','video/mp4;codecs=hvc1.1.6.L186.B0,mp4a.40.2','video/webm;codecs=av1,opus'].map(m=>[m,MediaRecorder.isTypeSupported(m)])),encoder:await VideoEncoder.isConfigSupported({codec:'avc1.42002a',width:1920,height:1080,framerate:60,bitrate:8000000,hardwareAcceleration:'prefer-hardware',avc:{format:'annexb'}})}))()`)));
+        app.exit(0); return;
+      }
       if (!process.argv.includes("--performance-only") && !process.argv.includes("--recovery-only")) {
       result = await window.webContents.executeJavaScript(`(async () => {
         const { useAppStore: store } = await import('/store/useAppStore.ts');
@@ -180,8 +190,10 @@ if (!process.versions.electron) {
         return checked;
       })()`);
       result.scrollingText = await window.webContents.executeJavaScript(`(${require("./verify-scrolling-text.cjs").toString()})(${JSON.stringify("/@fs/" + root.replace(/\\/g, "/") + "/src/shared/scrollingText.ts")})`);
+      console.log("Transitions, fader and scrolling-text controls passed.");
       result.frameRecovery = await window.webContents.executeJavaScript(`(${require("./verify-frame-recovery.cjs").toString()})()`);
       result.nativeRenderer = await window.webContents.executeJavaScript(`(${require("./verify-native-renderer.cjs").toString()})()`);
+      result.videoSharing = await window.webContents.executeJavaScript(`(${require('./verify-video-sharing.cjs').toString()})(${JSON.stringify('/@fs/'+root.replace(/\\/g,'/')+'/tmp/freeze-regression.webm')})`);
       fs.writeFileSync(path.join(root, "tmp/scrolling-text-verification.png"), (await window.webContents.capturePage()).toPNG());
       }
       // Pixel-readback checks can make Chromium migrate a canvas to software.
@@ -205,8 +217,11 @@ if (!process.versions.electron) {
       }
       const performanceFps = process.argv.includes("--fps=60") ? 60 : 30;
       result.performance = await window.webContents.executeJavaScript(`(${require("./verify-output-performance.cjs").toString()})(${performanceFps})`);
+      console.log(JSON.stringify({performance:result.performance}));
       if (!process.argv.includes("--performance-only")) result.projectionVideo = await require("./verify-projection-video.cjs")(window, root);
       if (!process.argv.includes("--performance-only")) result.browserCapture = await require("./verify-browser-capture.cjs")(root);
+      if (!process.argv.includes("--performance-only")) result.nativeVideo = await require("./verify-native-h264.cjs")(root);
+      if (!process.argv.includes("--performance-only")) result.recording = await require("./verify-recording-track.cjs")(window,root);
       if (process.platform === "win32") {
         const capture = require(path.join(root, "tmp/capture-verification.cjs"));
         const { EventEmitter } = require("events");
