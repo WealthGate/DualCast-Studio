@@ -303,6 +303,8 @@ export type Settings = {
   streamFps: StreamingFps;
   streamAudioBitrate: StreamingAudioBitrate;
   streamEncoder: StreamingEncoder;
+  streamPassthrough?: boolean;
+  streamAutoRecover?: boolean;
   rememberStreamKey: boolean;
   streamDestinations: StreamDestinationConfig[];
   operatorStationName: string;
@@ -362,6 +364,9 @@ export type HotkeyAction = "toggle-record" | "take" | "cut-black";
 export type StreamingStatus = "idle" | "connecting" | "live" | "reconnecting" | "error";
 
 export type StreamStartPayload = {
+  autoRecover?: boolean;
+  copyVideo?: boolean;
+  inputVideoCodec?: "h264" | "other";
   resolution?: VideoResolution;
   rtmpUrl?: string;
   streamKey?: string;
@@ -384,6 +389,7 @@ export type StreamStopResult = {
 };
 
 export type StreamStatusPayload = {
+  restartRequired?: boolean;
   status: StreamingStatus;
   message?: string | null;
   startedAt?: number | null;

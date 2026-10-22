@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.29**.
+Current release: **v0.6.30**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,15 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.29
+### What's new in v0.6.30
+
+- Reuse compatible H.264 video instead of decoding and encoding it a second time, reducing streaming CPU work. The selected encoder still applies when conversion is required; H.264 reuse can be disabled in Stream Setup.
+- Scale bitrate to the selected resolution: High quality at 720p/30 uses about 2.89 Mbps video instead of 6.5 Mbps. Program and display settings remain independent.
+- Reconnect with a fresh capture after an input/encoder stall. Repeated stalls reduce only the stream to 720p, up to 30 fps and lower bandwidth; Stop cancels retries. Automatic recovery is enabled by default and configurable in Stream Setup.
+- Clear transient queue-overflow warnings after progress resumes, size recovery queues for both video and audio packets, and bound network writes.
+- Test both video conversion and H.264 reuse against a real local RTMP receiver on every release platform. See [the streaming stability audit](docs/streaming-stability-audit.md).
+
+### Included from v0.6.29
 
 - Fix streaming that begins connecting, encodes zero or a few frames, then stops. Cold encoder startup has a bounded ten-second allowance; tight live queue/write limits begin after one second of video has actually been encoded.
 - Configure Quick Sync for NV12 and low-delay operation, bound decoder/filter threads, disable output B-frames, and explicitly provide codec headers for FIFO/RTMP output.

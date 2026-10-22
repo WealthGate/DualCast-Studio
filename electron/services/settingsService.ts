@@ -121,6 +121,8 @@ const createStore = () => {
       streamFps: 30,
       streamAudioBitrate: 128,
       streamEncoder: "auto",
+      streamPassthrough: true,
+      streamAutoRecover: true,
       rememberStreamKey: false,
       streamDestinations: [{ id: "primary", name: "Primary Stream", rtmpUrl: "", enabled: true, platform: "custom" }],
       operatorStationName: "Main Director",
@@ -154,6 +156,8 @@ const createStore = () => {
       streamFps: { type: "number" },
       streamAudioBitrate: { type: "number" },
       streamEncoder: { type: "string" },
+      streamPassthrough: { type: "boolean" },
+      streamAutoRecover: { type: "boolean" },
       rememberStreamKey: { type: "boolean" },
       streamDestinations: { type: "array" },
       operatorStationName: { type: "string" },
@@ -290,6 +294,8 @@ export const getSettings = (): Settings => {
     streamFps: allowedStreamingFps.includes(stored.streamFps) ? stored.streamFps : 30,
     streamAudioBitrate: allowedStreamingAudio.includes(stored.streamAudioBitrate) ? stored.streamAudioBitrate : 128,
     streamEncoder: allowedStreamingEncoders.includes(stored.streamEncoder) ? stored.streamEncoder : "auto",
+    streamPassthrough: stored.streamPassthrough !== false,
+    streamAutoRecover: stored.streamAutoRecover !== false,
     streamDestinations: destinations,
     operatorStationName: stored.operatorStationName || "Main Director",
     operatorRole: stored.operatorRole || "director",
@@ -317,6 +323,8 @@ export const getSettings = (): Settings => {
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (typeof update.streamPassthrough === "boolean") sanitized.streamPassthrough = update.streamPassthrough;
+  if (typeof update.streamAutoRecover === "boolean") sanitized.streamAutoRecover = update.streamAutoRecover;
   if (["auto", "high-performance", "power-saving", "software"].includes(update.graphicsMode ?? "")) sanitized.graphicsMode = update.graphicsMode;
   if (["auto", "nvenc", "qsv", "amf", "x264"].includes(update.captureEncoder ?? "")) sanitized.captureEncoder = update.captureEncoder;
   for (const key of ["outputResolution", "displayResolution", "streamResolution"] as const) {

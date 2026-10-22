@@ -152,6 +152,43 @@ describe("stream shutdown", () => {
     child.process.stderr.emit("data", "frame= 100 fps=24 time=00:00:03.30 speed=0.81x");
     expect(publish.mock.lastCall?.[0].stats.speed).toBe(0.81);
     child.process.stderr.emit("data", "FIFO queue full");
-    expect(publish.mock.lastCall?.[0].lastError).toContain("Upload cannot keep up");
+    expect(publish.mock.lastCall?.[0].lastError).toContain("Recovering at the next");
+    await vi.advanceTimersByTimeAsync(8000);
+    child.process.stderr.emit("data", "frame= 300 fps=30 time=00:00:10.00 speed=1.01x");
+    expect(publish.mock.lastCall?.[0].lastError).toBeNull();
+  });
+
+  it("reuses compatible H.264 without scaling, duplicating or encoding video a second time", () => {
+    const args=buildFfmpegArgs({...payload,copyVideo:true,inputVideoCodec:"h264"},"x264");
+    expect(args[args.indexOf("-c:v")+1]).toBe("copy");
+    expect(args).not.toContain("-vf");expect(args).not.toContain("-r");expect(args).not.toContain("-preset");
+    expect(buildFfmpegArgs({...payload,copyVideo:true,inputVideoCodec:"other"},"x264")).toContain("libx264");
+  });
+
+  it("recognizes stream-copy delivery without an encoded-frame counter", async () => {
+    const child = encoder(); mocks.spawn.mockReturnValue(child.process);
+    const publish = vi.fn(); setStreamStatusPublisher(publish);
+    await startStreaming({ ...payload, copyVideo: true, inputVideoCodec: "h264" });
+    child.process.stderr.emit("data", "size=0kB time=N/A bitrate=N/A speed=N/A");
+    expect(publish.mock.lastCall?.[0].status).toBe("connecting");
+    child.process.stderr.emit("data", "size=N/A time=00:00:01.00 bitrate=N/A speed=1.02x");
+    expect(publish.mock.lastCall?.[0].status).toBe("live");
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(child.process.kill).not.toHaveBeenCalled();
+  });
+
+  it("requests fresh input after a live stall instead of stopping automatic-recovery clients", async () => {
+    const child=encoder();mocks.spawn.mockReturnValue(child.process);
+    const publish=vi.fn();setStreamStatusPublisher(publish);await startStreaming({...payload,autoRecover:true});
+    child.process.stderr.emit("data","frame= 30 fps=30 time=00:00:01.00");
+    await sendStreamChunk(new Uint8Array([1]));await vi.advanceTimersByTimeAsync(1500);
+    expect(publish.mock.lastCall?.[0].status).toBe("reconnecting");
+    expect(publish.mock.lastCall?.[0].restartRequired).toBe(true);
+    expect(child.process.kill).toHaveBeenCalledWith("SIGKILL");
+    child.process.emit("close",1,null);
+    expect(publish.mock.lastCall?.[0].status).toBe("reconnecting");
+    await stopStreaming();
+    const next=encoder();mocks.spawn.mockReturnValue(next.process);await startStreaming({...payload,autoRecover:true});
+    expect(publish.mock.lastCall?.[0].restartRequired).toBe(false);
   });
 });

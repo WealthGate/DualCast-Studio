@@ -22,17 +22,18 @@ import {
   StreamStatusPayload,
   StreamStopResult,
   StreamingEncoder,
-  StreamingPreset,
   StreamingStatus
 } from "../../src/shared/types";
 import { buildRecoverableRtmpOutputArgs } from "../../src/shared/streamingOutputs";
 import { isValidRtmpUrl } from "../../src/shared/streamingValidation";
 import { createMediaInputQueue } from "./mediaInputQueue";
 import { resolutionSize } from "../../src/shared/recording";
+import { streamingProfile } from "../../src/shared/streamingProfile";
 
 type StatusPublisher = (payload: StreamStatusPayload) => void;
 
 type DestinationRuntime = {
+  outputWarningUntil?: number;
   steadySince: number | null;
   startupTimer?: NodeJS.Timeout;
   inputController?: AbortController;
@@ -54,12 +55,6 @@ const STARTUP_TIMEOUT_MS = 10000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const ffmpegPath = resolveFfmpegExecutablePath(bundledFfmpegPath);
 
-const presetConfig: Record<StreamingPreset, { maxWidth: number; videoBitrateKbps: number }> = {
-  low: { maxWidth: 1280, videoBitrateKbps: 2500 },
-  medium: { maxWidth: 1920, videoBitrateKbps: 4500 },
-  high: { maxWidth: 1920, videoBitrateKbps: 6500 }
-};
-
 const runtimes = new Map<string, DestinationRuntime>();
 const availableEncoders = new Set<StreamingEncoder>(["x264"]);
 let statusPublisher: StatusPublisher | null = null;
@@ -71,6 +66,7 @@ let sessionLogPath: string | null = null;
 let logStream: fs.WriteStream | null = null;
 let cachedHeader: Buffer | null = null;
 let vaapiDevice: string | null = null;
+let restartRequired = false;
 
 const resolveVaapiDevice = () => {
   if (process.platform !== "linux") {
@@ -181,9 +177,9 @@ const detectEncoders = () => {
 };
 
 export const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder) => {
-  const base = presetConfig[payload.preset];
-  const size = resolutionSize(payload.resolution, { width: base.maxWidth, height: base.maxWidth * 9 / 16 });
-  const preset = { maxWidth: size.width, videoBitrateKbps: Math.round(base.videoBitrateKbps * Math.max(1, size.width * size.height / (1920 * 1080))) };
+  const profile = streamingProfile(payload.preset, payload.resolution, payload.fps);
+  const preset = { maxWidth: profile.width, videoBitrateKbps: profile.videoBitsPerSecond / 1000 };
+  const copyVideo = payload.copyVideo === true && payload.inputVideoCodec === "h264";
   const gop = payload.fps * 2;
   const bitrate = `${preset.videoBitrateKbps}k`;
   const args = [
@@ -207,62 +203,62 @@ export const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingE
     args.push("-vaapi_device", vaapiDevice);
   }
 
-  args.push(
-    "-i",
-    "pipe:0",
-    "-map",
-    "0:v:0",
-    "-vf",
-    encoder === "vaapi"
-      ? `scale='min(${preset.maxWidth},iw)':-2,format=nv12,hwupload`
-      : encoder === "mediafoundation" || encoder === "qsv"
-        ? `scale='min(${preset.maxWidth},iw)':-2,format=nv12`
-        : `scale='min(${preset.maxWidth},iw)':-2`,
-    "-r",
-    String(payload.fps),
-    "-c:v",
-    mapStreamingEncoder(encoder),
-    "-flags:v", "+global_header",
-    "-threads", "2"
-  );
+  args.push("-i", "pipe:0", "-map", "0:v:0");
+  if (copyVideo) args.push("-c:v", "copy");
+  else {
+    args.push(
+      "-vf",
+      encoder === "vaapi"
+        ? `scale='min(${preset.maxWidth},iw)':-2,format=nv12,hwupload`
+        : encoder === "mediafoundation" || encoder === "qsv"
+          ? `scale='min(${preset.maxWidth},iw)':-2,format=nv12`
+          : `scale='min(${preset.maxWidth},iw)':-2`,
+      "-r",
+      String(payload.fps),
+      "-c:v",
+      mapStreamingEncoder(encoder),
+      "-flags:v", "+global_header",
+      "-threads", "2"
+    );
 
-  if (encoder === "x264") {
-    args.push("-preset", "veryfast", "-tune", "zerolatency");
-  } else if (encoder === "nvenc") {
-    args.push("-preset", "p4", "-tune", "ll");
-  } else if (encoder === "qsv") {
-    args.push("-preset", "veryfast", "-async_depth", "1", "-look_ahead", "0");
-  } else if (encoder === "videotoolbox") {
-    args.push("-realtime", "1");
-  } else if (encoder === "mediafoundation") {
-    args.push("-hw_encoding", "1", "-scenario", "live_streaming", "-rate_control", "cbr");
+    if (encoder === "x264") {
+      args.push("-preset", "superfast", "-tune", "zerolatency");
+    } else if (encoder === "nvenc") {
+      args.push("-preset", "p4", "-tune", "ll");
+    } else if (encoder === "qsv") {
+      args.push("-preset", "veryfast", "-async_depth", "1", "-look_ahead", "0");
+    } else if (encoder === "videotoolbox") {
+      args.push("-realtime", "1");
+    } else if (encoder === "mediafoundation") {
+      args.push("-hw_encoding", "1", "-scenario", "live_streaming", "-rate_control", "cbr");
+    }
+
+    args.push(
+      "-b:v",
+      bitrate,
+      "-maxrate",
+      bitrate,
+      "-bufsize",
+      `${preset.videoBitrateKbps * 2}k`
+    );
+
+    if (encoder !== "vaapi" && encoder !== "mediafoundation" && encoder !== "qsv") {
+      args.push("-pix_fmt", "yuv420p");
+    }
+
+    args.push(
+      "-g",
+      String(gop),
+      "-keyint_min",
+      String(gop)
+    );
+
+    if (encoder === "x264") {
+      args.push("-sc_threshold", "0");
+    }
+    args.push("-bf", "0");
+    if (encoder === "x264") args.push("-minrate", bitrate, "-x264-params", "nal-hrd=cbr:force-cfr=1");
   }
-
-  args.push(
-    "-b:v",
-    bitrate,
-    "-maxrate",
-    bitrate,
-    "-bufsize",
-    `${preset.videoBitrateKbps * 2}k`
-  );
-
-  if (encoder !== "vaapi" && encoder !== "mediafoundation" && encoder !== "qsv") {
-    args.push("-pix_fmt", "yuv420p");
-  }
-
-  args.push(
-    "-g",
-    String(gop),
-    "-keyint_min",
-    String(gop)
-  );
-
-  if (encoder === "x264") {
-    args.push("-sc_threshold", "0");
-  }
-  args.push("-bf", "0");
-  if (encoder === "x264") args.push("-minrate", bitrate, "-x264-params", "nal-hrd=cbr:force-cfr=1");
 
   if (payload.hasAudio) {
     args.push("-map", "0:a:0?", "-c:a", "aac", "-b:a", `${payload.audioBitrate}k`, "-ar", "48000");
@@ -305,6 +301,7 @@ const publishAggregateStatus = () => {
   const stats = entries.find((entry) => entry.status === "live")?.stats ?? entries[0].stats ?? null;
 
   currentStatus = {
+    restartRequired,
     status,
     message,
     startedAt: status === "live" ? startedAt : null,
@@ -324,6 +321,21 @@ const publishAggregateStatus = () => {
   statusPublisher?.(currentStatus);
 };
 
+const requestFreshInput = (reason: string) => {
+  if (stopRequested || restartRequired || lastStartPayload?.autoRecover !== true) return false;
+  restartRequired = true;
+  runtimes.forEach(runtime => {
+    const child = runtime.process; runtime.process = null;
+    clearTimeout(runtime.startupTimer); runtime.inputQueue?.stop(); runtime.inputController?.abort();
+    child?.kill("SIGKILL");
+    runtime.status = "reconnecting";
+    runtime.lastError = `${reason} Reconnecting with fresh video input.`;
+    writeStreamLog(runtime.destination.name, runtime.lastError);
+  });
+  publishAggregateStatus();
+  return true;
+};
+
 const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => {
   if (!ffmpegPath || !lastStartPayload) {
     runtime.status = "error";
@@ -335,7 +347,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   const encoder = runtime.encoder;
   const endpoint = `${runtime.destination.rtmpUrl.replace(/\/+$/, "")}/${runtime.destination.streamKey}`;
   const args = buildFfmpegArgs(lastStartPayload, encoder);
-  args.push(...buildRecoverableRtmpOutputArgs(endpoint));
+  args.push(...buildRecoverableRtmpOutputArgs(endpoint, lastStartPayload.fps));
 
   runtime.status = isReconnect ? "reconnecting" : "connecting";
   runtime.needsHeader = true;
@@ -355,6 +367,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   clearTimeout(runtime.startupTimer);
   runtime.startupTimer = setTimeout(() => {
     if (stopRequested || runtime.process !== process || runtime.steadySince !== null) return;
+    if (requestFreshInput("Streaming startup did not sustain video.")) return;
     runtime.lastError = "Streaming startup timed out before video delivery became sustained. Try Software x264 or another detected encoder, and check the stream connection.";
     runtime.status = "error";
     runtime.inputQueue?.stop(); controller.abort(); process.kill("SIGINT");
@@ -372,6 +385,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     if (runtime.process === process) await write(chunk);
   }, error => {
     if (stopRequested || runtime.process !== process) return;
+    if (requestFreshInput(error.message)) return;
     runtime.lastError = error.message;
     runtime.status = "error";
     process.stdin.destroy();
@@ -387,7 +401,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     writeStreamLog(runtime.destination.name, `Stream input closed: ${runtime.lastError}`);
     publishAggregateStatus();
   });
-  writeStreamLog(runtime.destination.name, `Starting FFmpeg with ${mapStreamingEncoder(encoder)}.`);
+  writeStreamLog(runtime.destination.name, `Starting FFmpeg with ${lastStartPayload.copyVideo && lastStartPayload.inputVideoCodec === "h264" ? "H.264 video passthrough" : mapStreamingEncoder(encoder)}.`);
 
   process.stderr.setEncoding("utf8");
   process.stderr.on("data", (chunk: string) => {
@@ -405,19 +419,25 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
           runtime.lastError = sanitizeLogLine(line.trim());
         }
         if (/FIFO queue full|queue overflow/i.test(line)) {
-          runtime.lastError = "Upload cannot keep up. Recovery is dropping queued output to avoid growing delay. Lower streaming quality or reduce destinations.";
+          runtime.outputWarningUntil = Date.now() + 8000;
+          runtime.lastError = "The output queue briefly filled. Recovering at the next video keyframe.";
+        } else if (stats && runtime.outputWarningUntil && Date.now() >= runtime.outputWarningUntil) {
+          runtime.outputWarningUntil = undefined; runtime.lastError = null;
         }
         if (isHardwareEncoderStartupFailure(runtime.encoder, line)) {
           runtime.encoderFallbackPending = true;
         }
         const encodedFrames = Number(/frame=\s*(\d+)/.exec(line)?.[1] ?? 0);
-        if (runtime.steadySince === null && encodedFrames >= (lastStartPayload?.fps ?? 30)) {
+        // Stream copy reports output time without an encoded-frame counter.
+        const outputTime = stats?.time?.split(":").reduce((seconds, part) => seconds * 60 + Number(part), 0) ?? 0;
+        const copiedVideoProgress = lastStartPayload?.copyVideo === true && lastStartPayload.inputVideoCodec === "h264" && outputTime >= 1;
+        if (runtime.steadySince === null && (encodedFrames >= (lastStartPayload?.fps ?? 30) || copiedVideoProgress)) {
           runtime.steadySince = Date.now();
           clearTimeout(runtime.startupTimer);
         }
         if (
           (runtime.status === "connecting" || runtime.status === "reconnecting") &&
-          hasEncodedVideoFrame(line) && runtime.steadySince !== null
+          (hasEncodedVideoFrame(line) || copiedVideoProgress) && runtime.steadySince !== null
         ) {
           runtime.status = "live";
           runtime.reconnectAttempt = 0;
@@ -463,6 +483,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
       startDestination(runtime, true);
       return;
     }
+    if (!/unauthorized|forbidden|invalid.*(?:key|token)|authentication|permission denied/i.test(runtime.lastError) && requestFreshInput("The stream encoder disconnected.")) return;
     runtime.status = "error";
     runtime.reconnectAttempt = MAX_RECONNECT_ATTEMPTS;
     runtime.lastError = `${runtime.lastError ?? "The stream output stopped."} Automatic network recovery ended; stop and start streaming to create a fresh media input.`;
@@ -531,7 +552,7 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   if (new Set(destinations.map((destination) => destination.id)).size !== destinations.length) {
     return { ok: false, message: "Each stream destination must have a unique ID." };
   }
-  if (!presetConfig[payload.preset] || ![15, 24, 25, 30, 50, 60].includes(payload.fps) || ![128, 192].includes(payload.audioBitrate)) {
+  if (!["low", "medium", "high"].includes(payload.preset) || ![15, 24, 25, 30, 50, 60].includes(payload.fps) || ![128, 192].includes(payload.audioBitrate)) {
     return { ok: false, message: "The selected streaming quality settings are invalid." };
   }
   const invalid = destinations.find(
@@ -553,6 +574,7 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   }
 
   stopRequested = false;
+  restartRequired = false;
   startedAt = null;
   cachedHeader = null;
   sessionLogPath = createSessionLogPath();
@@ -609,7 +631,7 @@ const writeToInput = (input: Writable, data: Buffer, liveSince: () => number | n
 });
 
 export const sendStreamChunk = async (payload: Uint8Array) => {
-  if (stopRequested || !payload?.length) {
+  if (stopRequested || restartRequired || !payload?.length) {
     return;
   }
   const chunk = Buffer.from(payload);
@@ -660,6 +682,7 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
   });
 
   runtimes.clear();
+  restartRequired = false;
   cachedHeader = null;
   startedAt = null;
   lastStartPayload = null;
@@ -672,6 +695,7 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
 };
 
 export const forceStopStreaming = () => {
+  restartRequired = false;
   stopRequested = true;
   runtimes.forEach((runtime) => {
     clearTimeout(runtime.startupTimer);

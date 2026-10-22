@@ -592,6 +592,12 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
           Hardware options are enabled only after a real local encoding test. Auto falls through to the next working encoder and always keeps software x264 as a fallback.
         </span>
       </div>
+      <div className="field">
+        <label><input type="checkbox" disabled={isActive} checked={settings.streamPassthrough !== false} onChange={event => updateSettings({ streamPassthrough: event.target.checked })} /> Reuse compatible H.264 video to reduce CPU load</label>
+        <span className="field-help">The selected encoder is used when video conversion is needed. Audio is still encoded for streaming.</span>
+        <label><input type="checkbox" disabled={isActive} checked={settings.streamAutoRecover !== false} onChange={event => updateSettings({ streamAutoRecover: event.target.checked })} /> Reconnect automatically after stalls</label>
+        <span className="field-help">Repeated stalls switch this stream to 720p, up to 30 fps and lower bandwidth. Program and local displays keep their settings.</span>
+      </div>
       <div className="streaming-status-row">
         <div className="streaming-status">
           <span className={`indicator ${status === "live" ? "live" : ""}`} />

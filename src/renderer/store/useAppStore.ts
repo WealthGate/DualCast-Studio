@@ -41,6 +41,8 @@ const defaultSettings: Settings = {
   streamFps: 30,
   streamAudioBitrate: 128,
   streamEncoder: "auto",
+  streamPassthrough: true,
+  streamAutoRecover: true,
   rememberStreamKey: false,
   streamDestinations: [{ id: "primary", name: "Primary Stream", rtmpUrl: "", enabled: true, platform: "custom" }],
   operatorStationName: "Main Director",
