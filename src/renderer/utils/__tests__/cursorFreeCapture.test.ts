@@ -16,7 +16,7 @@ describe("cursor-free capture stream", () => {
     vi.stubGlobal("Image", class {
       width = 1920; height = 1080;
       onload = () => undefined;
-      set src(_value: string) { this.onload(); }
+      set src(_value: string) { this.onload?.(); }
     });
     vi.stubGlobal("window", { dualcast: {
       onCursorFreeFrame: (callback: typeof frame) => { frame = callback; return unsubscribe; },

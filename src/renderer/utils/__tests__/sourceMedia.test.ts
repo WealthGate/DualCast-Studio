@@ -20,6 +20,10 @@ describe("live canvas continuity", () => {
     expect(sourceMediaReady(camera, { videoEl: { readyState: 1, videoWidth: 1920 } as HTMLVideoElement })).toBe(false);
     expect(sourceMediaReady(camera, { videoEl: { readyState: 2, videoWidth: 1920 } as HTMLVideoElement })).toBe(true);
   });
+  it("uses native pixels directly and does not hold a scene for a failed source", () => {
+    expect(sourceMediaReady(camera, { canvas: { width: 1920, height: 1080 } as HTMLCanvasElement })).toBe(true);
+    expect(sourceMediaReady(camera, { error: "Window closed" })).toBe(true);
+  });
   it("crossfades over the full outgoing frame rather than dimming both over black", () => {
     const alphas: number[] = [];
     const ctx = { globalAlpha: 1, save: vi.fn(), restore: vi.fn(), drawImage: () => alphas.push(ctx.globalAlpha) };

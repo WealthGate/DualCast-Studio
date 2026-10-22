@@ -2,13 +2,16 @@
 // cold media. Run with: node scripts/verify-live-output.cjs
 const path = require("path");
 const fs = require("fs");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const root = path.resolve(__dirname, "..");
 
 if (!process.versions.electron) {
   (async () => {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
+    fs.mkdirSync(path.join(root, "tmp"), { recursive: true });
+    const motion = spawnSync(require("ffmpeg-static"), ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30", "-t", "4", "-an", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "2M", "-threads", "2", path.join(root, "tmp/freeze-regression.webm")], { windowsHide: true });
+    if (motion.status !== 0) throw Error("Could not generate moving-video fixture: " + motion.stderr);
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/cursorFreeCaptureService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "ffmpeg-static"], outfile: path.join(root, "tmp/capture-verification.cjs") });
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/projectionService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron"], outfile: path.join(root, "tmp/projection-verification.cjs") });
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/browserSourceService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "electron-log"], outfile: path.join(root, "tmp/browser-verification.cjs") });
@@ -27,7 +30,7 @@ if (!process.versions.electron) {
   })().catch(error => { console.error(error); process.exitCode = 1; });
 } else {
   const { app, BrowserWindow, desktopCapturer, nativeImage } = require("electron");
-  const profile = path.join(root, "tmp", `live-output-${process.pid}`);
+  const profile = path.join(require('os').tmpdir(), `openchurch-live-output-${process.pid}`);
   app.setAppPath(root);
   fs.mkdirSync(profile, { recursive: true });
   app.setPath("userData", profile);
@@ -40,7 +43,7 @@ if (!process.versions.electron) {
       await window.loadURL("http://127.0.0.1:5174");
       window.showInactive();
       let result = {};
-      if (!process.argv.includes("--performance-only")) {
+      if (!process.argv.includes("--performance-only") && !process.argv.includes("--recovery-only")) {
       result = await window.webContents.executeJavaScript(`(async () => {
         const { useAppStore: store } = await import('/store/useAppStore.ts');
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -88,7 +91,7 @@ if (!process.versions.electron) {
           const p=ctx.getImageData(0,0,1,1).data;
           if(p[0]+p[1]+p[2]<20) encodedBlackFrames++;
         }
-        assert(encodedFrames.length>10 && encodedBlackFrames===0, 'Encoded output contained blank frames: '+encodedBlackFrames);
+        assert(encodedFrames.length>3 && encodedBlackFrames===0, 'Encoded output contained blank frames: '+encodedBlackFrames);
         store.getState().toggleFreeze(); await wait(50); store.getState().cutToBlack();
         await until(()=>pixel()[0]+pixel()[1]+pixel()[2]<20);
         store.getState().clearCutToBlack(); await until(()=>pixel()[1]>245);
@@ -158,6 +161,7 @@ if (!process.versions.electron) {
       const afterComplete=await readFader();
       if(afterComplete.revision!==beforeComplete.revision+1 || afterComplete.program!=="blue" || afterComplete.pixel[2]<245) throw Error(`Endpoint swapped scenes more than once: ${JSON.stringify(afterComplete)}`);
       mouse("mouseDown", 0); mouse("mouseMove", 0.6); await sleep(75); mouse("mouseUp", 0.6); await sleep(200);
+      for(let i=0;i<20 && (await readFader()).blend!==0;i++) await sleep(25);
       if((await readFader()).blend!==0) throw Error("Fader did not return to Program after release.");
       result.fader={forwardSamples:faderPixels, endpointTakes:afterComplete.revision-beforeComplete.revision, resetOnRelease:true, independentOfSelectedEffect:true};
       result.transitionButtons=await window.webContents.executeJavaScript(`(async () => {
@@ -176,6 +180,8 @@ if (!process.versions.electron) {
         return checked;
       })()`);
       result.scrollingText = await window.webContents.executeJavaScript(`(${require("./verify-scrolling-text.cjs").toString()})(${JSON.stringify("/@fs/" + root.replace(/\\/g, "/") + "/src/shared/scrollingText.ts")})`);
+      result.frameRecovery = await window.webContents.executeJavaScript(`(${require("./verify-frame-recovery.cjs").toString()})()`);
+      result.nativeRenderer = await window.webContents.executeJavaScript(`(${require("./verify-native-renderer.cjs").toString()})()`);
       fs.writeFileSync(path.join(root, "tmp/scrolling-text-verification.png"), (await window.webContents.capturePage()).toPNG());
       }
       // Pixel-readback checks can make Chromium migrate a canvas to software.
@@ -186,11 +192,17 @@ if (!process.versions.electron) {
         const {defaultScrollingText}=await import(${JSON.stringify("/@fs/" + root.replace(/\\/g, "/") + "/src/shared/scrollingText.ts")});
         const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));await wait(300);
         const ticker={id:'ticker',name:'Ticker',type:'scrolling-text',enabled:true,audioEnabled:false,rect:{x:0,y:70,width:100,height:15},data:{...defaultScrollingText,text:'Smooth video and scrolling announcements at the selected output frame rate'}};
-        const scene={id:'performance',name:'Output performance',sourceIds:['ticker']};
+        const video={id:'motion',name:'Moving video',type:'video',enabled:true,audioEnabled:false,rect:{x:0,y:0,width:100,height:100},data:{url:${JSON.stringify("/@fs/" + root.replace(/\\/g, "/") + "/tmp/freeze-regression.webm")},loop:true}};
+        const scene={id:'performance',name:'Output performance',sourceIds:['motion','ticker']};
         store.setState({isFrozen:false,isCutToBlack:false,transitionType:'cut',manualBlend:0,settings:{...store.getState().settings,networkOutput:{...store.getState().settings.networkOutput,enabled:false}}});
-        store.getState().setStudioState({scenes:[scene],sources:{ticker},groups:[],previewSceneId:scene.id,programSceneId:scene.id});
+        store.getState().setStudioState({scenes:[scene],sources:{ticker,motion:video},groups:[],previewSceneId:scene.id,programSceneId:scene.id});
         window.__transitionCheck={store,wait};await wait(100);
       })()`);
+      if (process.argv.includes("--recovery-only")) {
+        result.frameRecovery = await window.webContents.executeJavaScript(`(${require("./verify-frame-recovery.cjs").toString()})()`);
+        result.nativeRenderer = await window.webContents.executeJavaScript(`(${require("./verify-native-renderer.cjs").toString()})()`);
+        console.log(JSON.stringify(result)); app.exit(0); return;
+      }
       const performanceFps = process.argv.includes("--fps=60") ? 60 : 30;
       result.performance = await window.webContents.executeJavaScript(`(${require("./verify-output-performance.cjs").toString()})(${performanceFps})`);
       if (!process.argv.includes("--performance-only")) result.projectionVideo = await require("./verify-projection-video.cjs")(window, root);

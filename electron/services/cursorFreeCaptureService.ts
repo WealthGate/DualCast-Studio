@@ -48,25 +48,38 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
     input = ["-f", "gdigrab", "-draw_mouse", "0", "-framerate", String(fps), "-offset_x", String(bounds.x), "-offset_y", String(bounds.y), "-video_size", `${bounds.width}x${bounds.height}`, "-i", "desktop"];
   }
   const id = randomUUID();
-  const child = spawn(executable, ["-hide_banner", "-loglevel", "error", ...input,
-    "-an", ...(isWindow ? [] : ["-vf", "scale=w='min(1920,iw)':h=-2"]), "-c:v", "mjpeg", "-q:v", "3", "-threads", "1", "-f", "image2pipe", "pipe:1"], { windowsHide: true });
+  const child = spawn(executable, ["-hide_banner", "-loglevel", "error", "-filter_threads", "1", "-filter_complex_threads", "1", ...input,
+    "-an", ...(isWindow ? [] : ["-vf", "scale=w='min(1920,iw)':h=-2"]), "-c:v", "mjpeg", "-pix_fmt", "yuvj420p", "-q:v", "3", "-threads", "1", "-f", "image2pipe", "pipe:1"], { windowsHide: true });
   const relay = createLatestFrameRelay(frame => { if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, { id, ...frame }); });
   captures.set(id, { owner: owner.id, process: child, relay });
   const close = () => stopCursorFreeCapture(id);
   owner.once("destroyed", close);
   owner.once("render-process-gone", close);
   owner.once("did-start-navigation", close);
-  let pending = Buffer.alloc(0);
+  let fragments: Buffer[] = [];
+  let pendingBytes = 0;
+  let previousByte = -1;
+  const jpegEnd = Buffer.from([0xff, 0xd9]);
   child.stdout.on("data", (chunk: Buffer) => {
-    pending = Buffer.concat([pending, chunk]);
-    // Bound memory if the encoder terminates in the middle of a JPEG.
-    if (pending.length > 16 * 1024 * 1024) { close(); return; }
-    let end: number;
-    while ((end = pending.indexOf(Buffer.from([0xff, 0xd9]))) !== -1) {
-      const frame = pending.subarray(0, end + 2);
-      pending = pending.subarray(end + 2);
-      if (!owner.isDestroyed()) relay.offer(`data:image/jpeg;base64,${frame.toString("base64")}`);
+    if (!chunk.length) return;
+    let start = 0;
+    let marker = chunk.indexOf(jpegEnd);
+    let end = previousByte === 0xff && chunk[0] === 0xd9 ? 1 : marker < 0 ? -1 : marker + 2;
+    while (end >= 0) {
+      fragments.push(chunk.subarray(start, end));
+      pendingBytes += end - start;
+      if (pendingBytes > 16 * 1024 * 1024) { close(); return; }
+      const frame = fragments.length === 1 ? fragments[0] : Buffer.concat(fragments, pendingBytes);
+      fragments = []; pendingBytes = 0; start = end;
+      // Encode only the frame actually sent. Superseded pending frames never
+      // allocate base64 strings or repeatedly copy partial multi-chunk JPEGs.
+      if (!owner.isDestroyed()) relay.offer(() => `data:image/jpeg;base64,${frame.toString("base64")}`);
+      marker = chunk.indexOf(jpegEnd, start);
+      end = marker < 0 ? -1 : marker + 2;
     }
+    previousByte = chunk[chunk.length - 1];
+    if (start < chunk.length) { fragments.push(chunk.subarray(start)); pendingBytes += chunk.length - start; }
+    if (pendingBytes > 16 * 1024 * 1024) close();
   });
   let lastError = "";
   child.stderr.on("data", (data: Buffer) => { lastError = (lastError + data.toString()).slice(-2000); });

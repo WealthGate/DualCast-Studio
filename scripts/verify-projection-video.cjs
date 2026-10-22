@@ -9,7 +9,8 @@ module.exports = async function verifyProjectionVideo(primary, root) {
   process.env.VITE_DEV_SERVER_URL = 'http://127.0.0.1:5174';
   const send = primary.webContents.send;
   const show = BrowserWindow.prototype.show;
-  const route = (event, signal) => service.routeProjectionSignal(event.sender, signal);
+  let readySignals = 0;
+  const route = (event, signal) => { if(signal.type === 'ready') readySignals++; service.routeProjectionSignal(event.sender, signal); };
   const acknowledge = (event, sequence) => service.acknowledgeProjectionFrame(event.sender.id, sequence);
   const listener = event => {
     if (event.message.startsWith('PROJECTION_TEST_SIGNAL:')) service.routeProjectionSignal(primary.webContents, JSON.parse(event.message.slice(23)));
@@ -48,7 +49,14 @@ module.exports = async function verifyProjectionVideo(primary, root) {
     if (await ready()) throw Error('Cut to black left sanctuary video visible');
     service.setProgramState(state); await wait(80);
     if (!(await ready())) throw Error('Restore did not reveal the sanctuary video');
-    return { connected: true, dimensions, cutBlackRestore: true, productionPreloadAndRouter: true };
+    await output.webContents.executeJavaScript(`(()=>{const video=document.querySelector('.projection-video');const quality=video.getVideoPlaybackQuality();video.getVideoPlaybackQuality=()=>quality;})()`);
+    const initialReadySignals=readySignals;
+    for(let i=0;i<60 && readySignals===initialReadySignals;i++) await wait(50);
+    if(readySignals===initialReadySignals) throw Error('Connected-but-stalled projection did not request recovery');
+    await output.webContents.executeJavaScript(`delete document.querySelector('.projection-video').getVideoPlaybackQuality`);
+    for(let i=0;i<100 && !(await ready());i++) await wait(30);
+    if(!(await ready())) throw Error('Sanctuary did not recover after a connected decoder stall');
+    return { connected: true, dimensions, cutBlackRestore: true, connectedStallRecovery:true, productionPreloadAndRouter: true };
   } finally {
     await service.closeProjectionWindows();
     await primary.webContents.executeJavaScript(`(async()=>{const {store,wait}=window.__transitionCheck;const saved=window.__projectionTestRestore;if(!saved)return;store.setState({settings:{...store.getState().settings,sanctuaryDisplay:{...store.getState().settings.sanctuaryDisplay,mode:'independent'}}});await wait(50);window.dualcast.sendProjectionSignal=saved.send;window.dualcast.onProjectionSignal=saved.on;store.setState({settings:saved.settings});})()`).catch(() => {});

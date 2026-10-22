@@ -1,5 +1,8 @@
 import { createFrameDecoder } from "./frameDecoder";
 
+const captureCanvases = new WeakMap<MediaStream, HTMLCanvasElement>();
+export const getNativeCaptureCanvas = (stream: MediaStream) => captureCanvases.get(stream);
+
 // Convert cursor-free native frames into the same MediaStream used by the
 // compositor, so projection, recording and streaming share identical pixels.
 export const getCursorFreeStream = async (sourceId: string, fps = 30): Promise<MediaStream | null> => {
@@ -56,6 +59,7 @@ export const getCursorFreeStream = async (sourceId: string, fps = 30): Promise<M
     if (stopped) throw new Error("Cursor-free screen capture ended.");
     clearTimeout(timeout);
     stream = canvas.captureStream(0);
+    captureCanvases.set(stream, canvas);
     (stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack).requestFrame?.();
     for (const track of stream.getVideoTracks()) {
       const originalStop = track.stop.bind(track);

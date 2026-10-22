@@ -1,15 +1,18 @@
 import { Source } from "../../shared/types";
 
-let capturePreviewProvider: ((id: string) => HTMLVideoElement | undefined) | null = null;
-export const registerCapturePreviewProvider = (provider: (id: string) => HTMLVideoElement | undefined) => {
+let capturePreviewProvider: ((id: string) => HTMLVideoElement | HTMLCanvasElement | undefined) | null = null;
+export const registerCapturePreviewProvider = (provider: (id: string) => HTMLVideoElement | HTMLCanvasElement | undefined) => {
   capturePreviewProvider = provider;
   return () => { if (capturePreviewProvider === provider) capturePreviewProvider = null; };
 };
 export const getSourceCapturePreview = (id: string) => {
   const video = capturePreviewProvider?.(id);
-  if (!video || video.readyState < 2 || !video.videoWidth) return null;
+  if (!video) return null;
+  const width = video instanceof HTMLCanvasElement ? video.width : video.readyState >= 2 ? video.videoWidth : 0;
+  const height = video instanceof HTMLCanvasElement ? video.height : video.videoHeight;
+  if (!width || !height) return null;
   const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.width = width; canvas.height = height;
   canvas.getContext("2d")?.drawImage(video, 0, 0);
   return canvas.toDataURL("image/jpeg", 0.9);
 };
@@ -28,8 +31,10 @@ export const sourceMediaSignature = (source: Source) => {
 export const canShareSourceMedia = (source: Source) =>
   ["display", "window", "camera", "image"].includes(source.type);
 
-export const sourceMediaReady = (source: Source, media?: { videoEl?: HTMLVideoElement; imageEl?: HTMLImageElement }) => {
+export const sourceMediaReady = (source: Source, media?: { videoEl?: HTMLVideoElement; imageEl?: HTMLImageElement; canvas?: HTMLCanvasElement; error?: string }) => {
   if (!source.enabled || source.type === "text" || source.type === "scrolling-text" || source.type === "audio") return true;
+  if (media?.error) return true;
+  if (media?.canvas) return media.canvas.width > 0 && media.canvas.height > 0;
   if (source.type === "image") return Boolean(media?.imageEl?.complete && media.imageEl.naturalWidth);
   return Boolean(media?.videoEl && media.videoEl.readyState >= 2 && media.videoEl.videoWidth > 0);
 };

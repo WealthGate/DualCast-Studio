@@ -7,5 +7,7 @@ export const onCanvasFrame = (canvas: HTMLCanvasElement, listener: Listener, fps
 };
 export const requestedCanvasFrameRate = (canvas: HTMLCanvasElement) => Math.max(0, ...(listeners.get(canvas)?.values() ?? []));
 export const publishCanvasFrame = (canvas: HTMLCanvasElement, now: number) => {
-  listeners.get(canvas)?.forEach((_fps, listener) => listener(now));
+  listeners.get(canvas)?.forEach((_fps, listener) => {
+    try { listener(now); } catch (error) { console.error("Output frame consumer failed", error); }
+  });
 };

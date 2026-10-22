@@ -29,6 +29,7 @@ export const createFrameEncoder = (send: (frame: string) => void, type = "image/
       } catch { finish(); }
   };
   return {
+    isBusy: () => busy,
     stop: () => { stopped = true; pending = null; },
     encode
   };

@@ -1,6 +1,5 @@
 import { RefObject, useEffect, useState } from "react";
-import { onCanvasFrame } from "../utils/canvasFrames";
-import { createFrameCadence } from "../utils/frameCadence";
+import { createStreamingCapture } from "../utils/streamingCapture";
 import { applyProjectionSignal, localProjectionDescription } from "../utils/projectionPeer";
 
 // Local WebRTC keeps video on Chromium's media path instead of JPEG encoding,
@@ -13,7 +12,7 @@ export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps:
     setAllConnected(false);
     let active = true;
     let stream: MediaStream | null = null;
-    let unsubscribeFrames: (() => void) | null = null;
+    let stopCapture: (() => void) | null = null;
     const peers = new Map<number, RTCPeerConnection>();
     const connectionTimers = new Map<number, number>();
     const update = () => {
@@ -23,7 +22,7 @@ export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps:
     const release = (id: number) => {
       window.clearTimeout(connectionTimers.get(id)); connectionTimers.delete(id);
       peers.get(id)?.close(); peers.delete(id);
-      if (!peers.size) { unsubscribeFrames?.(); unsubscribeFrames = null; stream?.getTracks().forEach(track => track.stop()); stream = null; }
+      if (!peers.size) { stopCapture?.(); stopCapture = null; stream = null; }
       update();
     };
     const unsubscribe = window.dualcast.onProjectionSignal(signal => {
@@ -33,12 +32,14 @@ export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps:
       if (signal.type === "ready") {
         release(id);
         if (!stream) {
-          stream = canvas.captureStream(0);
+          // Capture at the delivery resolution BEFORE Chromium's video encoder.
+          // Feeding a 1440p/60 Program track to a software encoder overloads
+          // frame conversion even after WebRTC's congestion controller scales it.
+          const capture = createStreamingCapture(canvas, "low", fps);
+          stream = capture.stream;
+          stopCapture = capture.stop;
           const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
           track.contentHint = "motion";
-          const cadence = createFrameCadence(fps);
-          unsubscribeFrames = onCanvasFrame(canvas, now => { if (cadence(now)) track.requestFrame(); }, fps);
-          track.requestFrame();
         }
         let peer: RTCPeerConnection;
         try { peer = new RTCPeerConnection({ iceServers: [] }); }
@@ -46,6 +47,9 @@ export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps:
         peers.set(id, peer); update();
         connectionTimers.set(id, window.setTimeout(() => { if (peers.get(id) === peer && peer.connectionState !== "connected") release(id); }, 5000));
         stream.getTracks().forEach(track => peer.addTrack(track, stream!));
+        const codecs = RTCRtpSender.getCapabilities("video")?.codecs ?? [];
+        const h264 = codecs.filter(codec => codec.mimeType.toLowerCase() === "video/h264");
+        if (h264.length) peer.getTransceivers()[0]?.setCodecPreferences([...h264, ...codecs.filter(codec => codec.mimeType.toLowerCase() !== "video/h264")]);
         peer.onicecandidate = event => { if (event.candidate) window.dualcast.sendProjectionSignal({ type: "candidate", peerId: id, candidate: event.candidate.toJSON() }); };
         peer.onconnectionstatechange = () => { if (peer.connectionState === "failed") release(id); else update(); };
         void (async () => {
@@ -66,11 +70,11 @@ export const useProjectionVideo = (canvasRef: RefObject<HTMLCanvasElement>, fps:
             parameters.encodings[0].maxBitrate = 20_000_000;
             await sender.setParameters(parameters);
           }
-        }).catch(() => release(id));
+        }).catch(() => { if (peers.get(id) === peer) release(id); });
       }
     });
     window.dualcast.sendProjectionSignal({ type: "register" });
-    return () => { active = false; unsubscribe(); unsubscribeFrames?.(); connectionTimers.forEach(timer => window.clearTimeout(timer)); peers.forEach(peer => peer.close()); stream?.getTracks().forEach(track => track.stop()); };
+    return () => { active = false; unsubscribe(); stopCapture?.(); connectionTimers.forEach(timer => window.clearTimeout(timer)); peers.forEach(peer => peer.close()); };
   }, [canvasRef, fps, enabled]);
   return allConnected;
 };

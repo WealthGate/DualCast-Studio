@@ -2,6 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLatestFrameRelay } from "../latestFrameRelay";
 afterEach(() => vi.useRealTimers());
 describe("projection IPC pacing", () => {
+  it("does not base64-encode frames superseded during renderer backpressure", () => {
+    const relay = createLatestFrameRelay(vi.fn());
+    const skipped = vi.fn(() => "old"), latest = vi.fn(() => "latest");
+    relay.offer("first"); relay.offer(skipped); relay.offer(latest);
+    expect(skipped).not.toHaveBeenCalled(); expect(latest).not.toHaveBeenCalled();
+    relay.acknowledge(1);
+    expect(latest).toHaveBeenCalledOnce(); expect(skipped).not.toHaveBeenCalled();
+  });
   it("retains only the latest frame while a display decodes and ignores stale acknowledgements", () => {
     const send = vi.fn(); const relay = createLatestFrameRelay(send);
     relay.offer("first"); relay.offer("old"); relay.offer("latest");

@@ -2,7 +2,7 @@ import SanctuaryLayout from "./components/SanctuaryLayout";
 import React, { useEffect, useRef, useState } from "react";
 import { ProgramState } from "../shared/types";
 import { resizeCanvas } from "./hooks/useCanvasRenderer";
-import { createFrameDecoder } from "./utils/frameDecoder";
+import { createFrameDecoder, DecodedFrame } from "./utils/frameDecoder";
 import { applyProjectionSignal, localProjectionDescription } from "./utils/projectionPeer";
 
 const defaultState: ProgramState = {
@@ -19,7 +19,7 @@ type ProjectionProps = {
 const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   const [programState, setProgramState] = useState<ProgramState>(defaultState);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const latestFrameRef = useRef<HTMLImageElement | null>(null);
+  const latestFrameRef = useRef<DecodedFrame | null>(null);
   const drawFrameRef = useRef<() => void>(() => undefined);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoReady, setVideoReady] = useState(false);
@@ -31,30 +31,56 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
     if (mode !== "program" || independent) return;
     let peer: RTCPeerConnection | null = null;
     let active = true;
+    let frames = 0;
+    let lastFrameAt = performance.now();
+    let lastRetryAt = -Infinity;
     const createPeer = () => {
       const connection = new RTCPeerConnection({ iceServers: [] });
       connection.onicecandidate = event => { if (event.candidate) window.dualcast.sendProjectionSignal({ type: "candidate", candidate: event.candidate.toJSON() }); };
       connection.ontrack = event => {
+        if (!active || peer !== connection) return;
         const video = videoRef.current;
         if (video) { video.srcObject = event.streams[0]; void video.play().catch(() => setVideoReady(false)); }
       };
       connection.onconnectionstatechange = () => {
-        setVideoReady(connection.connectionState === "connected" && (videoRef.current?.readyState ?? 0) >= 2);
+        if (active && peer === connection && connection.connectionState !== "connected") setVideoReady(false);
       };
       return connection;
     };
     const unsubscribe = window.dualcast.onProjectionSignal(signal => {
       if (signal.type === "offer" && signal.description) {
         peer?.close(); setVideoReady(false); peer = createPeer();
+        frames = 0; lastFrameAt = performance.now();
         const connection = peer;
         void applyProjectionSignal(connection, signal).then(async () => {
           await connection.setLocalDescription(localProjectionDescription(await connection.createAnswer()));
           if (active && peer === connection) window.dualcast.sendProjectionSignal({ type: "answer", description: connection.localDescription!.toJSON() });
-        }).catch(() => setVideoReady(false));
+        }).catch(() => { if (active && peer === connection) setVideoReady(false); });
       } else if (signal.type === "candidate" && peer) void applyProjectionSignal(peer, signal).catch(() => undefined);
     });
+    // "connected" only describes signaling/transport. A connected decoder can
+    // still stop producing pictures. Recover that case instead of hiding the
+    // fallback canvas forever behind a stalled video frame.
+    const watchdog = window.setInterval(() => {
+      const video = videoRef.current;
+      const decoded = video?.getVideoPlaybackQuality().totalVideoFrames ?? 0;
+      const now = performance.now();
+      if (decoded !== frames && video && video.readyState >= 2 && peer?.connectionState === "connected") {
+        frames = decoded; lastFrameAt = now; setVideoReady(true);
+      } else if (now - lastFrameAt > 750) {
+        if (videoReadyRef.current && video && video.readyState >= 2) {
+          const canvas = canvasRef.current;
+          if (canvas) canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
+        setVideoReady(false);
+        if (now - lastRetryAt > 2000) {
+          lastRetryAt = now;
+          window.dualcast.sendProjectionSignal({ type: "ready" });
+        }
+      }
+    }, 250);
     window.dualcast.sendProjectionSignal({ type: "ready" });
-    return () => { active = false; unsubscribe(); peer?.close(); setVideoReady(false); const video = videoRef.current; if (video) video.srcObject = null; window.dualcast.sendProjectionSignal({ type: "closed" }); };
+    return () => { active = false; window.clearInterval(watchdog); unsubscribe(); peer?.close(); setVideoReady(false); const video = videoRef.current; if (video) video.srcObject = null; window.dualcast.sendProjectionSignal({ type: "closed" }); };
   }, [mode, independent]);
 
   useEffect(() => {
@@ -92,6 +118,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
 
     return () => {
       unsubscribe();
+      latestFrameRef.current = null;
       decoder.stop();
     };
   }, [mode]);
@@ -147,7 +174,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   return (
     <div className="projection-root">
       <canvas ref={canvasRef} className="projection-canvas" style={{ visibility: videoReady ? "hidden" : "visible" }} />
-      {mode === "program" && <video ref={videoRef} autoPlay muted playsInline className="projection-video" onPlaying={() => setVideoReady(true)} style={{ visibility: videoReady && !programState.isCutToBlack && Boolean(programState.programSceneId) ? "visible" : "hidden" }} />}
+      {mode === "program" && <video ref={videoRef} autoPlay muted playsInline className="projection-video" style={{ visibility: videoReady && !programState.isCutToBlack && Boolean(programState.programSceneId) ? "visible" : "hidden" }} />}
     </div>
   );
 };

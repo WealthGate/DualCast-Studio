@@ -8,7 +8,9 @@ import { ScrollingTextRenderer } from "../utils/scrollingText";
 import { canShareSourceMedia, compositeSceneBlend, registerCapturePreviewProvider, sourceMediaReady, sourceMediaSignature } from "../utils/sourceMedia";
 import { useAppStore } from "../store/useAppStore";
 import { createFrameEncoder } from "../utils/frameEncoder";
-import { createFrameDecoder } from "../utils/frameDecoder";
+import { createFrameDecoder, DecodedFrame } from "../utils/frameDecoder";
+import { getNativeCaptureCanvas } from "../utils/cursorFreeCapture";
+import { createSceneWarmup } from "../utils/sceneWarmup";
 import { useProjectionVideo } from "../hooks/useProjectionVideo";
 import { isPresentationTextSource, visiblePresentationSourceIds } from "../utils/presentationText";
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
@@ -26,6 +28,7 @@ type SourceMedia = {
   signature: string;
   type: Source["type"];
   videoEl?: HTMLVideoElement;
+  canvas?: HTMLCanvasElement;
   imageEl?: HTMLImageElement;
   audioEl?: HTMLAudioElement;
   stream?: MediaStream;
@@ -133,7 +136,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const programContainerRef = useRef<HTMLDivElement>(null);
   const sourceMediaRef = useRef<Map<string, SourceMedia>>(new Map());
-  const browserFramesRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const browserFramesRef = useRef<Map<string, DecodedFrame>>(new Map());
   const browserSizeRef = useRef<Map<string, { width: number; height: number; url: string; frameRate: number }>>(new Map());
   const browserDecodersRef = useRef<Map<string, ReturnType<typeof createFrameDecoder>>>(new Map());
   const scrollingTextRef = useRef<ScrollingTextRenderer | null>(null);
@@ -154,7 +157,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const blendCanvasesRef = useRef<{ from: HTMLCanvasElement; to: HTMLCanvasElement } | null>(null);
   const frozenFrameRef = useRef<HTMLCanvasElement | null>(null);
   const publishProgramFrameRef = useRef<(canvas: HTMLCanvasElement, now: number) => void>(() => undefined);
-  useEffect(() => registerCapturePreviewProvider(id => sourceMediaRef.current.get(id)?.videoEl), []);
+  const previewWarmupRef = useRef(createSceneWarmup());
+  const programWarmupRef = useRef(createSceneWarmup());
+  const blendWarmupRef = useRef(createSceneWarmup());
+  useEffect(() => registerCapturePreviewProvider(id => {
+    const media = sourceMediaRef.current.get(id);
+    return media?.canvas ?? media?.videoEl;
+  }), []);
   const lowerThirdImageRef = useRef<HTMLImageElement | null>(null);
   const bibleImageRef = useRef<HTMLImageElement | null>(null);
   const lowerThirdBackgroundImageRef = useRef<HTMLImageElement | null>(null);
@@ -371,10 +380,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
     const createMedia = async (source: Source) => {
       const signature = getSignature(source);
-      const origin = source.id.replace(/^program:/, "");
-      const shared = canShareSourceMedia(source) ? Array.from(mediaMap.entries()).find(([id, media]) =>
-        id.replace(/^program:/, "") === origin && media.signature === signature && !media.error
-      )?.[1] : undefined;
+      const shared = canShareSourceMedia(source) ? Array.from(mediaMap.values()).find(media =>
+        media.signature === signature && !media.error
+      ) : undefined;
       if (shared) {
         mediaMap.set(source.id, shared);
         setMediaRevision((revision) => revision + 1);
@@ -399,12 +407,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
             stream = await getDisplayStream(source.data.captureId, false, captureFps);
           }
           entry.stream = stream;
+          entry.canvas = getNativeCaptureCanvas(stream);
           stream.getVideoTracks().forEach(track => track.addEventListener("ended", () => {
             entry.error = "Capture stopped. Restore the source window or reselect it, then retry capture.";
             setMediaRevision((revision) => revision + 1);
           }, { once: true }));
-          video.srcObject = stream;
-          await video.play();
+          // Native frames already live in a canvas. Sending them through a
+          // captureStream + hidden video adds another media queue and GPU copy
+          // before BOTH compositor views can see a frame.
+          if (!entry.canvas) { video.srcObject = stream; await video.play(); }
         } catch (error) {
           entry.error = error instanceof Error ? error.message : "Capture failed. Restore the source window and retry.";
         }
@@ -794,9 +805,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       drawable = media.imageEl;
     } else if (
       (source.type === "display" || source.type === "window" || source.type === "camera") &&
-      media?.videoEl
+      (media?.canvas || media?.videoEl)
     ) {
-      drawable = media.videoEl;
+      drawable = media.canvas ?? media.videoEl!;
     } else if (source.type === "video" && media?.videoEl) {
       drawable = media.videoEl;
     } else if (source.type === "browser") {
@@ -872,12 +883,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       ? drawable.videoWidth
       : drawable instanceof HTMLImageElement
         ? drawable.naturalWidth
-        : 0;
+        : "width" in drawable ? drawable.width : 0;
     const intrinsicHeight = drawable instanceof HTMLVideoElement
       ? drawable.videoHeight
       : drawable instanceof HTMLImageElement
         ? drawable.naturalHeight
-        : 0;
+        : "height" in drawable ? drawable.height : 0;
     if (intrinsicWidth > 0 && intrinsicHeight > 0) {
       const left = clamp(crop.left, 0, 95);
       const right = clamp(crop.right, 0, 95 - left);
@@ -1215,7 +1226,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   };
 
   useCanvasRenderer(previewCanvasRef, previewBitmapSize.width, previewBitmapSize.height, Math.min(30, settings.frameRate), (ctx, now) => {
-    if (!sceneReady(previewScene, sources)) return;
+    if (!previewWarmupRef.current(previewScene, sceneReady(previewScene, sources), now)) return;
     ctx.save();
     ctx.scale(previewBitmapSize.width / programSize.width, previewBitmapSize.height / programSize.height);
     ctx.fillStyle = "#000";
@@ -1234,8 +1245,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       publishProgramFrameRef.current(canvas, now);
       return;
     }
-    if (!isCutToBlack && !sceneReady(programScene, programSources)) return;
-    if (!isCutToBlack && manualBlend > 0 && !sceneReady(previewScene, sources)) return;
+    if (!isCutToBlack && !programWarmupRef.current(programScene, sceneReady(programScene, programSources), now)) return;
+    if (!isCutToBlack && manualBlend > 0 && !blendWarmupRef.current(previewScene, sceneReady(previewScene, sources), now)) return;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (!isCutToBlack) {
@@ -1268,12 +1279,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     }
 
     const encoder = createFrameEncoder((frame) => window.dualcast.sendProgramFrame(frame));
-    const shouldSend = createFrameCadence(isFrozen && !isCutToBlack ? 1 : Math.min(30, settings.frameRate));
+    const highRate = settings.frameRate > 30;
+    const shouldSend = createFrameCadence(isFrozen && !isCutToBlack ? 1 : Math.min(mirror ? 30 : highRate ? 10 : 15, settings.frameRate));
     const deliveryCanvas = document.createElement("canvas");
     const deliveryContext = deliveryCanvas.getContext("2d", { alpha: false });
     publishProgramFrameRef.current = (canvas, now) => {
-      if (!shouldSend(now)) return;
-      const size = fitToBounds(canvas.width, canvas.height, mirror ? 1920 : 1280, mirror ? 1080 : 720);
+      if (!shouldSend(now) || encoder.isBusy()) return;
+      const size = fitToBounds(canvas.width, canvas.height, mirror ? 1920 : highRate ? 640 : 1280, mirror ? 1080 : highRate ? 360 : 720);
       if (!deliveryContext) return;
       resizeCanvas(deliveryCanvas, size.width, size.height);
       deliveryContext.drawImage(canvas, 0, 0, size.width, size.height);
@@ -1498,7 +1510,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   return (
     <section className="display-workspace" aria-label="Preview and Program displays">
       <div className="display-controls-row"><DisplayTextControls /></div>
-      {!sceneReady(programScene, programSources) && <p role="status" className="field-help">Preparing Program sources. Holding the last live picture until the next scene is ready.</p>}
+      {!sceneReady(programScene, programSources) && <p role="status" className="field-help">A source is preparing or buffering. Other live sources continue playing.</p>}
       {Array.from(sourceMediaRef.current.entries()).filter(([, media], index, entries) => media.error && entries.findIndex(([, entry]) => entry === media) === index).map(([id, media]) => (
         <div key={id} role="alert" className="field-help">
           {allSources[id]?.name ?? "Source"}: {media.error}
