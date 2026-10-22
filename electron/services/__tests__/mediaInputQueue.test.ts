@@ -2,6 +2,27 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMediaInputQueue } from "../mediaInputQueue";
 afterEach(() => vi.useRealTimers());
 describe("destination input queues", () => {
+  it("allows cold startup backlog and starts steady-state age accounting when output becomes live", async () => {
+    vi.useFakeTimers(); let liveSince: number | null = null, release = () => {};
+    let first = true;
+    const write = vi.fn(() => {
+      if(first){first=false;return new Promise<void>(resolve => {release=resolve;});}
+      return Promise.resolve();
+    });
+    const fail = vi.fn(), queue = createMediaInputQueue(write, fail, 1024, { timeoutMs: 10000, liveSince: () => liveSince });
+    for(let i=0;i<12;i++) queue.enqueue(Buffer.from([i]));
+    await Promise.resolve(); vi.setSystemTime(Date.now()+4000);
+    liveSince=Date.now(); release(); await queue.drain();
+    expect(write).toHaveBeenCalledTimes(12); expect(fail).not.toHaveBeenCalled();
+    queue.enqueue(Buffer.from([13])); vi.setSystemTime(Date.now()+1600); await queue.drain();
+    expect(fail).toHaveBeenCalledOnce();
+  });
+
+  it("bounds startup queues instead of permitting unlimited buffering", async () => {
+    const fail=vi.fn(), queue=createMediaInputQueue(async()=>{},fail,1024,{timeoutMs:10000,liveSince:()=>null});
+    for(let i=0;i<49;i++) queue.enqueue(Buffer.from([i]));
+    await queue.drain(); expect(fail).toHaveBeenCalledOnce();
+  });
   it("keeps healthy destinations moving while another destination is stalled", async () => {
     let release = () => {};
     const slowWrite = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));

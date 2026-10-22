@@ -1,4 +1,4 @@
-# Streaming stability audit — 19 October 2026
+# Streaming stability audit — through 22 October 2026
 
 Reviewed the Program renderer, source capture, browser sources, audio mixing, projection and lower-third frame delivery, recorder, streaming IPC, FFmpeg input/encoding, destination recovery, shutdown, YouTube broadcast setup, and release workflow. Findings below concern the live-streaming path; this is not a claim that every application behavior or every viewer/network combination was tested.
 
@@ -29,3 +29,21 @@ Reviewed the Program renderer, source capture, browser sources, audio mixing, pr
 `npm run verify:streaming` generates a synthetic 12-second 720p30 WebM clip with audio and tests the bundled FFmpeg. On this computer, the previous `nobuffer` input decoded 300/360 frames and logged 107 decoder errors. The corrected input decoded 360/360 frames with no decoder errors. A paced H.264/AAC FIFO-to-FLV encode delivered 360/360 frames with no decoder errors at approximately 1.04× real time. This is a local transport/encoding smoke test; it does not exercise a public RTMP server, real network congestion, or YouTube viewer playback.
 
 The user's actual YouTube broadcast still needs an end-to-end check after installation. Sustained upload capacity, simultaneous destinations, machine load, YouTube ingest health, and viewer connectivity can still cause buffering. The changes correct identified application bottlenecks and expose overload rather than guaranteeing uninterrupted playback under every condition.
+
+## v0.6.29: connecting then halting during Quick Sync startup
+
+The supplied `streaming-2026-10-22T14-13-55-659Z.log` selects `h264_qsv`, recognizes 1920×1080 H.264 plus Opus audio, creates the RTMPS output, reports `frame=0`, and then reports the app's encoder-input stall timeout. Other logs from the same session show the same pattern. This log contains no authentication rejection and does not establish a bad stream key or insufficient upload bandwidth.
+
+The production service reproduced the failure against a local RTMP receiver, without Internet access or service credentials. The previous 1.5-second write deadline and live queue limits applied during cold encoder initialization. Treating the first nonzero frame as steady output also tightened those limits before the pipeline had caught up; a first frame alone did not establish sustained delivery. The initial reproduction delivered zero frames, and an intermediate first-frame-only correction still failed after a few frames.
+
+Corrections:
+
+- Allow at most ten seconds of startup, 48 pending input batches, and a bounded startup byte budget. Declare startup complete after one second's worth of video frames has been encoded. Keep the existing eight-batch/1.5-second live limits once streaming is sustained. Writes adapt to the transition, and older startup packets receive their live-age origin at that transition; queued codec-dependent data is never arbitrarily discarded into a running decoder.
+- Bound decoder threads to two and filter threads to one. Configure Quick Sync with NV12, `async_depth=1`, `look_ahead=0`, and the veryfast preset. Disable B-frames and add explicit global codec headers for tee/FIFO output. These settings use the documented [QSV encoder options](https://ffmpeg.org/ffmpeg-codecs.html) and [tee muxer header requirements](https://ffmpeg.org/ffmpeg-formats.html#tee).
+- Parse both carriage-return and newline progress records, including multiple progress lines delivered in one chunk.
+- Cancel pending startup writes on stop, clear startup timers on shutdown, and preserve failure status/log details after the renderer's automatic cleanup. Starting a new session clears the previous error.
+- Surface browser MediaRecorder failures, preserve local capture/delivery errors across backend cleanup, stop the backend on unexpected capture termination, and honor cancellation during start.
+
+Validation: 204 unit tests and production type-check/build pass. The real production service encoded a paced Full-HD/60 H.264+Opus source through Quick Sync into a local RTMP receiver; the received FLV decoded all **600 frames**, with sustained-live status at **2.27 seconds** and no app-side error. The software configuration delivered all **180 frames at 720p/30**, with sustained-live status at **1.63 seconds**. Renderer checks using the actual streaming hook and MediaRecorder verify that capture errors remain visible, retry clears them, and unexpected capture stops clean up the backend.
+
+`npm run verify:stream-startup` now tests the production service, timed input and real local RTMP receiver in every desktop release job, alongside the existing transport checks. `node scripts/verify-stream-startup.cjs --encoder=qsv` runs the heavier Full-HD/60 hardware check on a machine where Quick Sync is detected. These are controlled local tests; an unlisted YouTube test after updating is still needed to validate the user's actual ingest connection and viewers. A conservative temporary configuration is Software x264, 720p, 30 fps.

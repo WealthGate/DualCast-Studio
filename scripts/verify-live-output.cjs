@@ -45,6 +45,7 @@ if (!process.versions.electron) {
       await window.loadURL("http://127.0.0.1:5174");
       window.showInactive();
       let result = {};
+      if(process.argv.includes("--stream-errors-only")){console.log(JSON.stringify(await window.webContents.executeJavaScript(`(${require('./verify-stream-capture-errors.cjs').toString()})(${JSON.stringify(root.replace(/\\/g,'/'))})`)));app.exit(0);return;}
       if(process.argv.includes("--video-only")){console.log(JSON.stringify(await window.webContents.executeJavaScript(`(${require('./verify-video-sharing.cjs').toString()})(${JSON.stringify('/@fs/'+root.replace(/\\/g,'/')+'/tmp/freeze-regression.webm')})`)));app.exit(0);return;}
       if(process.argv.includes("--settings-only")){const hardware=await require('./../tmp/hardware-verification.cjs').getHardwareCapabilities();console.log(JSON.stringify(await require('./verify-hardware-settings.cjs')(window,hardware)));app.exit(0);return;}
       if(process.argv.includes("--recording-only")){console.log(JSON.stringify(await require('./verify-recording-track.cjs')(window,root)));app.exit(0);return;}

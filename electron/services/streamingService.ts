@@ -33,6 +33,9 @@ import { resolutionSize } from "../../src/shared/recording";
 type StatusPublisher = (payload: StreamStatusPayload) => void;
 
 type DestinationRuntime = {
+  steadySince: number | null;
+  startupTimer?: NodeJS.Timeout;
+  inputController?: AbortController;
   inputQueue?: ReturnType<typeof createMediaInputQueue>;
   destination: StreamDestinationInput;
   process: ChildProcessByStdio<Writable, null, Readable> | null;
@@ -47,6 +50,7 @@ type DestinationRuntime = {
 };
 
 const STOP_TIMEOUT_MS = 4000;
+const STARTUP_TIMEOUT_MS = 10000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const ffmpegPath = resolveFfmpegExecutablePath(bundledFfmpegPath);
 
@@ -176,7 +180,7 @@ const detectEncoders = () => {
   }
 };
 
-const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder) => {
+export const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder) => {
   const base = presetConfig[payload.preset];
   const size = resolutionSize(payload.resolution, { width: base.maxWidth, height: base.maxWidth * 9 / 16 });
   const preset = { maxWidth: size.width, videoBitrateKbps: Math.round(base.videoBitrateKbps * Math.max(1, size.width * size.height / (1920 * 1080))) };
@@ -186,6 +190,9 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     "-hide_banner",
     "-loglevel",
     "info",
+    "-filter_threads", "1",
+    "-filter_complex_threads", "1",
+    "-threads", "2",
     "-fflags",
     "genpts",
     "-flags",
@@ -208,19 +215,23 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     "-vf",
     encoder === "vaapi"
       ? `scale='min(${preset.maxWidth},iw)':-2,format=nv12,hwupload`
-      : encoder === "mediafoundation"
+      : encoder === "mediafoundation" || encoder === "qsv"
         ? `scale='min(${preset.maxWidth},iw)':-2,format=nv12`
         : `scale='min(${preset.maxWidth},iw)':-2`,
     "-r",
     String(payload.fps),
     "-c:v",
-    mapStreamingEncoder(encoder)
+    mapStreamingEncoder(encoder),
+    "-flags:v", "+global_header",
+    "-threads", "2"
   );
 
   if (encoder === "x264") {
     args.push("-preset", "veryfast", "-tune", "zerolatency");
   } else if (encoder === "nvenc") {
     args.push("-preset", "p4", "-tune", "ll");
+  } else if (encoder === "qsv") {
+    args.push("-preset", "veryfast", "-async_depth", "1", "-look_ahead", "0");
   } else if (encoder === "videotoolbox") {
     args.push("-realtime", "1");
   } else if (encoder === "mediafoundation") {
@@ -236,7 +247,7 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
     `${preset.videoBitrateKbps * 2}k`
   );
 
-  if (encoder !== "vaapi" && encoder !== "mediafoundation") {
+  if (encoder !== "vaapi" && encoder !== "mediafoundation" && encoder !== "qsv") {
     args.push("-pix_fmt", "yuv420p");
   }
 
@@ -249,9 +260,8 @@ const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingEncoder)
 
   if (encoder === "x264") {
     args.push("-sc_threshold", "0");
-  } else if (encoder === "vaapi") {
-    args.push("-bf", "0");
   }
+  args.push("-bf", "0");
   if (encoder === "x264") args.push("-minrate", bitrate, "-x264-params", "nal-hrd=cbr:force-cfr=1");
 
   if (payload.hasAudio) {
@@ -331,6 +341,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   runtime.needsHeader = true;
   runtime.encoderFallbackPending = false;
   runtime.lastError = null;
+  runtime.steadySince = null;
   publishAggregateStatus();
 
   const process = spawn(ffmpegPath, args, {
@@ -338,15 +349,27 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     windowsHide: true
   });
   runtime.process = process;
+  const controller = new AbortController();
+  runtime.inputController?.abort();
+  runtime.inputController = controller;
+  clearTimeout(runtime.startupTimer);
+  runtime.startupTimer = setTimeout(() => {
+    if (stopRequested || runtime.process !== process || runtime.steadySince !== null) return;
+    runtime.lastError = "Streaming startup timed out before video delivery became sustained. Try Software x264 or another detected encoder, and check the stream connection.";
+    runtime.status = "error";
+    runtime.inputQueue?.stop(); controller.abort(); process.kill("SIGINT");
+    writeStreamLog(runtime.destination.name, runtime.lastError); publishAggregateStatus();
+  }, STARTUP_TIMEOUT_MS);
   runtime.inputQueue?.stop();
+  const write = (data: Buffer) => writeToInput(process.stdin, data, () => runtime.steadySince, controller.signal);
   runtime.inputQueue = createMediaInputQueue(async chunk => {
     if (runtime.process !== process) return;
     if (runtime.needsHeader && cachedHeader) {
-      await writeToInput(process.stdin, cachedHeader);
+      await write(cachedHeader);
       runtime.needsHeader = false;
       if (chunk.equals(cachedHeader)) return;
     }
-    if (runtime.process === process) await writeToInput(process.stdin, chunk);
+    if (runtime.process === process) await write(chunk);
   }, error => {
     if (stopRequested || runtime.process !== process) return;
     runtime.lastError = error.message;
@@ -355,7 +378,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     process.kill("SIGINT");
     writeStreamLog(runtime.destination.name, error.message);
     publishAggregateStatus();
-  }, Math.max(4 * 1024 * 1024, resolutionSize(lastStartPayload.resolution).width * resolutionSize(lastStartPayload.resolution).height / (1920 * 1080) * 4 * 1024 * 1024));
+  }, Math.max(4 * 1024 * 1024, resolutionSize(lastStartPayload.resolution).width * resolutionSize(lastStartPayload.resolution).height / (1920 * 1080) * 4 * 1024 * 1024), { timeoutMs: STARTUP_TIMEOUT_MS, liveSince: () => runtime.steadySince });
   // A failed write also emits an asynchronous stream error, even when the
   // write callback handles it. Keep this listener through process shutdown.
   process.stdin.on("error", (error: Error) => {
@@ -370,7 +393,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   process.stderr.on("data", (chunk: string) => {
     if (stopRequested || runtime.process !== process) return;
     chunk
-      .split(/\r?\n/)
+      .split(/[\r\n]+/)
       .filter(Boolean)
       .forEach((line) => {
         writeStreamLog(runtime.destination.name, line);
@@ -387,9 +410,14 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
         if (isHardwareEncoderStartupFailure(runtime.encoder, line)) {
           runtime.encoderFallbackPending = true;
         }
+        const encodedFrames = Number(/frame=\s*(\d+)/.exec(line)?.[1] ?? 0);
+        if (runtime.steadySince === null && encodedFrames >= (lastStartPayload?.fps ?? 30)) {
+          runtime.steadySince = Date.now();
+          clearTimeout(runtime.startupTimer);
+        }
         if (
           (runtime.status === "connecting" || runtime.status === "reconnecting") &&
-          hasEncodedVideoFrame(line)
+          hasEncodedVideoFrame(line) && runtime.steadySince !== null
         ) {
           runtime.status = "live";
           runtime.reconnectAttempt = 0;
@@ -413,6 +441,8 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
 
   process.on("close", (code, signal) => {
     if (runtime.process !== process) return;
+    clearTimeout(runtime.startupTimer);
+    runtime.inputQueue?.stop(); controller.abort();
     runtime.process = null;
     if (stopRequested) {
       return;
@@ -532,6 +562,7 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   destinations.forEach((destination) => {
     const encoder = resolveStreamingEncoder(payload.encoder, availableEncoders);
     const runtime: DestinationRuntime = {
+      steadySince: null,
       destination,
       process: null,
       status: "connecting",
@@ -551,22 +582,29 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   return { ok: true };
 };
 
-const writeToInput = (input: Writable, data: Buffer) => new Promise<void>((resolve, reject) => {
-  const timeout = setTimeout(() => {
-    const error = new Error("Stream encoder input stalled. Lower streaming quality or reduce destinations and restart.");
+const writeToInput = (input: Writable, data: Buffer, liveSince: () => number | null, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
+  const began = Date.now();
+  const finish = (error?: Error | null) => {
+    clearTimeout(timeout); signal.removeEventListener("abort", cancel);
+    if (error) reject(error); else resolve();
+  };
+  const cancel = () => { const error = new Error("Streaming stopped."); input.destroy(); finish(error); };
+  const monitor = () => {
+    const steady = liveSince();
+    const remaining = (steady === null ? STARTUP_TIMEOUT_MS : 1500) - (Date.now() - Math.max(began, steady ?? 0));
+    if (remaining > 0) { timeout = setTimeout(monitor, Math.min(250, remaining)); timeout.unref(); return; }
+    const error = new Error(steady === null ? "Stream encoder startup stalled. Try another encoder or check the stream connection." : "Stream encoder input stalled. Lower streaming quality or reduce destinations and restart.");
     input.destroy(error);
-    reject(error);
-  }, 1500);
+    finish(error);
+  };
+  let timeout = setTimeout(monitor, 250);
   timeout.unref();
+  if (signal.aborted) { cancel(); return; }
+  signal.addEventListener("abort", cancel, { once: true });
   try {
-    input.write(data, (error) => {
-      clearTimeout(timeout);
-      if (error) reject(error);
-      else resolve();
-    });
+    input.write(data, finish);
   } catch (error) {
-    clearTimeout(timeout);
-    reject(error);
+    finish(error instanceof Error ? error : new Error(String(error)));
   }
 });
 
@@ -588,7 +626,12 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
     return { ok: false, message: "No active stream to stop." };
   }
 
+  const failure = currentStatus.status === "error" ? currentStatus : null;
   stopRequested = true;
+  runtimes.forEach(runtime => {
+    clearTimeout(runtime.startupTimer);
+    if (runtime.steadySince === null || failure) { runtime.inputQueue?.stop(); runtime.inputController?.abort(); }
+  });
   await Promise.all(Array.from(runtimes.values()).map(runtime => runtime.inputQueue?.drain()));
   runtimes.forEach((runtime) => {
     runtime.inputQueue?.stop();
@@ -622,7 +665,8 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
   lastStartPayload = null;
   logStream?.end();
   logStream = null;
-  publishAggregateStatus();
+  if (failure) { currentStatus = { ...failure, startedAt: null }; statusPublisher?.(currentStatus); }
+  else publishAggregateStatus();
   log.info("Streaming stop requested for all destinations.");
   return { ok: true };
 };
@@ -630,6 +674,8 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
 export const forceStopStreaming = () => {
   stopRequested = true;
   runtimes.forEach((runtime) => {
+    clearTimeout(runtime.startupTimer);
+    runtime.inputController?.abort();
     runtime.inputQueue?.stop();
     if (runtime.reconnectTimer) clearTimeout(runtime.reconnectTimer);
     runtime.reconnectTimer = null;

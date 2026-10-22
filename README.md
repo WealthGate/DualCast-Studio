@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.28**.
+Current release: **v0.6.29**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,14 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.28
+### What's new in v0.6.29
+
+- Fix streaming that begins connecting, encodes zero or a few frames, then stops. Cold encoder startup has a bounded ten-second allowance; tight live queue/write limits begin after one second of video has actually been encoded.
+- Configure Quick Sync for NV12 and low-delay operation, bound decoder/filter threads, disable output B-frames, and explicitly provide codec headers for FIFO/RTMP output.
+- Keep startup/encoder failures visible after automatic cleanup, handle browser capture encoder errors and unexpected capture stops, and permit a fresh retry.
+- Verify the actual streaming service with paced H.264/Opus input and a local RTMP receiver on every release platform. See [the streaming startup audit](docs/streaming-stability-audit.md).
+
+### Included from v0.6.28
 
 - Open **Controls → Settings → Graphics and video acceleration** to view detected graphics devices, choose Automatic, High-performance GPU, Power-saving GPU or Software rendering, and select a usable streaming encoder. Restart after changing the graphics preference. The OS selects the matching GPU.
 - Available encoders are tested with the installed drivers: NVIDIA NVENC, Intel Quick Sync, AMD AMF, Windows Media Foundation, Apple VideoToolbox, Linux VA-API/V4L2, or CPU x264, according to the platform/runtime. Windows also has a separate native capture encoder selector. Unsupported options are disabled.

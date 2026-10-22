@@ -61,6 +61,9 @@ jobs:
       - name: Verify real-time streaming transport
         run: npm run verify:streaming
 
+      - name: Verify production streaming service and local RTMP startup
+        run: npm run verify:stream-startup
+
       - name: Build application
         run: npm run build
 

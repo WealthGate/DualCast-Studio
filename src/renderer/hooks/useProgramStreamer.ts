@@ -34,6 +34,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const stopRequestedRef = useRef(false);
   const startInFlightRef = useRef(false);
   const chunkQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const captureErrorRef = useRef<string | null>(null);
 
   const clearTimer = () => {
     if (timerRef.current) {
@@ -53,11 +54,11 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onStreamStatus((payload) => {
-      setStatus(payload.status);
-      setStatusMessage(payload.message ?? null);
+      setStatus(captureErrorRef.current && payload.status === "idle" ? "error" : payload.status);
+      setStatusMessage(captureErrorRef.current ?? payload.message ?? null);
       startedAtRef.current = payload.startedAt ?? null;
       setStats(payload.stats ?? null);
-      setLastError(payload.lastError ?? null);
+      setLastError(captureErrorRef.current ?? payload.lastError ?? null);
       setDestinationStatuses(payload.destinationStatuses ?? []);
     });
     return () => {
@@ -122,6 +123,9 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       }
 
       startInFlightRef.current = true;
+      stopRequestedRef.current = false;
+      captureErrorRef.current = null;
+      setLastError(null);
       if (settings.streamResolution === "8k" && !(await supports8KEncoding(settings.streamFps))) {
         startInFlightRef.current = false;
         return { ok: false, message: "8K streaming requires a compatible hardware encoder. Choose a lower resolution." };
@@ -187,6 +191,11 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         setStatusMessage(startResult.message ?? "Failed to start stream.");
         return startResult;
       }
+      if (stopRequestedRef.current) {
+        cleanupCapture(); startInFlightRef.current = false;
+        await window.dualcast.stopStream().catch(() => undefined);
+        return { ok: false, message: "Streaming start was cancelled." };
+      }
 
       try {
         const mimeType = pickStreamingRecorderMimeType(resolutionSize(settings.streamResolution).width);
@@ -199,7 +208,6 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         });
 
         recorderRef.current = recorder;
-        stopRequestedRef.current = false;
         chunkQueueRef.current = Promise.resolve();
         let pendingBytes = 0;
         let pendingChunks = 0;
@@ -216,6 +224,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
           if (pendingBytes > byteLimit || pendingChunks > 8) {
             deliveryFailed = true;
             const message = "Streaming cannot keep up. Choose a lower streaming quality or fewer destinations, then restart the stream.";
+            captureErrorRef.current = message;
             setLastError(message);
             setStatusMessage(message);
             stopRequestedRef.current = true;
@@ -229,6 +238,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
             .catch((error) => {
               deliveryFailed = true;
               const message = error instanceof Error ? error.message : "Stream data delivery failed.";
+              captureErrorRef.current = message;
               setLastError(message);
               setStatusMessage(message);
               stopRequestedRef.current = true;
@@ -238,14 +248,24 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         };
 
         recorder.onstop = async () => {
+          if (!stopRequestedRef.current) {
+            captureErrorRef.current = "Streaming capture stopped unexpectedly. Check the selected encoder and restart the stream.";
+            setLastError(captureErrorRef.current); setStatusMessage(captureErrorRef.current); setStatus("error");
+          }
           cleanupCapture();
           recorderRef.current = null;
           startInFlightRef.current = false;
           await chunkQueueRef.current;
-          if (stopRequestedRef.current) {
-            await window.dualcast.stopStream().catch(() => undefined);
-          }
+          await window.dualcast.stopStream().catch(() => undefined);
           stopRequestedRef.current = false;
+        };
+
+        recorder.onerror = event => {
+          const detail = (event as Event & { error?: Error }).error?.message;
+          captureErrorRef.current = `Streaming capture encoder failed${detail ? `: ${detail}` : ". Choose another encoder or a lower resolution."}`;
+          setLastError(captureErrorRef.current); setStatusMessage(captureErrorRef.current); setStatus("error");
+          stopRequestedRef.current = true;
+          if (recorder.state !== "inactive") recorder.stop();
         };
 
         recorder.start(250);
