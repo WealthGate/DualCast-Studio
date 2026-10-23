@@ -32,7 +32,10 @@ export const useCanvasRenderer = (
       try {
         if (now + 0.5 >= nextAt) {
           nextAt += interval * (Math.floor(Math.max(0, now - nextAt) / interval) + 1);
-          if (!frozen && drawRef.current(context, now) !== false) publishCanvasFrame(canvas, now);
+          const changed = !frozen && drawRef.current(context, now) !== false;
+          // Capture has a media clock even when the bitmap is unchanged. Without
+          // these frames, audio piles up in the muxer until the next picture.
+          if (changed || requestedCanvasFrameRate(canvas) > 0) publishCanvasFrame(canvas, now);
         }
       } finally {
         // Program must keep its clock when the operator's monitor refreshes

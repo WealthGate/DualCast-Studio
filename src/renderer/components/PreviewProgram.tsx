@@ -1,4 +1,5 @@
-import { createStereoProgramOutput, setProgramChannelMode } from "../utils/audioChannels";
+import { setProgramChannelMode } from "../utils/audioChannels";
+import { createProgramAudioBus } from "../utils/programAudioBus";
 import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { resizeCanvas, useCanvasRenderer } from "../hooks/useCanvasRenderer";
@@ -19,7 +20,7 @@ import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/med
 import { fitToBounds, getOutputProfile } from "../../shared/recording";
 import { LowerThirdAnimation, LowerThirdSlide, MultiviewTile, Scene, SceneTransitionType, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
 import { AudioMeterSnapshot, publishAudioMeters } from "../audioMeterBus";
-import { createProgramAudioMonitor, updateProgramAudioMonitor } from "../utils/audioMonitoring";
+import { updateProgramAudioMonitor } from "../utils/audioMonitoring";
 
 type PreviewProgramProps = {
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
@@ -202,6 +203,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const programMixGainRef = useRef<GainNode | null>(null);
   const programAudioMonitorGainRef = useRef<GainNode | null>(null);
+  const programAudioBusRef = useRef<ReturnType<typeof createProgramAudioBus> | null>(null);
   const previewLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
   const programLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
 
@@ -633,6 +635,25 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   }, [activeSourceIds, allSources]);
 
   useEffect(() => {
+    const bus = createProgramAudioBus();
+    programAudioBusRef.current = bus;
+    programMixGainRef.current = bus.masterGain;
+    programAudioMonitorGainRef.current = bus.monitor;
+    setProgramAudioStream(bus.destination.stream);
+    return () => {
+      programAudioBusRef.current = null;
+      programMixGainRef.current = null;
+      programAudioMonitorGainRef.current = null;
+      setProgramAudioStream(null);
+      bus.stop();
+    };
+  }, [setProgramAudioStream]);
+
+  useEffect(() => {
+    const bus = programAudioBusRef.current;
+    if (!bus) return;
+    const { context: audioContext, masterGain, output: stereoOutput } = bus;
+    const routeNodes: AudioNode[] = [];
     const includeSceneAudio = settings.audioMode === "system" || settings.audioMode === "both";
     const includeMicrophone = settings.audioMode === "microphone" || settings.audioMode === "both";
     const sceneAudioSources = includeSceneAudio && programScene?.enabled !== false
@@ -655,28 +676,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         )
       : [];
 
-    if (sceneAudioSources.length === 0 && persistentAudioSources.length === 0 && (!includeMicrophone || !microphoneStreamRef.current)) {
-      publishAudioMeters({});
-      setProgramAudioStream(null);
-      return;
-    }
-
-    const audioContext = new AudioContext({ latencyHint: "interactive" });
-    const destination = audioContext.createMediaStreamDestination();
-    const masterGain = audioContext.createGain();
     masterGain.gain.value = clamp(settings.masterAudioGain ?? 1, 0, 2);
     setProgramChannelMode(masterGain, useAppStore.getState().settings.audioChannelMode ?? "stereo");
-    programMixGainRef.current = masterGain;
-    const stereoOutput = createStereoProgramOutput(audioContext, masterGain);
-    stereoOutput.connect(destination);
-    const monitorGain = createProgramAudioMonitor(
-      audioContext,
-      stereoOutput,
-      isProgramAudioMonitoring,
-      programAudioMonitorGain
-    );
-    programAudioMonitorGainRef.current = monitorGain;
-    let connectedSources = 0;
 
     type MeterTap = {
       id: string;
@@ -693,6 +694,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       masterSplitter.connect(analyser, channel);
     });
     stereoOutput.connect(masterSplitter);
+    routeNodes.push(masterSplitter, ...masterAnalysers);
     meterTaps.push({
       id: "master",
       channels: 2,
@@ -710,6 +712,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         sourceGain.gain.value = clamp(gainValue, 0, 2);
         streamSource.connect(sourceGain);
         sourceGain.connect(masterGain);
+        routeNodes.push(streamSource, sourceGain);
 
         const reportedChannels = stream.getAudioTracks()[0]?.getSettings().channelCount;
         const channels: 1 | 2 = reportedChannels === 1 || streamSource.channelCount === 1 ? 1 : 2;
@@ -726,14 +729,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
           sourceGain.connect(splitter);
           splitter.connect(analysers[0], 0);
           splitter.connect(analysers[1], 1);
+          routeNodes.push(splitter);
         }
+        routeNodes.push(...analysers);
         meterTaps.push({
           id,
           channels,
           analysers,
           buffers: analysers.map((analyser) => new Uint8Array(analyser.fftSize))
         });
-        connectedSources += 1;
       } catch {
         // A stopped or restricted track must not break the remaining Program mix.
       }
@@ -751,17 +755,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       connectStream(microphoneStreamRef.current, "microphone", settings.microphoneGain ?? 1);
     }
 
-    if (connectedSources === 0) {
-      programMixGainRef.current = null;
-      programAudioMonitorGainRef.current = null;
-      publishAudioMeters({});
-      setProgramAudioStream(null);
-      void audioContext.close();
-      return;
-    }
-
-    void audioContext.resume();
-    setProgramAudioStream(destination.stream);
+    void audioContext.resume().catch(() => undefined);
 
     const publishLevels = () => {
       const next: AudioMeterSnapshot = {};
@@ -784,12 +778,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     return () => {
       window.clearInterval(meterTimer);
       publishAudioMeters({});
-      setProgramAudioStream(null);
-      if (programMixGainRef.current === masterGain) programMixGainRef.current = null;
-      if (programAudioMonitorGainRef.current === monitorGain) {
-        programAudioMonitorGainRef.current = null;
-      }
-      audioContext.close().catch(() => undefined);
+      stereoOutput.disconnect(masterSplitter);
+      routeNodes.forEach(node => node.disconnect());
     };
   }, [
     mediaRevision,

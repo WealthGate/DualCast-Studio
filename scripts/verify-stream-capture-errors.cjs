@@ -24,18 +24,19 @@ module.exports = async function verifyStreamCaptureErrors(rootPath, autoRecover 
     if(!(await controller.startStream(destinations)).ok)throw Error('Hook did not start');
     if(autoRecover){
       const first=recorder;
-      notify({status:'reconnecting',restartRequired:true,message:'Simulated encoder-input stall'});
-      await wait(1400);
+      notify({status:'reconnecting',restartRequired:true,reduceLoad:true,message:'Simulated repeated output congestion'});
+      await wait(2100);
       if(starts!==2||recorder===first||recorder.state!=='recording')throw Error('Fresh capture did not reconnect automatically: '+starts);
+      if(payloads[1].resolution!=='720p'||payloads[1].preset!=='low')throw Error('Output congestion did not immediately lower bandwidth');
       notify({status:'live',startedAt:Date.now(),lastError:null});await wait(50);
       notify({status:'reconnecting',restartRequired:true,message:'Second input stall'});
-      await wait(2100);
+      await wait(3800);
       if(starts!==3||payloads[2].resolution!=='720p'||payloads[2].preset!=='low')throw Error('Repeated stall did not reduce stream load');
       notify({status:'live',startedAt:Date.now(),lastError:null});await wait(50);
       notify({status:'reconnecting',restartRequired:true,message:'Third input stall'});await wait(100);
       controller.stopStream();await wait(3400);
       if(starts!==3)throw Error('Manual Stop did not cancel pending recovery');
-      return {automaticRecovery:true,freshRecorder:true,repeatedStallReducesLoad:true,manualStopCancelsRetry:true};
+      return {automaticRecovery:true,freshRecorder:true,outputCongestionReducesLoad:true,repeatedStallReducesLoad:true,manualStopCancelsRetry:true};
     }
     recorder.onerror(new ErrorEvent('error',{error:new Error('test encoder failure')}));
     await wait(250);

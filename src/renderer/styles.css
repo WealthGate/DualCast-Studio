@@ -1321,9 +1321,18 @@ textarea:focus-visible {
   margin-bottom: 12px;
 }
 
-.youtube-live-chat { margin-top: 8px; }
+.youtube-live-chat { margin-top: 8px; min-width: 0; max-width: 100%; }
+.youtube-chat-toggle { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.youtube-live-chat > .field { margin-top: 12px; min-width: 0; }
 .youtube-chat-messages { max-height: 240px; overflow-y: auto; overflow-wrap: anywhere; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
 .youtube-chat-messages p { margin: 4px 0; }
+.youtube-chat-composer { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+.youtube-chat-input { display: grid; gap: 8px; min-width: 0; }
+.youtube-chat-input textarea { display: block; box-sizing: border-box; width: 100%; min-width: 0; line-height: 1.5; }
+.youtube-chat-input textarea::placeholder { color: var(--muted); }
+.youtube-chat-count { text-align: right; }
+.youtube-chat-actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.youtube-chat-actions .btn { flex: 1 1 130px; min-width: 0; max-width: 100%; min-height: 36px; white-space: normal; overflow-wrap: anywhere; }
 
 .streaming-status {
   display: flex;

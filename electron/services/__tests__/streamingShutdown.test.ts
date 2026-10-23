@@ -152,7 +152,7 @@ describe("stream shutdown", () => {
     child.process.stderr.emit("data", "frame= 100 fps=24 time=00:00:03.30 speed=0.81x");
     expect(publish.mock.lastCall?.[0].stats.speed).toBe(0.81);
     child.process.stderr.emit("data", "FIFO queue full");
-    expect(publish.mock.lastCall?.[0].lastError).toContain("Recovering at the next");
+    expect(publish.mock.lastCall?.[0].lastError).toContain("Upload delivery is falling behind");
     await vi.advanceTimersByTimeAsync(8000);
     child.process.stderr.emit("data", "frame= 300 fps=30 time=00:00:10.00 speed=1.01x");
     expect(publish.mock.lastCall?.[0].lastError).toBeNull();
@@ -191,5 +191,25 @@ describe("stream shutdown", () => {
     await stopStreaming();
     const next=encoder();mocks.spawn.mockReturnValue(next.process);await startStreaming({...payload,autoRecover:true});
     expect(publish.mock.lastCall?.[0].restartRequired).toBe(false);
+  });
+
+  it("lowers bandwidth after repeated output overflows instead of looping keyframe recovery", async () => {
+    const child = encoder(); mocks.spawn.mockReturnValue(child.process);
+    const publish = vi.fn(); setStreamStatusPublisher(publish);
+    await startStreaming({ ...payload, autoRecover: true });
+    child.process.stderr.emit("data", "frame= 30 fps=30 time=00:00:01.00");
+    child.process.stderr.emit("data", "FIFO queue full");
+    expect(publish.mock.lastCall?.[0].restartRequired).toBe(false);
+    await vi.advanceTimersByTimeAsync(5000);
+    child.process.stderr.emit("data", "FIFO queue full");
+    expect(publish.mock.lastCall?.[0]).toMatchObject({ status: "reconnecting", restartRequired: true, reduceLoad: true });
+    expect(child.process.kill).toHaveBeenCalledWith("SIGKILL");
+  });
+
+  it("requires promised audio and bounds interleaving when video pauses", () => {
+    const args = buildFfmpegArgs({ ...payload, hasAudio: true }, "x264");
+    expect(args).toContain("0:a:0");
+    expect(args).not.toContain("0:a:0?");
+    expect(args[args.indexOf("-max_interleave_delta") + 1]).toBe("250000");
   });
 });

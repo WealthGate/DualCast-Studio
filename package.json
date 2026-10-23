@@ -1,6 +1,6 @@
 {
   "name": "openchurch-broadcast-studio",
-  "version": "0.6.31",
+  "version": "0.6.32",
   "private": true,
   "description": "Open church production, presentation, recording, and multi-destination streaming studio",
   "author": {
@@ -28,7 +28,8 @@
     "verify:streaming": "node scripts/verify-streaming.cjs",
     "verify:stream-startup": "node scripts/verify-stream-startup.cjs --encoder=x264 --ci && node scripts/verify-stream-startup.cjs --encoder=x264 --ci --copy-video",
     "prepare:windows-capture": "node scripts/prepare-windows-capture.cjs",
-    "verify:live-output": "node scripts/verify-live-output.cjs"
+    "verify:live-output": "node scripts/verify-live-output.cjs",
+    "verify:broadcast-continuity": "node scripts/verify-live-output.cjs --continuity-only"
   },
   "dependencies": {
     "electron-log": "^5.1.2",

@@ -10,9 +10,11 @@ const width = ci ? 1280 : 1920, height = ci ? 720 : 1080, fps = ci ? 30 : 60;
 const seconds = Number(process.argv.find(arg => arg.startsWith('--seconds='))?.split('=')[1]) || (ci ? 6 : 10);
 const copyVideo = process.argv.includes('--copy-video');
 const inputFile = process.argv.find(arg => arg.startsWith('--input='))?.slice(8);
+const pauseOutputMs = Number(process.argv.find(arg => arg.startsWith('--pause-output-ms='))?.split('=')[1]) || 0;
 fs.mkdirSync(temp, { recursive: true });
-let service, source, receiver;
-const cleanup = () => { service?.forceStopStreaming(); source?.kill('SIGKILL'); receiver?.kill('SIGKILL'); };
+let service, source, receiver, proxy;
+const sockets = new Set(), proxyTimers = new Set();
+const cleanup = () => { service?.forceStopStreaming(); source?.kill('SIGKILL'); receiver?.kill('SIGKILL'); proxy?.close(); sockets.forEach(socket=>socket.destroy());proxyTimers.forEach(clearTimeout); };
 const watchdog = setTimeout(() => { console.error('Local RTMP integration test exceeded its bounded duration.'); cleanup(); process.exit(1); }, Math.max(90000,(seconds+45)*1000));
 
 (async () => {
@@ -35,6 +37,16 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
   const reservation = net.createServer(); await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
   const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
   const endpoint = `rtmp://127.0.0.1:${port}/live/probe`;
+  let publishPort = port;
+  if(pauseOutputMs){
+    proxy=net.createServer(client=>{
+      const upstream=net.connect(port,'127.0.0.1');sockets.add(client);sockets.add(upstream);
+      client.on('error',()=>upstream.destroy());upstream.on('error',()=>client.destroy());
+      client.pipe(upstream);upstream.pipe(client);
+      proxyTimers.add(setTimeout(()=>{client.pause();proxyTimers.add(setTimeout(()=>client.resume(),pauseOutputMs));},3500));
+    });
+    await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));publishPort=proxy.address().port;
+  }
   const received = path.join(temp, `${encoder}-${process.pid}.flv`);
   receiver = spawn(ffmpeg, ['-hide_banner','-y','-loglevel','error','-listen','1','-i',endpoint,'-map','0:v:0','-map','0:a:0?','-c','copy','-progress','pipe:1','-nostats','-f','flv',received], {windowsHide:true});
   let receivedFrames = 0, receiverError = '';
@@ -45,7 +57,7 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
   service.setStreamStatusPublisher(state => { states.push(state.status); if(state.status==='live') firstLive ??= Date.now()-began; if(state.status==='error') fatal=state.lastError||state.message; });
   try {
     await wait(1000);
-    const started = await service.startStreaming({destinations:[{id:'probe',name:'Local integration test',enabled:true,rtmpUrl:`rtmp://127.0.0.1:${port}/live`,streamKey:'probe'}],hasAudio:true,preset:'high',resolution:ci?'720p':'1080p',fps,audioBitrate:192,encoder,copyVideo,inputVideoCodec:'h264'});
+    const started = await service.startStreaming({destinations:[{id:'probe',name:'Local integration test',enabled:true,rtmpUrl:`rtmp://127.0.0.1:${publishPort}/live`,streamKey:'probe'}],hasAudio:true,preset:'high',resolution:ci?'720p':'1080p',fps,audioBitrate:192,encoder,copyVideo,inputVideoCodec:'h264'});
     if(!started.ok)throw Error(started.message);
     console.log('Streaming integration: local RTMP output started.');
     source = spawn(ffmpeg, ['-hide_banner','-loglevel','error','-re','-i',fixture,'-c','copy','-cluster_time_limit','250','-flush_packets','1','-f','matroska','pipe:1'], {windowsHide:true});
@@ -60,13 +72,18 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
     await wait(500);
     console.log('Streaming integration: timed source finished.');
     await service.stopStreaming(); await wait(1500);
-    const decoded = spawnSync(ffmpeg,['-hide_banner','-i',received,'-an','-f','null','-','-progress','pipe:1'],{encoding:'utf8',windowsHide:true,timeout:15000});
+    const decoded = spawnSync(ffmpeg,['-hide_banner','-i',received,'-vf','showinfo','-af','ashowinfo','-f','null','-','-progress','pipe:1'],{encoding:'utf8',windowsHide:true,timeout:15000,maxBuffer:16*1024*1024});
     const transportLog = fs.readFileSync(service.getStreamLogPath(),'utf8');
     if(/Non-monoton(?:ic|ous).*DTS/i.test(transportLog))throw Error('Output timestamps moved backwards or collided.');
+    if(/FIFO queue full|queue overflow/i.test(transportLog))throw Error('Output discarded media during the transport test.');
     const count = [...(decoded.stdout||'').matchAll(/frame=\s*(\d+)/g)];
     receivedFrames = Number(count.at(-1)?.[1] || receivedFrames);
-    const result = {encoder,copyVideo,width,height,fps,seconds,firstLiveMs:firstLive,receivedFrames,statuses:[...new Set(states)],error:fatal};
+    const videoTimes=[...(decoded.stderr||'').matchAll(/Parsed_showinfo[^\n]*pts_time:([0-9.]+)/g)].map(m=>Number(m[1]));
+    const audioTimes=[...(decoded.stderr||'').matchAll(/Parsed_ashowinfo[^\n]*pts_time:([0-9.]+)/g)].map(m=>Number(m[1]));
+    const avDriftMs=Math.round(Math.abs(videoTimes.at(-1)-audioTimes.at(-1))*1000);
+    const maxAudioGapMs=Math.round(Math.max(...audioTimes.slice(1).map((time,i)=>time-audioTimes[i]))*1000);
+    const result = {encoder,copyVideo,pauseOutputMs,width,height,fps,seconds,firstLiveMs:firstLive,receivedFrames,audioFrames:audioTimes.length,avDriftMs,maxAudioGapMs,statuses:[...new Set(states)],error:fatal};
     console.log(JSON.stringify(result));
-    if(fatal||!firstLive||decoded.status!==0||receivedFrames<fps*seconds*.8)throw Error('Real streaming startup/delivery failed: '+receiverError);
+    if(fatal||!firstLive||decoded.status!==0||receivedFrames<fps*seconds*.8||!audioTimes.length||avDriftMs>250||maxAudioGapMs>100)throw Error('Real streaming startup/delivery failed: '+receiverError);
   } finally { cleanup(); }
 })().catch(error => { console.error(error.message); cleanup(); process.exitCode=1; }).finally(() => clearTimeout(watchdog));

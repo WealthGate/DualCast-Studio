@@ -19,8 +19,18 @@ module.exports = async function verifyYouTubeChat(rootPath) {
     container.querySelector('button[type=submit]').click();await wait(100);
     if(sends!==1||sentText!=='Welcome viewers')throw Error('Chat Send did not deliver the composed message');
     if(container.querySelector('[role=log]').children.length!==1)throw Error('Chat duplicated paginated messages');
+    const layouts=[];
+    for(const width of [420,280,180]){
+      container.style.width=width+'px';await wait(30);
+      const form=container.querySelector('form'),inputBox=input.getBoundingClientRect(),actions=container.querySelector('.youtube-chat-actions').getBoundingClientRect();
+      if(form.scrollWidth>form.clientWidth+1||inputBox.bottom>actions.top||inputBox.width>width+1)throw Error('Chat composer overflowed at '+width+'px');
+      const buttons=[...container.querySelectorAll('.youtube-chat-actions button')].map(button=>button.getBoundingClientRect());
+      if(width>=280&&Math.abs(buttons[0].top-buttons[1].top)>1)throw Error('Chat actions did not share a row');
+      if(width===180&&buttons[1].top<buttons[0].bottom)throw Error('Narrow chat actions did not wrap');
+      layouts.push({width,overflow:false,buttonsWrapped:buttons[1].top>buttons[0].top+1});
+    }
     container.querySelector('button').click();await wait(30);const before=reads;await wait(250);
     if(reads!==before)throw Error('Closing chat did not cancel refresh');
-    return {operatorSend:true,noAutomaticSend:true,plainText:true,paginationDeduplicated:true,closeCancelsRefresh:true};
+    return {operatorSend:true,noAutomaticSend:true,plainText:true,paginationDeduplicated:true,closeCancelsRefresh:true,layouts};
   } finally {root.unmount();container.remove();window.dualcast.readYouTubeChat=original.read;window.dualcast.sendYouTubeChat=original.send;}
 };

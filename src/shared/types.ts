@@ -389,6 +389,7 @@ export type StreamStopResult = {
 };
 
 export type StreamStatusPayload = {
+  reduceLoad?: boolean;
   restartRequired?: boolean;
   status: StreamingStatus;
   message?: string | null;

@@ -33,6 +33,7 @@ import { streamingProfile } from "../../src/shared/streamingProfile";
 type StatusPublisher = (payload: StreamStatusPayload) => void;
 
 type DestinationRuntime = {
+  outputOverflows: number[];
   outputWarningUntil?: number;
   steadySince: number | null;
   startupTimer?: NodeJS.Timeout;
@@ -67,6 +68,7 @@ let logStream: fs.WriteStream | null = null;
 let cachedHeader: Buffer | null = null;
 let vaapiDevice: string | null = null;
 let restartRequired = false;
+let reduceLoad = false;
 
 const resolveVaapiDevice = () => {
   if (process.platform !== "linux") {
@@ -261,11 +263,13 @@ export const buildFfmpegArgs = (payload: StreamStartPayload, encoder: StreamingE
   }
 
   if (payload.hasAudio) {
-    args.push("-map", "0:a:0?", "-c:a", "aac", "-b:a", `${payload.audioBitrate}k`, "-ar", "48000");
+    args.push("-map", "0:a:0", "-c:a", "aac", "-b:a", `${payload.audioBitrate}k`, "-ar", "48000");
   } else {
     args.push("-an");
   }
 
+  // Bound audio buffering if a source temporarily stops supplying pictures.
+  args.push("-max_interleave_delta", "250000", "-flush_packets", "1");
   return args;
 };
 
@@ -301,6 +305,7 @@ const publishAggregateStatus = () => {
   const stats = entries.find((entry) => entry.status === "live")?.stats ?? entries[0].stats ?? null;
 
   currentStatus = {
+    reduceLoad,
     restartRequired,
     status,
     message,
@@ -321,9 +326,10 @@ const publishAggregateStatus = () => {
   statusPublisher?.(currentStatus);
 };
 
-const requestFreshInput = (reason: string) => {
+const requestFreshInput = (reason: string, lowerBandwidth = false) => {
   if (stopRequested || restartRequired || lastStartPayload?.autoRecover !== true) return false;
   restartRequired = true;
+  reduceLoad = lowerBandwidth;
   runtimes.forEach(runtime => {
     const child = runtime.process; runtime.process = null;
     clearTimeout(runtime.startupTimer); runtime.inputQueue?.stop(); runtime.inputController?.abort();
@@ -354,6 +360,8 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   runtime.encoderFallbackPending = false;
   runtime.lastError = null;
   runtime.steadySince = null;
+  runtime.outputOverflows = [];
+  runtime.outputWarningUntil = undefined;
   publishAggregateStatus();
 
   const process = spawn(ffmpegPath, args, {
@@ -410,6 +418,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
       .split(/[\r\n]+/)
       .filter(Boolean)
       .forEach((line) => {
+        if (runtime.process !== process || stopRequested) return;
         writeStreamLog(runtime.destination.name, line);
         const stats = parseStats(line);
         if (stats) {
@@ -419,8 +428,12 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
           runtime.lastError = sanitizeLogLine(line.trim());
         }
         if (/FIFO queue full|queue overflow/i.test(line)) {
+          const now = Date.now();
+          runtime.outputOverflows = runtime.outputOverflows.filter(at => now - at < 30000);
+          runtime.outputOverflows.push(now);
           runtime.outputWarningUntil = Date.now() + 8000;
-          runtime.lastError = "The output queue briefly filled. Recovering at the next video keyframe.";
+          runtime.lastError = "Upload delivery is falling behind; some audio and video may be interrupted.";
+          if (runtime.outputOverflows.length >= 2 && requestFreshInput("Repeated upload congestion interrupted audio and video.", true)) return;
         } else if (stats && runtime.outputWarningUntil && Date.now() >= runtime.outputWarningUntil) {
           runtime.outputWarningUntil = undefined; runtime.lastError = null;
         }
@@ -479,8 +492,12 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
       runtime.status = "reconnecting";
       runtime.lastError = `${mapStreamingEncoder(failedEncoder)} is unavailable on this PC. Retrying with ${mapStreamingEncoder(runtime.encoder)}.`;
       writeStreamLog(runtime.destination.name, runtime.lastError);
+      if (requestFreshInput(runtime.lastError)) return;
+      // A new decoder cannot join dependent WebM chunks using only the first
+      // cached batch. A manual restart must also create a fresh capture.
+      runtime.status = "error";
+      runtime.lastError += " Stop and start streaming to use a fresh video input.";
       publishAggregateStatus();
-      startDestination(runtime, true);
       return;
     }
     if (!/unauthorized|forbidden|invalid.*(?:key|token)|authentication|permission denied/i.test(runtime.lastError) && requestFreshInput("The stream encoder disconnected.")) return;
@@ -575,6 +592,7 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
 
   stopRequested = false;
   restartRequired = false;
+  reduceLoad = false;
   startedAt = null;
   cachedHeader = null;
   sessionLogPath = createSessionLogPath();
@@ -584,6 +602,7 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   destinations.forEach((destination) => {
     const encoder = resolveStreamingEncoder(payload.encoder, availableEncoders);
     const runtime: DestinationRuntime = {
+      outputOverflows: [],
       steadySince: null,
       destination,
       process: null,

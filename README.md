@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.31**.
+Current release: **v0.6.32**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,15 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.31
+### What's new in v0.6.32
+
+- Keep sending video frames for still scenes, Freeze and Cut to Black without redrawing unchanged scenes. This prevents audio from accumulating behind missing video and arriving in disruptive bursts.
+- Keep one continuous Program audio output through TAKE, scene/source edits, mixer changes and microphone replacement. Streaming and recording retain their own audio tracks, including when audio is enabled after starting.
+- Cover brief upload stalls with a bounded recovery queue, limit audio/video interleaving delay, and automatically retry at lower bandwidth after repeated overflows when automatic recovery is enabled. Unrecoverable connection errors and exhausted network retries remain visible.
+- Give YouTube chat a full-width message field, character count, and a separate responsive row for Reconnect chat and Send to YouTube. Buttons wrap to individual rows in narrow docks.
+- Add a real Electron check for simultaneous stream/record continuity, and verify decoded audio, video, timing and simulated network pauses in local RTMP tests.
+
+### Included from v0.6.31
 
 - Fix browser H.264 passthrough timestamp collisions by retaining the original millisecond time base for variable-rate video.
 - Fix delayed still-window pictures and refresh after covering/uncovering a captured browser window. Stop stale duplicate capture frames, release buffered pictures without resetting the primary decoder, and bound startup fallback.

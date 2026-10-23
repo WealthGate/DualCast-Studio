@@ -25,7 +25,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const startedAtRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioTracksRef = useRef<MediaStreamTrack[]>([]);
   const canvasStreamRef = useRef<MediaStream | null>(null);
   const stopCaptureRef = useRef<(() => void) | null>(null);
   const stopRequestedRef = useRef(false);
@@ -54,12 +54,12 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     }, delay);
   };
 
-  const requestRecovery = (reason: string) => {
+  const requestRecovery = (reason: string, reduceLoad = false) => {
     if (useAppStore.getState().settings.streamAutoRecover === false) return false;
     if (stopRequestedRef.current && !recovery.current.active) return false;
     if (recovery.current.pending) return true;
     if (Date.now() - recovery.current.lastAt > 30000) recovery.current.attempts = 0;
-    recovery.current.attempts++; recovery.current.lastAt = Date.now();
+    recovery.current.attempts = Math.max(reduceLoad ? 2 : 1, recovery.current.attempts + 1); recovery.current.lastAt = Date.now();
     recovery.current.active = recovery.current.pending = true;
     recovery.current.notice = recovery.current.attempts >= 2 ? "Recovered using 720p, up to 30 fps and lower bandwidth." : "Stream reconnected with fresh video input.";
     captureErrorRef.current = null; setLastError(null); setStatus("reconnecting");
@@ -86,13 +86,13 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     stopCaptureRef.current = null;
     stopMediaStream(canvasStreamRef.current);
     canvasStreamRef.current = null;
-    audioContextRef.current?.close().catch(() => undefined);
-    audioContextRef.current = null;
+    audioTracksRef.current.forEach(track => track.stop());
+    audioTracksRef.current = [];
   };
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onStreamStatus((payload) => {
-      if (payload.restartRequired && requestRecovery(payload.message || "The stream input fell behind.")) return;
+      if (payload.restartRequired && requestRecovery(payload.message || "The stream input fell behind.", payload.reduceLoad)) return;
       const recovering = recovery.current.active;
       if (payload.status === "error") {
         recovery.current.active = recovery.current.pending = false;
@@ -199,23 +199,11 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       canvasStreamRef.current = canvasStream;
       const tracks = [...canvasStream.getVideoTracks()];
 
-      const captureAudio = settings.audioMode !== "none" && Boolean(programAudioStream?.getAudioTracks().length);
-      const audioContext = captureAudio ? new AudioContext() : null;
-      const destination = audioContext ? audioContext.createMediaStreamDestination() : null;
-      audioContextRef.current = audioContext;
-
-      if (programAudioStream && audioContext && destination && programAudioStream.getAudioTracks().length > 0) {
-        try {
-          const source = audioContext.createMediaStreamSource(programAudioStream);
-          source.connect(destination);
-        } catch {
-          setStatusMessage("Program audio is unavailable for this scene.");
-        }
-      }
-
-      if (destination) {
-        tracks.push(...destination.stream.getAudioTracks());
-      }
+      // The stable Program bus emits silence when audio is disabled. Retaining
+      // its track allows audio to be enabled later without restarting video.
+      audioTracksRef.current = (programAudioStream?.getAudioTracks() ?? [])
+        .filter(track => track.readyState === "live").map(track => track.clone());
+      tracks.push(...audioTracksRef.current);
 
       const outputStream = new MediaStream(tracks);
       const hasAudio = outputStream.getAudioTracks().length > 0;
@@ -260,6 +248,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         const options: MediaRecorderOptions & { videoKeyFrameIntervalDuration: number } = {
           mimeType: mimeType || undefined,
           videoBitsPerSecond: bitrate,
+          audioBitsPerSecond: settings.streamAudioBitrate * 1000,
           videoKeyFrameIntervalDuration: 2000
         };
         const recorder = new MediaRecorder(outputStream, options);
