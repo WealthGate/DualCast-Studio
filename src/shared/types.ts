@@ -270,6 +270,7 @@ export type SanctuaryDisplaySettings = {
 };
 
 export type SanctuaryDisplayState = {
+  exitDurationMs?: number;
   scrollingSources?: Extract<Source, { type: "scrolling-text" }>[];
   settings: SanctuaryDisplaySettings;
   text: string;
@@ -278,7 +279,17 @@ export type SanctuaryDisplayState = {
   logoUrl: string;
 };
 
+export type ServiceScheduleItem = {
+  id: string; title: string; notes: string; minutes: number;
+} & ({ kind: "scene"; scene: Scene; sources: Record<string, Source> }
+  | { kind: "slides"; slides: LowerThirdSlide[] }
+  | { kind: "note" });
+export type ServiceSchedule = {
+  id: string; name: string; date: string; items: ServiceScheduleItem[];
+};
+
 export type Settings = {
+  serviceSchedules?: ServiceSchedule[];
   sanctuaryDisplay?: SanctuaryDisplaySettings;
   audioChannelMode?: AudioChannelMode;
   swapPreviewProgram?: boolean;
@@ -435,6 +446,7 @@ export type ExportClipResult = {
 };
 
 export type ProgramState = {
+  outputExitDurationMs?: number;
   frameRate?: number;
   sanctuary?: SanctuaryDisplayState;
   programSceneId: string | null;

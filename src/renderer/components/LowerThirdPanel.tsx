@@ -503,6 +503,7 @@ const LowerThirdPanel: React.FC = () => {
           <div className="field">
             <label htmlFor="lowerThirdDuration">Animation (ms)</label>
             <input id="lowerThirdDuration" type="number" min={100} max={3000} step={50} value={lowerThird.animationDurationMs} onChange={(event) => saveLowerThird({ animationDurationMs: Number(event.target.value) })} />
+            <span className="field-help">Also sets the fade duration when stopping display outputs.</span>
           </div>
         </div>
         <div className="feature-toggle-list">

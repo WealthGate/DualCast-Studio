@@ -30,5 +30,6 @@ export const getSanctuaryDisplayState = (state: ContentState): SanctuaryDisplayS
     return source?.type === "scrolling-text" && source.enabled ? [source] : [];
   });
   return { settings: config, text, reference, textMode: state.displayTextMode, scrollingSources,
+    exitDurationMs: state.settings.lowerThird.animationDurationMs,
     logoUrl: state.settings.lowerThird.imageUrl || state.settings.lowerThird.bibleImageUrl };
 };

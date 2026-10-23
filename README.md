@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.32**.
+Current release: **v0.6.33**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,16 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.32
+### What's new in v0.6.33
+
+- Add a **Schedule** tab for saved service rundowns. Add scene/media snapshots, prepared songs/decks, Scripture references, announcements and operator notes; rename, date, reorder, duplicate and save services. Changes save automatically on this PC. Editing or selecting items does not change the live output.
+- Use **Show live**, **Previous · Live** and **Next · Live** to run the service. Navigation steps through every slide in a presentation before moving to the next item. Planned minutes and private notes help the operator; nothing advances automatically. Referenced media files must remain available on the PC.
+- Animate lower thirds out when clearing Program text, hiding Scripture, hiding the lower third, or disabling Show over Program. Respect the selected Exit animation and duration; explicitly choosing None still cuts. Independent sanctuary text fades out before being removed.
+- Fade Program and lower-third display windows before closing them, including removed display targets. Reopening an output cancels its pending exit. The Animation (ms) setting in Lower Third Studio also controls the display exit fade.
+
+See [service schedules and animated exits](docs/service-schedules-and-exits.md) for the operator workflow and verification.
+
+### Included from v0.6.32
 
 - Keep sending video frames for still scenes, Freeze and Cut to Black without redrawing unchanged scenes. This prevents audio from accumulating behind missing video and arriving in disruptive bursts.
 - Keep one continuous Program audio output through TAKE, scene/source edits, mixer changes and microphone replacement. Streaming and recording retain their own audio tracks, including when audio is enabled after starting.

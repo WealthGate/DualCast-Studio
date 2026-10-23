@@ -1,5 +1,6 @@
 import { setProgramChannelMode } from "../utils/audioChannels";
 import { createProgramAudioBus } from "../utils/programAudioBus";
+import { createVisibilityTransition, emptyLowerThirdCue, updateLowerThirdCue, LowerThirdCue } from "../utils/lowerThirdCue";
 import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { resizeCanvas, useCanvasRenderer } from "../hooks/useCanvasRenderer";
@@ -113,6 +114,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     selectedSourceId,
     isCutToBlack,
     isFrozen,
+    isLowerThirdHidden,
+    displayTextMode,
     settings,
     isProjecting,
     isLowerThirdProjecting,
@@ -141,6 +144,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     selectedSourceId: state.selectedSourceId,
     isCutToBlack: state.isCutToBlack,
     isFrozen: state.isFrozen,
+    isLowerThirdHidden: state.isLowerThirdHidden,
+    displayTextMode: state.displayTextMode,
     settings: state.settings,
     isProjecting: state.isProjecting,
     isLowerThirdProjecting: state.isLowerThirdProjecting,
@@ -204,8 +209,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const programMixGainRef = useRef<GainNode | null>(null);
   const programAudioMonitorGainRef = useRef<GainNode | null>(null);
   const programAudioBusRef = useRef<ReturnType<typeof createProgramAudioBus> | null>(null);
-  const previewLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
-  const programLowerThirdCueRef = useRef<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>({ previous: null, current: null, changedAt: performance.now() });
+  const previewLowerThirdCueRef = useRef(emptyLowerThirdCue());
+  const programLowerThirdCueRef = useRef(emptyLowerThirdCue());
+  const outputLowerThirdCueRef = useRef(emptyLowerThirdCue());
+  const lowerThirdVisibility = useRef(createVisibilityTransition());
 
   const programScene = programSceneSnapshot;
   const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
@@ -273,18 +280,14 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   }, [manualBlend]);
 
   useEffect(() => {
-    const next = settings.lowerThird.slides.find((slide) => slide.id === settings.lowerThird.activeSlideId) ?? null;
-    const cue = previewLowerThirdCueRef.current;
-    if (cue.current?.id !== next?.id) previewLowerThirdCueRef.current = { previous: cue.current, current: next, changedAt: performance.now() };
-    else cue.current = next;
-  }, [settings.lowerThird.activeSlideId, settings.lowerThird.slides]);
-
-  useEffect(() => {
-    const next = settings.lowerThird.slides.find((slide) => slide.id === settings.lowerThird.programSlideId) ?? null;
-    const cue = programLowerThirdCueRef.current;
-    if (cue.current?.id !== next?.id) programLowerThirdCueRef.current = { previous: cue.current, current: next, changedAt: performance.now() };
-    else cue.current = next;
-  }, [settings.lowerThird.programSlideId, settings.lowerThird.slides]);
+    const now = performance.now(), config = settings.lowerThird;
+    const slide = (id: string | null) => isLowerThirdHidden ? null : displayTextMode === "logo"
+      ? { id: "output-logo", text: "" } : config.slides.find(item => item.id === id) ?? null;
+    previewLowerThirdCueRef.current = updateLowerThirdCue(previewLowerThirdCueRef.current, slide(config.activeSlideId), displayTextMode, now);
+    programLowerThirdCueRef.current = updateLowerThirdCue(programLowerThirdCueRef.current, config.showOnProgram ? slide(config.programSlideId) : null, displayTextMode, now);
+    outputLowerThirdCueRef.current = updateLowerThirdCue(outputLowerThirdCueRef.current, slide(config.programSlideId), displayTextMode, now);
+    lowerThirdVisibility.current.set(!isLowerThirdHidden, now, config.exitAnimation === "none" ? 1 : config.animationDurationMs);
+  }, [settings.lowerThird, isLowerThirdHidden, displayTextMode]);
 
   useEffect(() => {
     if (!settings.lowerThird.imageUrl) {
@@ -809,7 +812,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     ctx: CanvasRenderingContext2D,
     source: Source,
     canvasWidth: number,
-    canvasHeight: number
+    canvasHeight: number,
+    bypassVisibility = false
   ) => {
     if (!source.enabled || source.type === "audio") {
       return;
@@ -823,7 +827,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const rotation = ((source.rotation ?? 0) * Math.PI) / 180;
     const media = sourceMediaRef.current.get(source.id);
 
-    if (source.type === "text" && source.data.role === "lower-third" && useAppStore.getState().isLowerThirdHidden) return;
+    if (source.type === "text" && source.data.role === "lower-third" && !bypassVisibility) {
+      const opacity = lowerThirdVisibility.current.value(performance.now());
+      if (opacity <= 0) return;
+      ctx.save(); ctx.globalAlpha *= opacity;
+      try { drawSource(ctx, source, canvasWidth, canvasHeight, true); } finally { ctx.restore(); }
+      return;
+    }
     if (useAppStore.getState().displayTextMode === "logo") return;
     if (source.type === "scrolling-text") {
       if (!scrollingTextRef.current) scrollingTextRef.current = new ScrollingTextRenderer();
@@ -967,29 +977,17 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     canvasWidth: number,
     canvasHeight: number,
     now: number,
-    cueRef: React.MutableRefObject<{ previous: LowerThirdSlide | null; current: LowerThirdSlide | null; changedAt: number }>
+    cueRef: React.MutableRefObject<LowerThirdCue>
   ) => {
-    if (useAppStore.getState().isLowerThirdHidden) return;
     const config = settings.lowerThird;
     const cue = cueRef.current;
-    const mode = useAppStore.getState().displayTextMode;
-    if (mode === "logo") {
-      const image = lowerThirdImageRef.current ?? bibleImageRef.current;
-      if (image) {
-        const size = Math.min(canvasWidth, canvasHeight) * 0.4;
-        const ratio = Math.min(size / image.naturalWidth, size / image.naturalHeight);
-        const w = image.naturalWidth * ratio, h = image.naturalHeight * ratio;
-        ctx.drawImage(image, (canvasWidth - w) / 2, (canvasHeight - h) / 2, w, h);
-      }
-      return;
-    }
     if (!cue.current && !cue.previous) return;
     const duration = Math.max(100, config.animationDurationMs);
     const progress = Math.min(1, Math.max(0, (now - cue.changedAt) / duration));
     const areaHeight = canvasHeight * (config.heightPercent / 100);
     const areaY = config.position === "top" ? 0 : canvasHeight - areaHeight;
 
-    const drawSlide = (slide: LowerThirdSlide, animation: LowerThirdAnimation, phase: "enter" | "exit", amount: number) => {
+    const drawSlide = (slide: LowerThirdSlide, animation: LowerThirdAnimation, phase: "enter" | "exit", amount: number, mode: LowerThirdCue["mode"]) => {
       const visible = phase === "enter" ? amount : 1 - amount;
       ctx.save();
       if (animation === "fade") ctx.globalAlpha = visible;
@@ -1008,6 +1006,16 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         ctx.beginPath();
         ctx.rect(phase === "enter" ? 0 : canvasWidth - width, areaY, width, areaHeight);
         ctx.clip();
+      }
+
+      if (mode === "logo") {
+        const image = lowerThirdImageRef.current ?? bibleImageRef.current;
+        if (image) {
+          const ratio = Math.min(canvasWidth, canvasHeight) * 0.4 / Math.max(image.naturalWidth, image.naturalHeight);
+          const w = image.naturalWidth * ratio, h = image.naturalHeight * ratio;
+          ctx.drawImage(image, (canvasWidth - w) / 2, (canvasHeight - h) / 2, w, h);
+        }
+        ctx.restore(); return;
       }
 
       ctx.save();
@@ -1096,8 +1104,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       ctx.restore();
     };
 
-    if (cue.previous && progress < 1) drawSlide(cue.previous, config.exitAnimation, "exit", progress);
-    if (cue.current) drawSlide(cue.current, config.entranceAnimation, "enter", progress);
+    if (cue.previous && progress < 1 && config.exitAnimation !== "none") drawSlide(cue.previous, config.exitAnimation, "exit", progress, cue.previousMode);
+    if (cue.current) drawSlide(cue.current, config.entranceAnimation, "enter", progress, cue.mode);
     if (progress >= 1) cue.previous = null;
   };
 
@@ -1269,15 +1277,13 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     if (!previewWarmupRef.current(previewScene, sceneReady(previewScene, sources), now)) return false;
     const state = useAppStore.getState();
     if (!previewInvalidationRef.current([previewScene, sources, mediaRevision, settings.lowerThird, state.displayTextMode, state.isLowerThirdHidden, previewBitmapSize.width, previewBitmapSize.height, ...scenePixels(previewScene, sources)], now,
-      animatedScene(previewScene, sources) || now - previewLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs)) return false;
+      animatedScene(previewScene, sources) || lowerThirdVisibility.current.active(now, 100) || now - previewLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100)) return false;
     ctx.save();
     ctx.scale(previewBitmapSize.width / programSize.width, previewBitmapSize.height / programSize.height);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, programSize.width, programSize.height);
     drawScene(ctx, previewScene, sources, programSize.width, programSize.height, settings.lowerThird.activeSlideId);
-    if (settings.lowerThird.activeSlideId || useAppStore.getState().displayTextMode === "logo") {
-      drawConfiguredLowerThird(ctx, programSize.width, programSize.height, now, previewLowerThirdCueRef);
-    }
+    drawConfiguredLowerThird(ctx, programSize.width, programSize.height, now, previewLowerThirdCueRef);
     ctx.restore();
   }, showPreview);
 
@@ -1285,7 +1291,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const canvas = ctx.canvas;
     const state = useAppStore.getState();
     if (!programInvalidationRef.current([programScene, programSources, mediaRevision, settings.lowerThird, state.displayTextMode, state.isLowerThirdHidden, isFrozen, isCutToBlack, manualBlend, programSize.width, programSize.height, ...(isFrozen || isCutToBlack ? [] : scenePixels(programScene, programSources)), ...(!isFrozen && !isCutToBlack && manualBlend > 0 ? scenePixels(previewScene, sources) : [])], now,
-      !isFrozen && !isCutToBlack && (Boolean(transitionRef.current) || manualBlend > 0 || animatedScene(programScene, programSources) || now - programLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs))) return false;
+      !isFrozen && !isCutToBlack && (Boolean(transitionRef.current) || manualBlend > 0 || lowerThirdVisibility.current.active(now, 100) || animatedScene(programScene, programSources) || now - programLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100))) return false;
     if (isFrozen && !isCutToBlack && frozenFrameRef.current) {
       ctx.drawImage(frozenFrameRef.current, 0, 0, canvas.width, canvas.height);
       publishProgramFrameRef.current(canvas, now);
@@ -1312,7 +1318,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
       }
     }
-    if (!isCutToBlack && (useAppStore.getState().displayTextMode === "logo" || (settings.lowerThird.showOnProgram && settings.lowerThird.programSlideId))) {
+    if (!isCutToBlack) {
       drawConfiguredLowerThird(ctx, canvas.width, canvas.height, now, programLowerThirdCueRef);
     }
     publishProgramFrameRef.current(canvas, now);
@@ -1378,8 +1384,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
           }
         });
       }
-      if (!isCutToBlack && (settings.lowerThird.programSlideId || useAppStore.getState().displayTextMode === "logo")) {
-        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), programLowerThirdCueRef);
+      if (!isCutToBlack) {
+        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), outputLowerThirdCueRef);
       }
       encoder.encode(canvas);
     };
@@ -1402,7 +1408,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     programSize.height,
     programSize.width,
     settings.lowerThird,
-    programSources
+    programSources,
+    isLowerThirdHidden,
+    displayTextMode
   ]);
 
   const hasPreviewScene = Boolean(previewScene && previewScene.sourceIds.length > 0);

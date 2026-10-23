@@ -14,6 +14,7 @@ if (!process.versions.electron) {
     if (motion.status !== 0) throw Error("Could not generate moving-video fixture: " + motion.stderr);
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/cursorFreeCaptureService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "ffmpeg-static"], outfile: path.join(root, "tmp/capture-verification.cjs") });
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/projectionService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron"], outfile: path.join(root, "tmp/projection-verification.cjs") });
+    if(process.argv.includes("--service-features-only")) require("esbuild").buildSync({entryPoints:[path.join(root,"electron/services/settingsService.ts")],bundle:true,platform:"node",format:"cjs",external:["electron","electron-store"],outfile:path.join(root,"tmp/schedule-settings-verification.cjs")});
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/browserSourceService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "electron-log"], outfile: path.join(root, "tmp/browser-verification.cjs") });
     if(process.argv.includes("--settings-only")) require("esbuild").buildSync({entryPoints:[path.join(root,"electron/services/hardwareService.ts")],bundle:true,platform:"node",format:"cjs",external:["electron","electron-log","ffmpeg-static"],outfile:path.join(root,"tmp/hardware-verification.cjs")});
     const vite = spawn(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5174", "--strictPort"], { cwd: root, env, windowsHide: true, stdio: "ignore" });
@@ -45,6 +46,7 @@ if (!process.versions.electron) {
       await window.loadURL("http://127.0.0.1:5174");
       window.showInactive();
       let result = {};
+      if(process.argv.includes("--service-features-only")){console.log(JSON.stringify(await require('./verify-service-features.cjs')(window,root)));app.exit(0);return;}
       if(process.argv.includes("--continuity-only")){console.log(JSON.stringify(await require('./verify-broadcast-continuity.cjs')(window,root)));app.exit(0);return;}
       if(process.argv.includes("--youtube-chat-only")){console.log(JSON.stringify(await window.webContents.executeJavaScript(`(${require('./verify-youtube-chat.cjs').toString()})(${JSON.stringify(root.replace(/\\/g,'/'))})`)));app.exit(0);return;}
       if(process.argv.includes("--browser-fixture-only")){const data=await window.webContents.executeJavaScript(`(${require('./verify-browser-stream-fixture.cjs').toString()})()`);fs.writeFileSync(path.join(root,'tmp/browser-stream.webm'),Buffer.from(data,'base64'));console.log('Actual browser H.264/Opus fixture saved.');app.exit(0);return;}

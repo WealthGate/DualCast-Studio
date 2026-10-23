@@ -57,4 +57,11 @@ describe("dock layout", () => {
     expect(migrated.right[0].panelIds).toEqual(["streaming", "venue", "lower-third", "scripture"]);
     expect(migrateDockLayout(layout(), panelIds, 3).right[0].panelIds).toEqual(["streaming", "venue"]);
   });
+
+  it("adds Schedule to existing layouts without restoring older deliberately hidden docks", () => {
+    const panels = new Set(["scenes", "streaming", "venue", "controls", "lower-third", "scripture", "schedule"]);
+    const migrated = migrateDockLayout(layout(), panels, 3);
+    expect(migrated.right[0].panelIds).toEqual(["streaming", "venue", "schedule"]);
+    expect(migrateDockLayout(migrated, panels, 4)).toEqual(migrated);
+  });
 });

@@ -19,6 +19,7 @@ import {
 import { STREAMING_ENCODER_OPTIONS } from "../../src/shared/streamingEncoders";
 import { normalizeYouTubeBroadcastSettings } from "../../src/shared/streamingPlatforms";
 import { normalizeStudioState } from "../../src/shared/settings";
+import { normalizeServiceSchedules } from "../../src/shared/serviceSchedules";
 import { normalizeVideoResolution } from "../../src/shared/recording";
 
 let store: Store<Settings> | null = null;
@@ -136,7 +137,8 @@ const createStore = () => {
       lowerThird: defaultLowerThird,
       networkOutput: defaultNetworkOutput,
       integrations: defaultIntegrations,
-      studioState: defaultStudioState
+      studioState: defaultStudioState,
+      serviceSchedules: []
     },
     schema: {
       saveDirectory: { type: "string" },
@@ -171,7 +173,8 @@ const createStore = () => {
       lowerThird: { type: "object" },
       networkOutput: { type: "object" },
       integrations: { type: "object" },
-      studioState: { type: "object" }
+      studioState: { type: "object" },
+      serviceSchedules: { type: "array" }
     }
   });
 };
@@ -317,12 +320,14 @@ export const getSettings = (): Settings => {
       operatorPin: String(stored.networkOutput?.operatorPin ?? defaultNetworkOutput.operatorPin).slice(0, 16) || defaultNetworkOutput.operatorPin
     },
     integrations: { ...defaultIntegrations, ...(stored.integrations ?? {}) },
-    studioState: normalizeStudioState(stored.studioState)
+    studioState: normalizeStudioState(stored.studioState),
+    serviceSchedules: normalizeServiceSchedules(stored.serviceSchedules)
   };
 };
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (Array.isArray(update.serviceSchedules)) sanitized.serviceSchedules = normalizeServiceSchedules(update.serviceSchedules);
   if (typeof update.streamPassthrough === "boolean") sanitized.streamPassthrough = update.streamPassthrough;
   if (typeof update.streamAutoRecover === "boolean") sanitized.streamAutoRecover = update.streamAutoRecover;
   if (["auto", "high-performance", "power-saving", "software"].includes(update.graphicsMode ?? "")) sanitized.graphicsMode = update.graphicsMode;

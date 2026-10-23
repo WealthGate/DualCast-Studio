@@ -4,9 +4,11 @@ import { ProgramState, ProjectionSignal, NativeCaptureFrame } from "../../src/sh
 import { IpcChannels } from "../../src/shared/ipc";
 import { createLatestFrameRelay } from "./latestFrameRelay";
 import { createH264Relay } from "./h264Relay";
+import { createOutputWindowExit } from "./outputWindowExit";
 
 const programWindows = new Map<string, BrowserWindow>();
 const lowerThirdWindows = new Map<string, BrowserWindow>();
+const outputExit = createOutputWindowExit();
 let lastProgramState: ProgramState | null = null;
 const relays = new Map<number, ReturnType<typeof createLatestFrameRelay>>();
 const videoRelays = new Map<number, ReturnType<typeof createH264Relay>>();
@@ -74,6 +76,7 @@ const createOutputWindow = async (
 ) => {
   const existing = collection.get(displayId);
   if (existing && !existing.isDestroyed()) {
+    outputExit.cancel(existing);
     existing.setBounds(getDisplayBounds(displayId));
     existing.show();
     return existing;
@@ -143,36 +146,36 @@ export const openProjectionWindows = async (displayIds: string[]) => {
   const targets = Array.from(new Set(displayIds.filter(Boolean)));
   await Promise.all(targets.map((displayId) => createOutputWindow(displayId, "program", programWindows)));
 
-  Array.from(programWindows.entries()).forEach(([displayId, window]) => {
+  await Promise.all(Array.from(programWindows.entries()).map(async ([displayId, window]) => {
     if (!targets.includes(displayId) && !window.isDestroyed()) {
-      window.close();
+      await outputExit.close(window, lastProgramState?.outputExitDurationMs);
     }
-  });
+  }));
 };
 
 export const closeProjectionWindows = async () => {
-  Array.from(programWindows.values()).forEach((window) => {
+  await Promise.all(Array.from(programWindows.values()).map(async (window) => {
     if (!window.isDestroyed()) {
-      window.close();
+      await outputExit.close(window, lastProgramState?.outputExitDurationMs);
     }
-  });
+  }));
 };
 
 export const openLowerThirdWindow = async (displayId: string) => {
-  Array.from(lowerThirdWindows.entries()).forEach(([currentId, window]) => {
+  await Promise.all(Array.from(lowerThirdWindows.entries()).map(async ([currentId, window]) => {
     if (currentId !== displayId && !window.isDestroyed()) {
-      window.close();
+      await outputExit.close(window, lastProgramState?.outputExitDurationMs);
     }
-  });
+  }));
   await createOutputWindow(displayId, "lower-third", lowerThirdWindows);
 };
 
 export const closeLowerThirdWindow = async () => {
-  Array.from(lowerThirdWindows.values()).forEach((window) => {
+  await Promise.all(Array.from(lowerThirdWindows.values()).map(async (window) => {
     if (!window.isDestroyed()) {
-      window.close();
+      await outputExit.close(window, lastProgramState?.outputExitDurationMs);
     }
-  });
+  }));
 };
 
 export const setProgramState = (state: ProgramState) => {

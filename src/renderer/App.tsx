@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Header from "./components/Header";
 import SettingsPanel from "./components/SettingsPanel";
 import StreamingPanel from "./components/StreamingPanel";
+import ServiceSchedulePanel from "./components/ServiceSchedulePanel";
 import PreviewProgram from "./components/PreviewProgram";
 import VenuePanel from "./components/VenuePanel";
 import EditorPanel from "./components/EditorPanel";
@@ -130,6 +131,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     window.dualcast.updateProgramState({
+      outputExitDurationMs: settings.lowerThird.animationDurationMs,
       frameRate: settings.frameRate,
       programSceneId,
       isCutToBlack,
@@ -247,6 +249,7 @@ const App: React.FC = () => {
   };
 
   const dockPanels: DockPanelDefinition[] = [
+    { id: "schedule", title: "Schedule", content: <ServiceSchedulePanel /> },
     { id: "scenes", title: "Scenes", content: <ScenesPanel directToProgram={viewMode === "program-focus"} /> },
     { id: "sources", title: "Sources", content: <SceneSourcesPanel followProgram={viewMode === "program-focus"} /> },
     { id: "audio", title: "Audio Mixer", content: <AudioMixerPanel /> },
