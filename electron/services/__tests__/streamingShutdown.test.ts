@@ -62,7 +62,7 @@ describe("stream shutdown", () => {
     setStreamStatusPublisher(publish);
     publish.mockClear();
     old.process.stdin.emit("error", new Error("write EOF"));
-    old.process.stderr.emit("data", "frame= 100 fps=30");
+    old.process.stderr.emit("data", "frame= 100 fps=30\r");
     old.process.emit("error", new Error("old process"));
     old.process.emit("close", 1, null);
     expect(publish).not.toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe("stream shutdown", () => {
     const child = encoder();
     mocks.spawn.mockReturnValue(child.process);
     await startStreaming(payload);
-    child.process.stderr.emit("data", "frame= 30 fps=30 time=00:00:01.00");
+    child.process.stderr.emit("data", "frame= 30 fps=30 time=00:00:01.00\r");
     const pending = sendStreamChunk(new Uint8Array([1, 2, 3]));
     await vi.advanceTimersByTimeAsync(1500);
     await pending;
@@ -94,7 +94,7 @@ describe("stream shutdown", () => {
     const child = encoder(); mocks.spawn.mockReturnValue(child.process);
     const publish = vi.fn(); setStreamStatusPublisher(publish);
     await startStreaming(payload); await sendStreamChunk(new Uint8Array([1]));
-    child.process.stderr.emit("data", "frame= 1 fps=0.0 time=00:00:00.00");
+    child.process.stderr.emit("data", "frame= 1 fps=0.0 time=00:00:00.00\r");
     await vi.advanceTimersByTimeAsync(1500);
     expect(child.process.stdin.destroyed).toBe(false);
     expect(publish.mock.lastCall?.[0].status).toBe("connecting");
@@ -125,7 +125,7 @@ describe("stream shutdown", () => {
   it("recognizes sustained progress when FFmpeg batches carriage-return status lines", async () => {
     const child=encoder(); mocks.spawn.mockReturnValue(child.process);
     const publish=vi.fn();setStreamStatusPublisher(publish);await startStreaming(payload);
-    child.process.stderr.emit("data","frame= 0 fps=0.0\rframe= 1 fps=0.0\rframe= 30 fps=30 time=00:00:01.00\r");
+    child.process.stderr.emit("data","frame= 0 fps=0.0\rframe= 1 fps=0.0\rframe= 30 fps=30 time=00:00:01.00\r\r");
     expect(publish.mock.lastCall?.[0].status).toBe("live");
     expect(publish.mock.lastCall?.[0].stats.fps).toBe(30);
     await vi.advanceTimersByTimeAsync(10000);
@@ -140,22 +140,19 @@ describe("stream shutdown", () => {
     expect(args).not.toContain("nobuffer");
     expect(args[args.indexOf("-g") + 1]).toBe("60");
     expect(args).toContain("nal-hrd=cbr:force-cfr=1");
-    expect(args[args.indexOf("-fifo_options") + 1]).toContain("drop_pkts_on_overflow=1");
+    expect(args[args.indexOf("-fifo_options") + 1]).toContain("drop_pkts_on_overflow=0");
   });
 
-  it("reports sub-real-time delivery and output overflow to the studio", async () => {
+  it("reports sub-real-time delivery and actionable output congestion to the studio", async () => {
     const child = encoder();
     mocks.spawn.mockReturnValue(child.process);
     const publish = vi.fn();
     setStreamStatusPublisher(publish);
     await startStreaming(payload);
-    child.process.stderr.emit("data", "frame= 100 fps=24 time=00:00:03.30 speed=0.81x");
+    child.process.stderr.emit("data", "frame= 100 fps=24 time=00:00:03.30 speed=0.81x\r");
     expect(publish.mock.lastCall?.[0].stats.speed).toBe(0.81);
-    child.process.stderr.emit("data", "FIFO queue full");
-    expect(publish.mock.lastCall?.[0].lastError).toContain("Upload delivery is falling behind");
-    await vi.advanceTimersByTimeAsync(8000);
-    child.process.stderr.emit("data", "frame= 300 fps=30 time=00:00:10.00 speed=1.01x");
-    expect(publish.mock.lastCall?.[0].lastError).toBeNull();
+    child.process.stderr.emit("data", "FIFO queue full\r");
+    expect(publish.mock.lastCall?.[0].lastError).toContain("cannot sustain the current video bitrate");
   });
 
   it("reuses compatible H.264 without scaling, duplicating or encoding video a second time", () => {
@@ -170,9 +167,9 @@ describe("stream shutdown", () => {
     const child = encoder(); mocks.spawn.mockReturnValue(child.process);
     const publish = vi.fn(); setStreamStatusPublisher(publish);
     await startStreaming({ ...payload, copyVideo: true, inputVideoCodec: "h264" });
-    child.process.stderr.emit("data", "size=0kB time=N/A bitrate=N/A speed=N/A");
+    child.process.stderr.emit("data", "size=0kB time=N/A bitrate=N/A speed=N/A\r");
     expect(publish.mock.lastCall?.[0].status).toBe("connecting");
-    child.process.stderr.emit("data", "size=N/A time=00:00:01.00 bitrate=N/A speed=1.02x");
+    child.process.stderr.emit("data", "size=N/A time=00:00:01.00 bitrate=N/A speed=1.02x\r");
     expect(publish.mock.lastCall?.[0].status).toBe("live");
     await vi.advanceTimersByTimeAsync(10000);
     expect(child.process.kill).not.toHaveBeenCalled();
@@ -181,7 +178,7 @@ describe("stream shutdown", () => {
   it("requests fresh input after a live stall instead of stopping automatic-recovery clients", async () => {
     const child=encoder();mocks.spawn.mockReturnValue(child.process);
     const publish=vi.fn();setStreamStatusPublisher(publish);await startStreaming({...payload,autoRecover:true});
-    child.process.stderr.emit("data","frame= 30 fps=30 time=00:00:01.00");
+    child.process.stderr.emit("data","frame= 30 fps=30 time=00:00:01.00\r");
     await sendStreamChunk(new Uint8Array([1]));await vi.advanceTimersByTimeAsync(1500);
     expect(publish.mock.lastCall?.[0].status).toBe("reconnecting");
     expect(publish.mock.lastCall?.[0].restartRequired).toBe(true);
@@ -193,17 +190,24 @@ describe("stream shutdown", () => {
     expect(publish.mock.lastCall?.[0].restartRequired).toBe(false);
   });
 
-  it("lowers bandwidth after repeated output overflows instead of looping keyframe recovery", async () => {
+  it("lowers bandwidth on the first output overflow instead of waiting for closely spaced failures", async () => {
     const child = encoder(); mocks.spawn.mockReturnValue(child.process);
     const publish = vi.fn(); setStreamStatusPublisher(publish);
     await startStreaming({ ...payload, autoRecover: true });
-    child.process.stderr.emit("data", "frame= 30 fps=30 time=00:00:01.00");
-    child.process.stderr.emit("data", "FIFO queue full");
-    expect(publish.mock.lastCall?.[0].restartRequired).toBe(false);
-    await vi.advanceTimersByTimeAsync(5000);
-    child.process.stderr.emit("data", "FIFO queue full");
+    child.process.stderr.emit("data", "frame= 30 fps=30 time=00:00:01.00\r");
+    child.process.stderr.emit("data", "FIFO queue full\r");
     expect(publish.mock.lastCall?.[0]).toMatchObject({ status: "reconnecting", restartRequired: true, reduceLoad: true });
     expect(child.process.kill).toHaveBeenCalledWith("SIGKILL");
+  });
+
+  it("parses FFmpeg error lines split across operating-system pipe chunks", async () => {
+    const child = encoder(); mocks.spawn.mockReturnValue(child.process);
+    const publish = vi.fn(); setStreamStatusPublisher(publish);
+    await startStreaming({ ...payload, autoRecover: true });
+    child.process.stderr.emit("data", "[fifo] FIFO que");
+    expect(publish.mock.lastCall?.[0].restartRequired).toBe(false);
+    child.process.stderr.emit("data", "ue full\r\r");
+    expect(publish.mock.lastCall?.[0]).toMatchObject({ restartRequired: true, reduceLoad: true });
   });
 
   it("requires promised audio and bounds interleaving when video pauses", () => {

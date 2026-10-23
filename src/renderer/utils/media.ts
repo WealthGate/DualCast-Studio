@@ -1,5 +1,6 @@
 import { getCursorFreeStream } from "./cursorFreeCapture";
 import type { StreamingEncoder } from "../../shared/types";
+import { unprocessedAudioConstraints } from "../../shared/programAudio";
 
 export const getDisplayStream = async (
   sourceId: string,
@@ -15,6 +16,7 @@ export const getDisplayStream = async (
   const constraints = {
     audio: includeAudio
       ? {
+          ...unprocessedAudioConstraints(),
           mandatory: {
             chromeMediaSource: "desktop",
             chromeMediaSourceId: sourceId

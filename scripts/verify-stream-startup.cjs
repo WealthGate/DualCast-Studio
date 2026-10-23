@@ -2,15 +2,20 @@
 // receiver. No credentials or external broadcast services are used.
 const fs = require('fs'), path = require('path'), net = require('net');
 const { spawn, spawnSync } = require('child_process');
+const { Transform } = require('stream');
 const root = path.resolve(__dirname, '..'), ffmpeg = require('ffmpeg-static');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const temp = path.join(root, 'tmp/stream-startup');
 const ci = process.argv.includes('--ci');
-const width = ci ? 1280 : 1920, height = ci ? 720 : 1080, fps = ci ? 30 : 60;
+const width = ci ? 1280 : 1920, height = ci ? 720 : 1080;
+const fps = Number(process.argv.find(arg => arg.startsWith('--fps='))?.split('=')[1]) || (ci ? 30 : 60);
+const preset = process.argv.find(arg => arg.startsWith('--preset='))?.split('=')[1] || 'high';
 const seconds = Number(process.argv.find(arg => arg.startsWith('--seconds='))?.split('=')[1]) || (ci ? 6 : 10);
 const copyVideo = process.argv.includes('--copy-video');
 const inputFile = process.argv.find(arg => arg.startsWith('--input='))?.slice(8);
 const pauseOutputMs = Number(process.argv.find(arg => arg.startsWith('--pause-output-ms='))?.split('=')[1]) || 0;
+const uploadKbps = Number(process.argv.find(arg => arg.startsWith('--upload-kbps='))?.split('=')[1]) || 0;
+const expectCongestion = process.argv.includes('--expect-congestion');
 fs.mkdirSync(temp, { recursive: true });
 let service, source, receiver, proxy;
 const sockets = new Set(), proxyTimers = new Set();
@@ -37,13 +42,36 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
   const reservation = net.createServer(); await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
   const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
   const endpoint = `rtmp://127.0.0.1:${port}/live/probe`;
-  let publishPort = port;
-  if(pauseOutputMs){
+  let publishPort = port, uploadedBytes = 0;
+  if(pauseOutputMs || uploadKbps){
     proxy=net.createServer(client=>{
       const upstream=net.connect(port,'127.0.0.1');sockets.add(client);sockets.add(upstream);
       client.on('error',()=>upstream.destroy());upstream.on('error',()=>client.destroy());
-      client.pipe(upstream);upstream.pipe(client);
-      proxyTimers.add(setTimeout(()=>{client.pause();proxyTimers.add(setTimeout(()=>client.resume(),pauseOutputMs));},3500));
+      if(uploadKbps){
+        // Pace every byte delivered to ingest; a paused socket alone can let
+        // OS TCP buffers absorb the whole test and never pressure the sender.
+        let sendAt=Date.now();
+        const limiter=new Transform({transform(chunk,_encoding,done){
+          let offset=0;
+          const sliceBytes=Math.max(256,Math.min(65536,Math.floor(uploadKbps*1000/8/20)));
+          const next=()=>{
+            if(client.destroyed||upstream.destroyed){done();return;}
+            const piece=chunk.subarray(offset,Math.min(chunk.length,offset+sliceBytes));offset+=piece.length;
+            this.push(piece);uploadedBytes+=piece.length;
+            // Carry timer overshoot into the next deadline. On Windows,
+            // sleeping for each tiny TCP chunk can otherwise turn 4.5 Mb/s
+            // into well below 1 Mb/s despite the configured test capacity.
+            sendAt=Math.max(sendAt,Date.now()-50)+piece.length*8/uploadKbps;
+            const delay=sendAt-Date.now();
+            if(delay<=1){if(offset<chunk.length)next();else done();return;}
+            const timer=setTimeout(()=>{proxyTimers.delete(timer);if(offset<chunk.length)next();else done();},delay);
+            proxyTimers.add(timer);
+          };next();
+        }});
+        limiter.on('error',()=>client.destroy());client.pipe(limiter).pipe(upstream);
+      }else client.pipe(upstream);
+      upstream.pipe(client);
+      if(pauseOutputMs)proxyTimers.add(setTimeout(()=>{client.pause();proxyTimers.add(setTimeout(()=>client.resume(),pauseOutputMs));},3500));
     });
     await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));publishPort=proxy.address().port;
   }
@@ -52,12 +80,14 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
   let receivedFrames = 0, receiverError = '';
   receiver.stdout.on('data', data => { for(const match of data.toString().matchAll(/frame=\s*(\d+)/g)) receivedFrames=Number(match[1]); });
   receiver.stderr.on('data', data => {receiverError=(receiverError+data.toString()).slice(-2000);});
-  const states = []; let firstLive = null, fatal = null;
+  const states = []; let firstLive = null, fatal = null, congestion = null;
+  let reportCongestion;
+  const congested = new Promise(resolve => { reportCongestion=resolve; });
   const began = Date.now();
-  service.setStreamStatusPublisher(state => { states.push(state.status); if(state.status==='live') firstLive ??= Date.now()-began; if(state.status==='error') fatal=state.lastError||state.message; });
+  service.setStreamStatusPublisher(state => { states.push(state.status); if(state.status==='live') firstLive ??= Date.now()-began; if(state.status==='error') fatal=state.lastError||state.message; if(state.restartRequired&&state.reduceLoad){congestion ??= Date.now()-began;reportCongestion();} });
   try {
     await wait(1000);
-    const started = await service.startStreaming({destinations:[{id:'probe',name:'Local integration test',enabled:true,rtmpUrl:`rtmp://127.0.0.1:${publishPort}/live`,streamKey:'probe'}],hasAudio:true,preset:'high',resolution:ci?'720p':'1080p',fps,audioBitrate:192,encoder,copyVideo,inputVideoCodec:'h264'});
+    const started = await service.startStreaming({destinations:[{id:'probe',name:'Local integration test',enabled:true,rtmpUrl:`rtmp://127.0.0.1:${publishPort}/live`,streamKey:'probe'}],hasAudio:true,preset,resolution:ci?'720p':'1080p',fps,audioBitrate:192,encoder,copyVideo,inputVideoCodec:'h264',autoRecover:expectCongestion});
     if(!started.ok)throw Error(started.message);
     console.log('Streaming integration: local RTMP output started.');
     source = spawn(ffmpeg, ['-hide_banner','-loglevel','error','-re','-i',fixture,'-c','copy','-cluster_time_limit','250','-flush_packets','1','-f','matroska','pipe:1'], {windowsHide:true});
@@ -67,6 +97,15 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
     source.stderr.resume(); source.stdout.on('data', chunk => pieces.push(chunk));
     source.once('close', () => { clearInterval(timer); flush(); });
     const ended = new Promise(resolve => source.once('close', resolve));
+    if(expectCongestion){
+      await Promise.race([congested,ended,wait(Math.min(seconds+4,40)*1000)]);
+      source.kill('SIGKILL');await wait(300);
+      const transportLog=fs.readFileSync(service.getStreamLogPath(),'utf8');
+      if(!congestion||fatal||congestion>40000||uploadedBytes<16000)throw Error('Insufficient upload did not request a bounded lower-bandwidth recovery over a working local transport.');
+      if(/FIFO queue full|queue overflow|FIFO queue flushed/i.test(transportLog))throw Error('Congestion discarded packets before adapting.');
+      console.log(JSON.stringify({encoder,copyVideo,uploadKbps,uploadedBytes,congestionRecoveryMs:congestion,lowerBandwidthRequested:true,discardedPackets:false,statuses:[...new Set(states)],error:fatal}));
+      return;
+    }
     const sourceCode = await Promise.race([ended, wait((seconds+4)*1000).then(()=>-1)]);
     if(sourceCode!==0)throw Error('Timed source failed or exceeded its deadline: '+sourceCode);
     await wait(500);
@@ -82,8 +121,9 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
     const audioTimes=[...(decoded.stderr||'').matchAll(/Parsed_ashowinfo[^\n]*pts_time:([0-9.]+)/g)].map(m=>Number(m[1]));
     const avDriftMs=Math.round(Math.abs(videoTimes.at(-1)-audioTimes.at(-1))*1000);
     const maxAudioGapMs=Math.round(Math.max(...audioTimes.slice(1).map((time,i)=>time-audioTimes[i]))*1000);
-    const result = {encoder,copyVideo,pauseOutputMs,width,height,fps,seconds,firstLiveMs:firstLive,receivedFrames,audioFrames:audioTimes.length,avDriftMs,maxAudioGapMs,statuses:[...new Set(states)],error:fatal};
+    const result = {encoder,copyVideo,preset,pauseOutputMs,uploadKbps,uploadedBytes,width,height,fps,seconds,firstLiveMs:firstLive,receivedFrames,audioFrames:audioTimes.length,avDriftMs,maxAudioGapMs,statuses:[...new Set(states)],error:fatal};
     console.log(JSON.stringify(result));
-    if(fatal||!firstLive||decoded.status!==0||receivedFrames<fps*seconds*.8||!audioTimes.length||avDriftMs>250||maxAudioGapMs>100)throw Error('Real streaming startup/delivery failed: '+receiverError);
+    const requiredFrames=inputFile?fps*seconds*.8:fps*seconds-2;
+    if(fatal||!firstLive||decoded.status!==0||receivedFrames<requiredFrames||!audioTimes.length||avDriftMs>250||maxAudioGapMs>100)throw Error('Real streaming startup/delivery failed: '+receiverError);
   } finally { cleanup(); }
 })().catch(error => { console.error(error.message); cleanup(); process.exitCode=1; }).finally(() => clearTimeout(watchdog));

@@ -21,6 +21,7 @@ import { normalizeYouTubeBroadcastSettings } from "../../src/shared/streamingPla
 import { normalizeStudioState } from "../../src/shared/settings";
 import { normalizeServiceSchedules } from "../../src/shared/serviceSchedules";
 import { normalizeVideoResolution } from "../../src/shared/recording";
+import { defaultProgramEqualizer, normalizeProgramEqualizer } from "../../src/shared/programAudio";
 
 let store: Store<Settings> | null = null;
 
@@ -116,6 +117,7 @@ const createStore = () => {
       audioMode: "system",
       microphoneDeviceId: null,
       microphoneGain: 1,
+      audioEqualizer: defaultProgramEqualizer,
       lastDisplayId: null,
       streamRtmpUrl: "",
       streamPreset: "medium",
@@ -152,6 +154,7 @@ const createStore = () => {
       audioMode: { type: "string" },
       microphoneDeviceId: { type: ["string", "null"] },
       microphoneGain: { type: "number" },
+      audioEqualizer: { type: "object" },
       lastDisplayId: { type: ["string", "null"] },
       streamRtmpUrl: { type: "string" },
       streamPreset: { type: "string" },
@@ -308,6 +311,7 @@ export const getSettings = (): Settings => {
     trimModifier: stored.trimModifier ?? "Alt",
     microphoneDeviceId: typeof stored.microphoneDeviceId === "string" ? stored.microphoneDeviceId : null,
     microphoneGain: Number.isFinite(stored.microphoneGain) ? stored.microphoneGain : 1,
+    audioEqualizer: normalizeProgramEqualizer(stored.audioEqualizer),
     sanctuaryDisplay: normalizeSanctuaryDisplay(stored.sanctuaryDisplay),
     audioChannelMode: stored.audioChannelMode === "mono" ? "mono" : "stereo",
     swapPreviewProgram: stored.swapPreviewProgram !== false,
@@ -327,6 +331,7 @@ export const getSettings = (): Settings => {
 
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
+  if (update.audioEqualizer !== undefined) sanitized.audioEqualizer = normalizeProgramEqualizer(update.audioEqualizer);
   if (Array.isArray(update.serviceSchedules)) sanitized.serviceSchedules = normalizeServiceSchedules(update.serviceSchedules);
   if (typeof update.streamPassthrough === "boolean") sanitized.streamPassthrough = update.streamPassthrough;
   if (typeof update.streamAutoRecover === "boolean") sanitized.streamAutoRecover = update.streamAutoRecover;

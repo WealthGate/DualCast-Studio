@@ -7,7 +7,7 @@ describe("recoverable streaming outputs", () => {
     expect(args).toContain("tee");
     const options = args[args.indexOf("-fifo_options") + 1];
     expect(options).toContain("attempt_recovery=1");
-    expect(options).toContain("drop_pkts_on_overflow=1");
+    expect(options).toContain("drop_pkts_on_overflow=0");
     expect(options).toContain("queue_size=480");
     expect(options).toContain("max_recovery_attempts=5");
     expect(options).toContain("recover_any_error=0");

@@ -10,6 +10,7 @@ import { initializeUpdater, stopUpdater } from "./services/updateService";
 import { cleanupRecordingSessions, cleanupStaleRecordingFiles } from "./services/recordingService";
 import { forceStopStreaming } from "./services/streamingService";
 import { cleanupEditorCommands } from "./services/editorService";
+import { registerAudioPluginIpc, stopAudioPlugins } from "./services/audioPluginService";
 import { installApplicationMenu } from "./services/menuService";
 import { IpcChannels } from "../src/shared/ipc";
 import { registerDisplayEscape } from "./services/displayEscapeService";
@@ -87,6 +88,7 @@ if (!hasSingleInstanceLock) {
     createMainWindow();
     installApplicationMenu(() => mainWindow);
     registerIpcHandlers();
+    if (mainWindow) registerAudioPluginIpc(mainWindow.webContents);
     const notifyProjectionDisplaysChanged = () => {
       BrowserWindow.getAllWindows().forEach((window) => {
         if (!window.isDestroyed()) window.webContents.send(IpcChannels.projectionDisplaysChanged);
@@ -116,6 +118,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", () => {
+  stopAudioPlugins();
   stopAllCursorFreeCaptures();
   unregisterHotkeys();
   stopUpdater();

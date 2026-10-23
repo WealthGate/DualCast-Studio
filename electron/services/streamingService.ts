@@ -33,8 +33,6 @@ import { streamingProfile } from "../../src/shared/streamingProfile";
 type StatusPublisher = (payload: StreamStatusPayload) => void;
 
 type DestinationRuntime = {
-  outputOverflows: number[];
-  outputWarningUntil?: number;
   steadySince: number | null;
   startupTimer?: NodeJS.Timeout;
   inputController?: AbortController;
@@ -360,8 +358,6 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   runtime.encoderFallbackPending = false;
   runtime.lastError = null;
   runtime.steadySince = null;
-  runtime.outputOverflows = [];
-  runtime.outputWarningUntil = undefined;
   publishAggregateStatus();
 
   const process = spawn(ffmpegPath, args, {
@@ -393,7 +389,7 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
     if (runtime.process === process) await write(chunk);
   }, error => {
     if (stopRequested || runtime.process !== process) return;
-    if (requestFreshInput(error.message)) return;
+    if (requestFreshInput(error.message, true)) return;
     runtime.lastError = error.message;
     runtime.status = "error";
     process.stdin.destroy();
@@ -412,10 +408,12 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
   writeStreamLog(runtime.destination.name, `Starting FFmpeg with ${lastStartPayload.copyVideo && lastStartPayload.inputVideoCodec === "h264" ? "H.264 video passthrough" : mapStreamingEncoder(encoder)}.`);
 
   process.stderr.setEncoding("utf8");
+  let stderrRemainder = "";
   process.stderr.on("data", (chunk: string) => {
     if (stopRequested || runtime.process !== process) return;
-    chunk
-      .split(/[\r\n]+/)
+    const lines = `${stderrRemainder}${chunk}`.split(/[\r\n]+/);
+    stderrRemainder = lines.pop() ?? "";
+    lines
       .filter(Boolean)
       .forEach((line) => {
         if (runtime.process !== process || stopRequested) return;
@@ -428,14 +426,11 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
           runtime.lastError = sanitizeLogLine(line.trim());
         }
         if (/FIFO queue full|queue overflow/i.test(line)) {
-          const now = Date.now();
-          runtime.outputOverflows = runtime.outputOverflows.filter(at => now - at < 30000);
-          runtime.outputOverflows.push(now);
-          runtime.outputWarningUntil = Date.now() + 8000;
-          runtime.lastError = "Upload delivery is falling behind; some audio and video may be interrupted.";
-          if (runtime.outputOverflows.length >= 2 && requestFreshInput("Repeated upload congestion interrupted audio and video.", true)) return;
-        } else if (stats && runtime.outputWarningUntil && Date.now() >= runtime.outputWarningUntil) {
-          runtime.outputWarningUntil = undefined; runtime.lastError = null;
+          // Treat any dropped-output report as actionable, even if isolated
+          // by minutes. Requiring two within 30 seconds missed the real uplink
+          // failures and left operators streaming at the same excessive rate.
+          runtime.lastError = "The upload connection cannot sustain the current video bitrate.";
+          if (requestFreshInput(runtime.lastError, true)) return;
         }
         if (isHardwareEncoderStartupFailure(runtime.encoder, line)) {
           runtime.encoderFallbackPending = true;
@@ -602,7 +597,6 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
   destinations.forEach((destination) => {
     const encoder = resolveStreamingEncoder(payload.encoder, availableEncoders);
     const runtime: DestinationRuntime = {
-      outputOverflows: [],
       steadySince: null,
       destination,
       process: null,
@@ -625,7 +619,10 @@ export const startStreaming = async (payload: StreamStartPayload): Promise<Strea
 
 const writeToInput = (input: Writable, data: Buffer, liveSince: () => number | null, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   const began = Date.now();
+  let settled = false;
   const finish = (error?: Error | null) => {
+    if (settled) return;
+    settled = true;
     clearTimeout(timeout); signal.removeEventListener("abort", cancel);
     if (error) reject(error); else resolve();
   };

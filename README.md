@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.33**.
+Current release: **v0.6.34**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,17 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.33
+### What's new in v0.6.34
+
+- Preserve queued audio/video through short upload stalls instead of flushing both tracks and waiting for a new keyframe. Sustained congestion requests fresh, lower-bandwidth capture on its first detected occurrence. Healthy streams keep the selected settings. Recovery retains its reduced video profile for that broadcast, progressing to 720p/30 and then 720p/15 if needed; the selected audio bitrate is preserved.
+- Preserve source dynamics by disabling microphone/desktop speech suppression, echo cancellation and automatic gain. Keep source routes through mixer edits and recover disconnected microphones without replacing the Program output track.
+- Add a simple **Bass / Mid / Treble EQ** in Audio Mixer. It starts bypassed and neutral, saves on this PC, and processes Program, monitoring, recording and streaming.
+- Add isolated **Windows x64 VST2 audio effect hosting**. In Audio Mixer choose **Add VST2 .dll**, select the installed effect, enable it, and open its native controls. Plugin settings save locally. ReaStream's standalone 64-bit ReaPlugs DLL can receive network audio through the plugin; configure Receive, stream name and network sender in its controls. VST3, 32-bit plugins and native hosting on macOS/Linux are not supported in this release.
+- Process plugins on a bounded audio bridge with a fixed 43 ms base delay and latency-aligned dry fallback. Crashed, stalled or invalid plugins are bypassed independently. Receiver audio obeys EQ, master volume and Mute all. Inactive plugins use no native host process or audio IPC.
+
+See [streaming recovery and audio plugins](docs/streaming-and-audio-0.6.34.md) for operation, checks and compatibility limits.
+
+### Included from v0.6.33
 
 - Add a **Schedule** tab for saved service rundowns. Add scene/media snapshots, prepared songs/decks, Scripture references, announcements and operator notes; rename, date, reorder, duplicate and save services. Changes save automatically on this PC. Editing or selecting items does not change the live output.
 - Use **Show live**, **Previous · Live** and **Next · Live** to run the service. Navigation steps through every slide in a presentation before moving to the next item. Planned minutes and private notes help the operator; nothing advances automatically. Referenced media files must remain available on the PC.

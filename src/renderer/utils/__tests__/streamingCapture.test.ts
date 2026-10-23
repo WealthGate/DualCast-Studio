@@ -31,6 +31,21 @@ describe("streaming capture", () => {
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+  it("seeds initial frame cadence so immediate callbacks cannot collide in the browser timestamp time base", () => {
+    vi.useFakeTimers();
+    const requestFrame = vi.fn();
+    const stream = { getVideoTracks: () => [{ requestFrame }], getTracks: () => [{ stop: vi.fn() }] };
+    vi.stubGlobal("document", { createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage: vi.fn() }), captureStream: () => stream }) });
+    const source = { width: 320, height: 180 } as HTMLCanvasElement;
+    const capture = createStreamingCapture(source, "low", 30);
+    expect(requestFrame).toHaveBeenCalledOnce();
+    publishCanvasFrame(source, performance.now() + .2);
+    expect(requestFrame).toHaveBeenCalledOnce();
+    publishCanvasFrame(source, performance.now() + 1000 / 30);
+    expect(requestFrame).toHaveBeenCalledTimes(2);
+    capture.stop();
+  });
+
   it("downscales a 1440p Program canvas before browser encoding", () => {
     expect(streamingCaptureSize(2560, 1440, "high")).toEqual({ width: 1920, height: 1080 });
     expect(streamingCaptureSize(2560, 1440, "low")).toEqual({ width: 1280, height: 720 });

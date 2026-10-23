@@ -1,5 +1,6 @@
 import { setProgramChannelMode } from "../utils/audioChannels";
-import { createProgramAudioBus } from "../utils/programAudioBus";
+import { createProgramAudioBus, ProgramAudioSource } from "../utils/programAudioBus";
+import { attachAudioPluginBridge } from "../utils/audioPluginBridge";
 import { createVisibilityTransition, emptyLowerThirdCue, updateLowerThirdCue, LowerThirdCue } from "../utils/lowerThirdCue";
 import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -20,8 +21,9 @@ import { isPresentationTextSource, visiblePresentationSourceIds } from "../utils
 import { getCameraStream, getDisplayStream, stopMediaStream } from "../utils/media";
 import { fitToBounds, getOutputProfile } from "../../shared/recording";
 import { LowerThirdAnimation, LowerThirdSlide, MultiviewTile, Scene, SceneTransitionType, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
-import { AudioMeterSnapshot, publishAudioMeters } from "../audioMeterBus";
+import { publishAudioMeters } from "../audioMeterBus";
 import { updateProgramAudioMonitor } from "../utils/audioMonitoring";
+import { createMicrophoneCapture } from "../utils/microphoneCapture";
 
 type PreviewProgramProps = {
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
@@ -78,19 +80,6 @@ const supportsProgramAudio = (source: Source) =>
   source.type === "audio";
 
 const sourceMeterId = (sourceId: string) => sourceId.replace(/^program:/, "");
-
-const levelFromAnalyser = (analyser: AnalyserNode, buffer: Uint8Array<ArrayBuffer>) => {
-  analyser.getByteTimeDomainData(buffer);
-  let peak = 0;
-  for (let index = 0; index < buffer.length; index += 1) {
-    peak = Math.max(peak, Math.abs((buffer[index] - 128) / 128));
-  }
-  const db = peak > 0 ? 20 * Math.log10(peak) : -60;
-  return {
-    normalized: clamp((db + 60) / 60, 0, 1),
-    clipping: peak >= 0.985
-  };
-};
 
 const cleanupSourceMedia = (sourceId: string, entry: SourceMedia) => {
   stopMediaStream(entry.stream ?? null);
@@ -319,44 +308,27 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     image.src = settings.lowerThird.backgroundImageUrl;
   }, [settings.lowerThird.backgroundImageUrl]);
 
+  const microphoneEnabled = settings.audioMode === "microphone" || settings.audioMode === "both";
   useEffect(() => {
-    const includeMicrophone = settings.audioMode === "microphone" || settings.audioMode === "both";
-    if (!includeMicrophone) {
+    if (!microphoneEnabled) {
       stopMediaStream(microphoneStreamRef.current);
       microphoneStreamRef.current = null;
       setMicrophoneRevision((revision) => revision + 1);
       return;
     }
 
-    let cancelled = false;
-    const openMicrophone = async () => {
-      try {
-        const audio = settings.microphoneDeviceId
-          ? { deviceId: { exact: settings.microphoneDeviceId } }
-          : true;
-        const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
-        if (cancelled) {
-          stopMediaStream(stream);
-          return;
-        }
-        stopMediaStream(microphoneStreamRef.current);
+    const capture = createMicrophoneCapture({
+      deviceId: settings.microphoneDeviceId,
+      onStream: stream => {
         microphoneStreamRef.current = stream;
-        setMicrophoneRevision((revision) => revision + 1);
-      } catch {
-        if (!cancelled) {
-          microphoneStreamRef.current = null;
-          setMicrophoneRevision((revision) => revision + 1);
-        }
+        setMicrophoneRevision(revision => revision + 1);
       }
-    };
-    void openMicrophone();
-
+    });
     return () => {
-      cancelled = true;
-      stopMediaStream(microphoneStreamRef.current);
+      capture.stop();
       microphoneStreamRef.current = null;
     };
-  }, [settings.audioMode, settings.microphoneDeviceId]);
+  }, [microphoneEnabled, settings.microphoneDeviceId]);
 
   useEffect(() => {
     const elements = [previewContainerRef.current, programContainerRef.current].filter((element): element is HTMLDivElement => Boolean(element));
@@ -643,7 +615,14 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     programMixGainRef.current = bus.masterGain;
     programAudioMonitorGainRef.current = bus.monitor;
     setProgramAudioStream(bus.destination.stream);
+    const publishLevels = () => publishAudioMeters(bus.readMeters());
+    const meterTimer = window.setInterval(publishLevels, 80);
+    const detachPlugins = attachAudioPluginBridge(bus);
+    publishLevels();
     return () => {
+      window.clearInterval(meterTimer);
+      detachPlugins();
+      publishAudioMeters({});
       programAudioBusRef.current = null;
       programMixGainRef.current = null;
       programAudioMonitorGainRef.current = null;
@@ -655,8 +634,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   useEffect(() => {
     const bus = programAudioBusRef.current;
     if (!bus) return;
-    const { context: audioContext, masterGain, output: stereoOutput } = bus;
-    const routeNodes: AudioNode[] = [];
+    const audioSources: ProgramAudioSource[] = [];
     const includeSceneAudio = settings.audioMode === "system" || settings.audioMode === "both";
     const includeMicrophone = settings.audioMode === "microphone" || settings.audioMode === "both";
     const sceneAudioSources = includeSceneAudio && programScene?.enabled !== false
@@ -679,71 +657,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         )
       : [];
 
-    masterGain.gain.value = clamp(settings.masterAudioGain ?? 1, 0, 2);
-    setProgramChannelMode(masterGain, useAppStore.getState().settings.audioChannelMode ?? "stereo");
-
-    type MeterTap = {
-      id: string;
-      channels: 1 | 2;
-      analysers: AnalyserNode[];
-      buffers: Uint8Array<ArrayBuffer>[];
-    };
-    const meterTaps: MeterTap[] = [];
-    const masterSplitter = audioContext.createChannelSplitter(2);
-    const masterAnalysers = [audioContext.createAnalyser(), audioContext.createAnalyser()];
-    masterAnalysers.forEach((analyser, channel) => {
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.55;
-      masterSplitter.connect(analyser, channel);
-    });
-    stereoOutput.connect(masterSplitter);
-    routeNodes.push(masterSplitter, ...masterAnalysers);
-    meterTaps.push({
-      id: "master",
-      channels: 2,
-      analysers: masterAnalysers,
-      buffers: masterAnalysers.map((analyser) => new Uint8Array(analyser.fftSize))
-    });
-
     const connectStream = (stream: MediaStream | null | undefined, id: string, gainValue: number) => {
-      if (!stream || stream.getAudioTracks().length === 0) {
-        return;
-      }
-      try {
-        const streamSource = audioContext.createMediaStreamSource(stream);
-        const sourceGain = audioContext.createGain();
-        sourceGain.gain.value = clamp(gainValue, 0, 2);
-        streamSource.connect(sourceGain);
-        sourceGain.connect(masterGain);
-        routeNodes.push(streamSource, sourceGain);
-
-        const reportedChannels = stream.getAudioTracks()[0]?.getSettings().channelCount;
-        const channels: 1 | 2 = reportedChannels === 1 || streamSource.channelCount === 1 ? 1 : 2;
-        const analysers = Array.from({ length: channels }, () => {
-          const analyser = audioContext.createAnalyser();
-          analyser.fftSize = 256;
-          analyser.smoothingTimeConstant = 0.55;
-          return analyser;
-        });
-        if (channels === 1) {
-          sourceGain.connect(analysers[0]);
-        } else {
-          const splitter = audioContext.createChannelSplitter(2);
-          sourceGain.connect(splitter);
-          splitter.connect(analysers[0], 0);
-          splitter.connect(analysers[1], 1);
-          routeNodes.push(splitter);
-        }
-        routeNodes.push(...analysers);
-        meterTaps.push({
-          id,
-          channels,
-          analysers,
-          buffers: analysers.map((analyser) => new Uint8Array(analyser.fftSize))
-        });
-      } catch {
-        // A stopped or restricted track must not break the remaining Program mix.
-      }
+      if (stream) audioSources.push({ id, stream, gain: gainValue });
     };
 
     [...sceneAudioSources, ...persistentAudioSources].forEach((source) => {
@@ -758,43 +673,25 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       connectStream(microphoneStreamRef.current, "microphone", settings.microphoneGain ?? 1);
     }
 
-    void audioContext.resume().catch(() => undefined);
-
-    const publishLevels = () => {
-      const next: AudioMeterSnapshot = {};
-      meterTaps.forEach((tap) => {
-        const readings = tap.analysers.map((analyser, index) => levelFromAnalyser(analyser, tap.buffers[index]));
-        const left = readings[0]?.normalized ?? 0;
-        const right = tap.channels === 2 ? readings[1]?.normalized ?? 0 : left;
-        next[tap.id] = {
-          left,
-          right,
-          channels: tap.channels,
-          clipping: readings.some((reading) => reading.clipping)
-        };
-      });
-      publishAudioMeters(next);
-    };
-    publishLevels();
-    const meterTimer = window.setInterval(publishLevels, 80);
-
-    return () => {
-      window.clearInterval(meterTimer);
-      publishAudioMeters({});
-      stereoOutput.disconnect(masterSplitter);
-      routeNodes.forEach(node => node.disconnect());
-    };
+    bus.setSources(audioSources);
   }, [
     mediaRevision,
     microphoneRevision,
     programScene,
     programSources,
     settings.audioMode,
-    settings.masterAudioGain,
     settings.microphoneGain,
     setProgramAudioStream,
     sources
   ]);
+
+  useEffect(() => {
+    programAudioBusRef.current?.setMasterGain(settings.audioMode === "none" ? 0 : settings.masterAudioGain ?? 1);
+  }, [settings.masterAudioGain, settings.audioMode]);
+
+  useEffect(() => {
+    programAudioBusRef.current?.equalizer.update(settings.audioEqualizer);
+  }, [settings.audioEqualizer]);
 
   useEffect(() => {
     if (programMixGainRef.current) setProgramChannelMode(programMixGainRef.current, settings.audioChannelMode ?? "stereo");

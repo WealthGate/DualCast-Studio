@@ -28,10 +28,12 @@ module.exports = async function verifyStreamCaptureErrors(rootPath, autoRecover 
       await wait(2100);
       if(starts!==2||recorder===first||recorder.state!=='recording')throw Error('Fresh capture did not reconnect automatically: '+starts);
       if(payloads[1].resolution!=='720p'||payloads[1].preset!=='low')throw Error('Output congestion did not immediately lower bandwidth');
+      if(payloads[1].fps!==30||payloads[1].audioBitrate!==previous.settings.streamAudioBitrate)throw Error('First recovery changed audio quality or used the wrong frame rate');
       notify({status:'live',startedAt:Date.now(),lastError:null});await wait(50);
       notify({status:'reconnecting',restartRequired:true,message:'Second input stall'});
       await wait(3800);
       if(starts!==3||payloads[2].resolution!=='720p'||payloads[2].preset!=='low')throw Error('Repeated stall did not reduce stream load');
+      if(payloads[2].fps!==15||payloads[2].audioBitrate!==payloads[1].audioBitrate)throw Error('Repeated congestion did not progressively reduce video load while retaining audio quality');
       notify({status:'live',startedAt:Date.now(),lastError:null});await wait(50);
       notify({status:'reconnecting',restartRequired:true,message:'Third input stall'});await wait(100);
       controller.stopStream();await wait(3400);

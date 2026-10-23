@@ -30,6 +30,9 @@ module.exports = async function verifyBroadcastContinuity(primary, root) {
     window.dualcast.finishRecording=async()=>({filePath:'continuity.webm',fileName:'continuity.webm'});
     const container=document.createElement('div');document.body.append(container);
     const ref={current:document.querySelector('.program-pane canvas')};
+    const {onCanvasFrame}=await import('/utils/canvasFrames.ts');
+    let lastFrame=0,maxPublishedGapMs=0;const largePublishedGaps=[];
+    const offFrames=onCanvasFrame(ref.current,now=>{if(lastFrame){const gap=now-lastFrame;maxPublishedGapMs=Math.max(maxPublishedGapMs,gap);if(gap>150)largePublishedGaps.push({time:now,gap});}lastFrame=now;});
     const Harness=()=>{controller=useProgramStreamer(ref);recording=useProgramRecorder(ref);return null;};
     const mounted=ReactDOM.createRoot(container);mounted.render(React.createElement(Harness));await wait(150);
     const setSettings=patch=>store.setState({settings:{...store.getState().settings,...patch}});
@@ -46,13 +49,14 @@ module.exports = async function verifyBroadcastContinuity(primary, root) {
       controller.stopStream();recording.stopRecording();await wait(500);
       if(controller.lastError||store.getState().recordingError)throw Error(controller.lastError||store.getState().recordingError);
       const concat=chunks=>{const size=chunks.reduce((n,c)=>n+c.length,0),data=new Uint8Array(size);let at=0;for(const chunk of chunks){data.set(chunk,at);at+=chunk.length;}return data;};
-      return{streamData:concat(streamChunks),recordData:concat(recordChunks),stableAudioTrack:true,seconds:10.2};
+      return{streamData:concat(streamChunks),recordData:concat(recordChunks),stableAudioTrack:true,maxPublishedGapMs,largePublishedGaps,seconds:10.2};
     } finally {
-      controller.stopStream();recording.stopRecording();await wait(100);mounted.unmount();container.remove();
+      controller.stopStream();recording.stopRecording();await wait(100);offFrames();mounted.unmount();container.remove();
       Object.assign(window.dualcast,original);navigator.mediaDevices.getUserMedia=original.media;osc.stop();await tone.close();
     }
   })()`, true);
   const summaries = {};
+  for (const [name,data] of [['stream',result.streamData],['recording',result.recordData]]) fs.writeFileSync(path.join(root,'tmp',`continuity-${name}.webm`),data);
   for (const [name, data] of [['stream', result.streamData], ['recording', result.recordData]]) {
     const file = path.join(root, 'tmp', `continuity-${name}.webm`);
     fs.writeFileSync(file, data);
@@ -70,7 +74,7 @@ module.exports = async function verifyBroadcastContinuity(primary, root) {
     let quietWindows=0;
     for(let start=16000;start+2000<samples.length;start+=2000){let energy=0;for(let i=start;i<start+2000;i++)energy+=samples[i]**2;if(Math.sqrt(energy/2000)<0.01)quietWindows++;}
     summaries[name]={frames:frames.length,videoSeconds:frames.at(-1),audioSeconds:audio.at(-1),maxSteadyVideoGapMs:Math.round(maxGap*1000),startupGapMs:Math.round(startupGap*1000),avDriftMs:Math.round(drift*1000),unexpectedQuietWindows:quietWindows};
-    if(frames.length<270||maxGap>0.2||startupGap>0.75||drift>0.2||quietWindows)throw Error('Broadcast continuity failed: '+JSON.stringify(summaries));
+    if(frames.length<270||maxGap>0.2||startupGap>0.75||drift>0.2||quietWindows)throw Error('Broadcast continuity failed: '+JSON.stringify({...summaries,maxPublishedGapMs:result.maxPublishedGapMs,largePublishedGaps:result.largePublishedGaps}));
   }
   return {stableAudioTrack:result.stableAudioTrack,...summaries};
 };

@@ -35,6 +35,7 @@ const defaultSettings: Settings = {
   audioMode: "system",
   microphoneDeviceId: null,
   microphoneGain: 1,
+  audioEqualizer: { enabled: false, lowGainDb: 0, midGainDb: 0, highGainDb: 0 },
   lastDisplayId: null,
   streamRtmpUrl: "",
   streamPreset: "medium",

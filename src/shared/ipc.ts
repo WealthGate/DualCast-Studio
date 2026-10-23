@@ -1,4 +1,8 @@
 export const IpcChannels = {
+  getAudioPluginStatus: "dualcast:get-audio-plugin-status",
+  configureAudioPlugin: "dualcast:configure-audio-plugin",
+  audioPluginStatus: "dualcast:audio-plugin-status",
+  audioPluginBlock: "dualcast:audio-plugin-block",
   getHardwareCapabilities: "dualcast:get-hardware-capabilities",
   programVideoFrame: "dualcast:program-video-frame",
   programVideoPresented: "dualcast:program-video-presented",

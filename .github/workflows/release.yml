@@ -49,6 +49,10 @@ jobs:
         if: runner.os == 'Windows'
         run: npm run prepare:windows-capture
 
+      - name: Build and verify isolated Windows audio plugin host
+        if: runner.os == 'Windows'
+        run: npm run verify:audio-host
+
       - name: Verify release tag matches package version
         shell: bash
         env:
@@ -64,6 +68,10 @@ jobs:
       - name: Verify production streaming service and local RTMP startup
         timeout-minutes: 3
         run: npm run verify:stream-startup
+
+      - name: Verify bounded recovery over a throttled RTMP connection
+        timeout-minutes: 2
+        run: node scripts/verify-stream-startup.cjs --encoder=x264 --ci --seconds=20 --upload-kbps=250 --expect-congestion
 
       - name: Build application
         run: npm run build

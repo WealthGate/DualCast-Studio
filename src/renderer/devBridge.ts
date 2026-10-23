@@ -18,6 +18,11 @@ export const installDevelopmentBridge = () => {
   }
 
   window.dualcast = {
+    getAudioPluginStatus: async () => ({ supported: false, plugins: [], activeId: null, running: false, session: null, message: "Native VST2 plugins require the Windows x64 desktop app." }),
+    configureAudioPlugin: async () => { throw new Error("Native plugins require the Windows x64 desktop app."); },
+    sendAudioPluginBlock: () => undefined,
+    onAudioPluginBlock: () => noopUnsubscribe,
+    onAudioPluginStatus: () => noopUnsubscribe,
     readYouTubeChat: async () => ({ ok: false, message: "YouTube chat requires the desktop app." }),
     sendYouTubeChat: async () => ({ ok: false, message: "YouTube chat requires the desktop app." }),
     getYouTubeBroadcastStatus: async () => ({ ok: false, message: "YouTube status requires the desktop app." }),

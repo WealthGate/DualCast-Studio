@@ -6,7 +6,7 @@ import { StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "..
 import { isValidRtmpUrl } from "../../shared/streamingValidation";
 import { formatElapsedTimer } from "../utils/time";
 import { createStreamingCapture } from "../utils/streamingCapture";
-import { streamingProfile } from "../../shared/streamingProfile";
+import { streamingProfile, streamingRecoverySettings } from "../../shared/streamingProfile";
 import { supports8KEncoding } from "./use8KSupport";
 
 export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
@@ -32,7 +32,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   const startInFlightRef = useRef(false);
   const chunkQueueRef = useRef<Promise<void>>(Promise.resolve());
   const captureErrorRef = useRef<string | null>(null);
-  const recovery = useRef({ active: false, pending: false, attempts: 0, lastAt: 0, timer: 0, notice: "" });
+  const recovery = useRef({ active: false, pending: false, attempts: 0, lastAt: 0, timer: 0, notice: "", loadLevel: 0 });
   const recoveryDestinations = useRef<StreamDestinationInput[]>([]);
   const startAgain = useRef<(destinations: StreamDestinationInput[]) => Promise<{ ok: boolean; message?: string }>>(async () => ({ ok: false }));
   const streamBegan = useRef<number | null>(null);
@@ -59,9 +59,13 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     if (stopRequestedRef.current && !recovery.current.active) return false;
     if (recovery.current.pending) return true;
     if (Date.now() - recovery.current.lastAt > 30000) recovery.current.attempts = 0;
-    recovery.current.attempts = Math.max(reduceLoad ? 2 : 1, recovery.current.attempts + 1); recovery.current.lastAt = Date.now();
+    if (recovery.current.attempts >= 5) return false;
+    recovery.current.attempts += 1; recovery.current.lastAt = Date.now();
+    if (reduceLoad || recovery.current.attempts >= 2) recovery.current.loadLevel = Math.min(2, recovery.current.loadLevel + 1);
     recovery.current.active = recovery.current.pending = true;
-    recovery.current.notice = recovery.current.attempts >= 2 ? "Recovered using 720p, up to 30 fps and lower bandwidth." : "Stream reconnected with fresh video input.";
+    recovery.current.notice = recovery.current.loadLevel > 0
+      ? `Recovered using 720p, up to ${recovery.current.loadLevel >= 2 ? 15 : 30} fps and lower video bandwidth. Audio quality is unchanged.`
+      : "Stream reconnected with fresh video input.";
     captureErrorRef.current = null; setLastError(null); setStatus("reconnecting");
     setStatusMessage(`${reason} Reconnecting automatically…`);
     stopRequestedRef.current = true;
@@ -92,7 +96,17 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onStreamStatus((payload) => {
-      if (payload.restartRequired && requestRecovery(payload.message || "The stream input fell behind.", payload.reduceLoad)) return;
+      if (payload.restartRequired) {
+        if (requestRecovery(payload.message || "The stream input fell behind.", payload.reduceLoad)) return;
+        recovery.current.active = recovery.current.pending = false;
+        captureErrorRef.current = "Streaming could not sustain delivery after five recovery attempts. Check upload capacity and reduce streaming quality before restarting.";
+        setLastError(captureErrorRef.current); setStatusMessage(captureErrorRef.current); setStatus("error");
+        stopRequestedRef.current = true;
+        const recorder = recorderRef.current;
+        if (recorder && recorder.state !== "inactive") recorder.stop();
+        else void window.dualcast.stopStream().catch(() => undefined);
+        return;
+      }
       const recovering = recovery.current.active;
       if (payload.status === "error") {
         recovery.current.active = recovery.current.pending = false;
@@ -170,20 +184,18 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       }
 
       startInFlightRef.current = true;
-      if (!recovery.current.active) { recovery.current.attempts = 0; recovery.current.notice = ""; streamBegan.current = null; }
+      if (!recovery.current.active) { recovery.current.attempts = 0; recovery.current.loadLevel = 0; recovery.current.notice = ""; streamBegan.current = null; }
       recoveryDestinations.current = enabledDestinations;
       stopRequestedRef.current = false;
       captureErrorRef.current = null;
       setLastError(null);
-      if (!(recovery.current.active && recovery.current.attempts >= 2) && settings.streamResolution === "8k" && !(await supports8KEncoding(settings.streamFps))) {
+      if (recovery.current.loadLevel === 0 && settings.streamResolution === "8k" && !(await supports8KEncoding(settings.streamFps))) {
         startInFlightRef.current = false;
         return { ok: false, message: "8K streaming requires a compatible hardware encoder. Choose a lower resolution." };
       }
       setStatusMessage(null);
       setElapsedSeconds(0);
-      const profileSettings = recovery.current.active && recovery.current.attempts >= 2
-        ? { ...settings, streamPreset: "low" as const, streamResolution: "720p" as const, streamFps: Math.min(30, settings.streamFps) as typeof settings.streamFps }
-        : settings;
+      const profileSettings = streamingRecoverySettings(settings, recovery.current.loadLevel);
       const profile = streamingProfile(profileSettings.streamPreset, profileSettings.streamResolution, profileSettings.streamFps);
       const mimeType = pickStreamingRecorderMimeType(profile.width);
 

@@ -289,6 +289,7 @@ export type ServiceSchedule = {
 };
 
 export type Settings = {
+  audioEqualizer?: import("./programAudio").ProgramEqualizerSettings;
   serviceSchedules?: ServiceSchedule[];
   sanctuaryDisplay?: SanctuaryDisplaySettings;
   audioChannelMode?: AudioChannelMode;

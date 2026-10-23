@@ -46,6 +46,19 @@ import {
 } from "../src/shared/types";
 
 const api = {
+  getAudioPluginStatus: (): Promise<import("../src/shared/audioPlugins").AudioPluginStatus> => ipcRenderer.invoke(IpcChannels.getAudioPluginStatus),
+  configureAudioPlugin: (action: { action: "add" | "start" | "stop" | "editor" | "remove"; id?: string }): Promise<import("../src/shared/audioPlugins").AudioPluginStatus> => ipcRenderer.invoke(IpcChannels.configureAudioPlugin, action),
+  sendAudioPluginBlock: (block: import("../src/shared/audioPlugins").AudioPluginBlock) => ipcRenderer.send(IpcChannels.audioPluginBlock, block),
+  onAudioPluginBlock: (callback: (block: import("../src/shared/audioPlugins").AudioPluginBlock) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, block: import("../src/shared/audioPlugins").AudioPluginBlock) => callback(block);
+    ipcRenderer.on(IpcChannels.audioPluginBlock, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.audioPluginBlock, listener);
+  },
+  onAudioPluginStatus: (callback: (status: import("../src/shared/audioPlugins").AudioPluginStatus) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: import("../src/shared/audioPlugins").AudioPluginStatus) => callback(status);
+    ipcRenderer.on(IpcChannels.audioPluginStatus, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.audioPluginStatus, listener);
+  },
   readYouTubeChat: (id: string, pageToken?: string): Promise<import("../src/shared/types").YouTubeChatResult> => ipcRenderer.invoke(IpcChannels.readYouTubeChat, id, pageToken),
   sendYouTubeChat: (id: string, text: string): Promise<import("../src/shared/types").YouTubeChatResult> => ipcRenderer.invoke(IpcChannels.sendYouTubeChat, id, text),
   getYouTubeBroadcastStatus: (id: string): Promise<import("../src/shared/types").YouTubeBroadcastStatus> => ipcRenderer.invoke(IpcChannels.getYouTubeBroadcastStatus, id),

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { AudioMode, Source } from "../../shared/types";
 import { useAudioMeterLevels } from "../audioMeterBus";
 import { useAppStore } from "../store/useAppStore";
+import ProgramEqualizerControls from "./ProgramEqualizerControls";
+import AudioPluginsPanel from "./AudioPluginsPanel";
 
 const supportsAudio = (source: Source) =>
   source.type === "display" ||
@@ -127,6 +129,7 @@ const AudioMixerPanel: React.FC = () => {
           onChange={(event) => updateSettings({ masterAudioGain: Number(event.target.value) })}
         />
       </div>
+      <ProgramEqualizerControls />
       <div className="mixer-monitor">
         <button
           type="button"
@@ -219,6 +222,8 @@ const AudioMixerPanel: React.FC = () => {
         ))}
       </div>
       <p className="mixer-help">Meters move only with real signal. Yellow is a warning; red CLIP means lower the channel or master gain.</p>
+      <p className="mixer-help">Source dynamics are preserved: microphone noise suppression, echo cancellation and automatic gain are disabled. Use headphones when listening with a microphone.</p>
+      <AudioPluginsPanel />
     </section>
   );
 };

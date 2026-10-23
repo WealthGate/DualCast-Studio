@@ -34,8 +34,11 @@ export const createStreamingCapture = (source: HTMLCanvasElement, preset: Stream
     let writing = 0, stopped = false;
     const stats = {accepted:0,busyDrops:0,cadenceDrops:0,maxWriteMs:0};
     const shouldDraw = createFrameCadence(fps);
-    const draw = (now: number, initial = false) => {
-      if (!initial && !shouldDraw(now)) { stats.cadenceDrops++; return; }
+    const draw = (now: number) => {
+      // The initial frame must also seed the cadence. Accepting another
+      // compositor callback immediately afterwards can put two H.264 frames
+      // into the same millisecond WebM timestamp at stream startup.
+      if (!shouldDraw(now)) { stats.cadenceDrops++; return; }
       if (stopped || writing >= 3) { stats.busyDrops++; return; }
       stats.accepted++;
       const frameSource = writer && source.width === size.width && source.height === size.height ? source : canvas;
@@ -47,7 +50,7 @@ export const createStreamingCapture = (source: HTMLCanvasElement, preset: Stream
         void writer.write(frame).catch(() => undefined).finally(() => { frame.close(); writing--; stats.maxWriteMs=Math.max(stats.maxWriteMs,performance.now()-began); });
       } else track.requestFrame();
     };
-    draw(performance.now(), true);
+    draw(performance.now());
     const off = onCanvasFrame(source, draw, fps);
     capture = { stream, unsubscribe: () => { stopped = true; off(); void writer?.close().catch(() => undefined); }, references: 0, stats };
     entries.set(key, capture);
