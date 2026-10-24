@@ -1,4 +1,4 @@
-# OpenChurch Broadcast Studio v0.6.36 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.37 - Complete User Guide
 
 ## Display backgrounds
 

@@ -1,4 +1,4 @@
-# Background library and shutdown fix · v0.6.36
+# Background library and shutdown fix · v0.6.37
 
 Open **Controls → Backgrounds** or **Tools → Background Library & Display Backgrounds**.
 Use **Upload images** or **Upload videos** to add one or several files to the shared

@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.36**.
+Current release: **v0.6.37**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,7 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.36
+### What's new in v0.6.37
 
 - Fix the **Object has been destroyed** main-process popup on closing the app. Audio plugin cleanup and the other output/status services now skip destroyed renderers safely, including the window/renderer destruction race. Plugin and camera ownership also refresh correctly when the studio is reopened.
 - Add **Controls → Backgrounds**, one shared local image/video library with separate choices for Program, the shared sanctuary layout, each connected sanctuary display, and the lower-third band. Upload files once; choose an image, a muted looping video, or **None**, preview fit/color/opacity, then Apply. Files copy into app storage and assignments save locally.

@@ -121,14 +121,17 @@ if (!process.versions.electron) {
       for (const window of outputs) window.close();
       studio.webContents.once('destroyed', () => { services.stopAudioPlugins(); services.stopVirtualCamera(); });
       studio.close(); await wait(300);
+      await services.closeProjectionWindows(); await services.closeLowerThirdWindow();
       for (let i = 0; i < 5; i++) {
         const survivor = new HiddenWindow({ show: false }), primary = new HiddenWindow({ show: false });
         services.registerAudioPluginIpc(primary.webContents); services.registerVirtualCameraIpc(primary.webContents); services.registerBackgroundMediaIpc(primary.webContents);
         primary.close(); await wait(40); services.stopAudioPlugins(); survivor.close();
       }
-      await wait(200);
+      // Let renderer/video/GPU teardown finish before the normal Electron quit.
+      // app.exit() forcefully exits while native completion ports can still run.
+      await wait(750);
       console.log('PASS: managed uploads survive moved originals; central editor, independent monitor backgrounds, untouched mirror, muted looping video band beyond entrance, None clears media, shared-layout restore, persisted assignments, narrow dock and repeated renderer/window shutdown without uncaught exceptions.');
-      app.exit(0);
+      app.quit();
     } catch (error) { console.error(error); app.exit(1); }
   });
 }
