@@ -1,0 +1,88 @@
+import { sendToWindow } from "./safeSend";
+import { app, BrowserWindow } from "electron";
+import path from "path";
+import { IpcChannels } from "../../src/shared/ipc";
+import { MultiviewAction, MultiviewPayload } from "../../src/shared/types";
+
+let multiviewWindow: BrowserWindow | null = null;
+let lastPayload: MultiviewPayload | null = null;
+export const hasMultiviewWindow = () => Boolean(multiviewWindow && !multiviewWindow.isDestroyed());
+
+const notifyStudioWindows = (channel: string, payload?: unknown) => {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    if (window !== multiviewWindow && !window.isDestroyed()) {
+      sendToWindow(window, channel, payload);
+    }
+  });
+};
+
+export const openMultiviewWindow = async () => {
+  if (multiviewWindow && !multiviewWindow.isDestroyed()) {
+    multiviewWindow.show();
+    multiviewWindow.focus();
+    notifyStudioWindows(IpcChannels.multiviewOpened);
+    return true;
+  }
+
+  multiviewWindow = new BrowserWindow({
+    title: "OpenChurch Multiview",
+    width: 1280,
+    height: 760,
+    minWidth: 800,
+    minHeight: 520,
+    backgroundColor: "#0d0f14",
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "preload.js"),
+      backgroundThrottling: false
+    }
+  });
+
+  multiviewWindow.once("ready-to-show", () => multiviewWindow?.show());
+  multiviewWindow.webContents.on("did-finish-load", () => {
+    if (lastPayload && multiviewWindow && !multiviewWindow.isDestroyed()) {
+      sendToWindow(multiviewWindow, IpcChannels.multiviewData, lastPayload);
+    }
+    notifyStudioWindows(IpcChannels.multiviewOpened);
+  });
+  multiviewWindow.on("closed", () => {
+    multiviewWindow = null;
+    notifyStudioWindows(IpcChannels.multiviewClosed);
+  });
+
+  const devServerUrl = app.isPackaged ? null : process.env.VITE_DEV_SERVER_URL;
+  const loadFile = () => multiviewWindow?.loadFile(path.join(__dirname, "../dist/renderer/index.html"), {
+    query: { multiview: "1" }
+  });
+  if (devServerUrl) {
+    try {
+      await multiviewWindow.loadURL(`${devServerUrl}?multiview=1`);
+    } catch {
+      await loadFile();
+    }
+  } else {
+    await loadFile();
+  }
+
+  return true;
+};
+
+export const closeMultiviewWindow = () => {
+  if (multiviewWindow && !multiviewWindow.isDestroyed()) {
+    multiviewWindow.close();
+  }
+  return true;
+};
+
+export const forwardMultiviewData = (payload: MultiviewPayload) => {
+  lastPayload = payload;
+  if (multiviewWindow && !multiviewWindow.isDestroyed()) {
+    sendToWindow(multiviewWindow, IpcChannels.multiviewData, payload);
+  }
+};
+
+export const forwardMultiviewAction = (action: MultiviewAction) => {
+  notifyStudioWindows(IpcChannels.multiviewAction, action);
+};
