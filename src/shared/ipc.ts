@@ -1,4 +1,8 @@
 export const IpcChannels = {
+  getVirtualCameraStatus: "dualcast:get-virtual-camera-status",
+  configureVirtualCamera: "dualcast:configure-virtual-camera",
+  virtualCameraFrame: "dualcast:virtual-camera-frame",
+  virtualCameraStatus: "dualcast:virtual-camera-status",
   getAudioPluginStatus: "dualcast:get-audio-plugin-status",
   configureAudioPlugin: "dualcast:configure-audio-plugin",
   audioPluginStatus: "dualcast:audio-plugin-status",

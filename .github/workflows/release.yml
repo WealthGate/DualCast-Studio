@@ -53,6 +53,11 @@ jobs:
         if: runner.os == 'Windows'
         run: npm run verify:audio-host
 
+      - name: Build and verify Windows virtual camera
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        run: npm run verify:virtual-camera
+
       - name: Verify release tag matches package version
         shell: bash
         env:

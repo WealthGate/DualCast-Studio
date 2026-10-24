@@ -22,6 +22,7 @@ import AutoConfigurationWizard from "./components/AutoConfigurationWizard";
 import { useAppStore } from "./store/useAppStore";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
 import { useProgramStreamer } from "./hooks/useProgramStreamer";
+import { useVirtualCamera } from "./hooks/useVirtualCamera";
 import { UpdateStatusPayload, WorkspaceViewMode } from "../shared/types";
 
 const App: React.FC = () => {
@@ -64,6 +65,7 @@ const App: React.FC = () => {
 
   const recorder = useProgramRecorder(programCanvasRef);
   const streamer = useProgramStreamer(programCanvasRef);
+  const virtualCamera = useVirtualCamera(programCanvasRef);
 
   const focusDock = (panelId: string) => setDockFocus({ panelId, token: Date.now() + Math.random() });
 
@@ -259,6 +261,7 @@ const App: React.FC = () => {
       title: "Controls",
       content: (
         <ProductionControlsPanel
+          virtualCamera={virtualCamera}
           onStartRecording={recorder.startRecording}
           onStopRecording={recorder.stopRecording}
           onOpenFolder={recorder.openRecordingFolder}

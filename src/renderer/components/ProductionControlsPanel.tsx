@@ -1,8 +1,10 @@
 import React from "react";
 import { useAppStore } from "../store/useAppStore";
 import { ProgramStreamerController } from "../hooks/useProgramStreamer";
+import { VirtualCameraController } from "../hooks/useVirtualCamera";
 
 type ProductionControlsPanelProps = {
+  virtualCamera: VirtualCameraController;
   onStartRecording: () => void;
   onStopRecording: () => void;
   onOpenFolder: () => void;
@@ -16,6 +18,7 @@ type ProductionControlsPanelProps = {
 };
 
 const ProductionControlsPanel: React.FC<ProductionControlsPanelProps> = ({
+  virtualCamera,
   onStartRecording,
   onStopRecording,
   onOpenFolder,
@@ -61,6 +64,17 @@ const ProductionControlsPanel: React.FC<ProductionControlsPanelProps> = ({
       <button className={studioModeActive ? "control-studio active" : "control-studio"} aria-pressed={studioModeActive} onClick={onToggleStudioMode}>Studio Mode</button>
       <button onClick={onOpenAutoConfiguration}>Auto Configure</button>
       <button onClick={onOpenSettings}>Settings</button>
+      <div className="virtual-camera-controls">
+        <button
+          className={virtualCamera.status.state === "running" ? "active" : ""}
+          disabled={!virtualCamera.status.supported || virtualCamera.busy || virtualCamera.status.state === "starting"}
+          aria-pressed={virtualCamera.status.state === "running"}
+          onClick={() => void virtualCamera.configure(!virtualCamera.status.installed ? "install" : virtualCamera.status.state === "running" ? "stop" : "start")}
+        >{virtualCamera.busy || virtualCamera.status.state === "starting" ? "Preparing Virtual Camera…" : !virtualCamera.status.installed ? "Install Virtual Camera" : virtualCamera.status.state === "running" ? "Stop Virtual Camera" : "Start Virtual Camera"}</button>
+        <small role="status" aria-live="polite">{virtualCamera.status.message || (virtualCamera.status.state === "running" ? "Sending Program · 720p / 30 fps. Select OpenChurch Virtual Camera in your other app." : "Send Program to another app as a camera.")}</small>
+        <small>Video only. Choose your microphone or audio input in the receiving app.</small>
+        {virtualCamera.status.installed && virtualCamera.status.state !== "running" ? <button className="subtle" disabled={virtualCamera.busy} onClick={() => void virtualCamera.configure("uninstall")}>Remove Virtual Camera</button> : null}
+      </div>
       <div className="control-status-line"><span className={`indicator ${streamer.status === "live" ? "live" : ""}`} /><span>{streamer.status === "live" ? `Live ${streamer.formattedElapsed}` : streamer.status.charAt(0).toUpperCase() + streamer.status.slice(1)}</span></div>
     </section>
   );

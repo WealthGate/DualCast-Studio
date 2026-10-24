@@ -49,6 +49,10 @@ import {
 declare global {
   interface Window {
     dualcast: {
+      getVirtualCameraStatus: () => Promise<import("../shared/virtualCamera").VirtualCameraStatus>;
+      configureVirtualCamera: (action: "install" | "uninstall" | "start" | "stop") => Promise<import("../shared/virtualCamera").VirtualCameraStatus>;
+      sendVirtualCameraFrame: (frame: import("../shared/virtualCamera").VirtualCameraFrame) => Promise<boolean>;
+      onVirtualCameraStatus: (callback: (status: import("../shared/virtualCamera").VirtualCameraStatus) => void) => () => void;
       getAudioPluginStatus: () => Promise<import("../shared/audioPlugins").AudioPluginStatus>;
       configureAudioPlugin: (action: { action: "add" | "start" | "stop" | "editor" | "remove"; id?: string }) => Promise<import("../shared/audioPlugins").AudioPluginStatus>;
       sendAudioPluginBlock: (block: import("../shared/audioPlugins").AudioPluginBlock) => void;

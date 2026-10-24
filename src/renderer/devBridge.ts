@@ -18,6 +18,10 @@ export const installDevelopmentBridge = () => {
   }
 
   window.dualcast = {
+    getVirtualCameraStatus: async () => ({ supported: false, installed: false, state: "stopped", name: "OpenChurch Virtual Camera", message: "Virtual Camera requires the Windows x64 desktop app." }),
+    configureVirtualCamera: async () => ({ supported: false, installed: false, state: "stopped", name: "OpenChurch Virtual Camera", message: "Virtual Camera requires the Windows x64 desktop app." }),
+    sendVirtualCameraFrame: async () => false,
+    onVirtualCameraStatus: () => noopUnsubscribe,
     getAudioPluginStatus: async () => ({ supported: false, plugins: [], activeId: null, running: false, session: null, message: "Native VST2 plugins require the Windows x64 desktop app." }),
     configureAudioPlugin: async () => { throw new Error("Native plugins require the Windows x64 desktop app."); },
     sendAudioPluginBlock: () => undefined,

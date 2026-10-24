@@ -1,4 +1,14 @@
-# OpenChurch Broadcast Studio v0.6.10 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.35 - Complete User Guide
+
+## Virtual Camera
+
+In **Controls**, choose **Install Virtual Camera**, then **Start Virtual Camera**.
+Select **OpenChurch Virtual Camera** in the receiving app's camera picker.
+It sends live Program, including overlays and transitions, at 720p/30. Choose
+audio separately in the receiving app. Use **Stop Virtual Camera** to stop sharing
+and **Remove Virtual Camera** to unregister it while stopped. This release supports
+Windows x64 and compatible 32-bit/64-bit DirectShow clients. Native macOS/Linux
+camera outputs are not included. See [setup and compatibility](virtual-camera.md).
 
 This guide is written for volunteers, media teams, pastors, and technical operators. You do not need previous broadcast-software experience.
 

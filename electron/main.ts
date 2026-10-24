@@ -1,4 +1,5 @@
 import { getSettings } from "./services/settingsService";
+import { registerVirtualCameraIpc, stopVirtualCamera } from "./services/virtualCameraService";
 import { stopAllCursorFreeCaptures } from "./services/cursorFreeCaptureService";
 import { configureGraphics } from "./services/hardwareService";
 import { app, BrowserWindow, screen } from "electron";
@@ -89,6 +90,7 @@ if (!hasSingleInstanceLock) {
     installApplicationMenu(() => mainWindow);
     registerIpcHandlers();
     if (mainWindow) registerAudioPluginIpc(mainWindow.webContents);
+    if (mainWindow) registerVirtualCameraIpc(mainWindow.webContents);
     const notifyProjectionDisplaysChanged = () => {
       BrowserWindow.getAllWindows().forEach((window) => {
         if (!window.isDestroyed()) window.webContents.send(IpcChannels.projectionDisplaysChanged);
@@ -106,6 +108,7 @@ if (!hasSingleInstanceLock) {
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createMainWindow();
+        if (mainWindow) registerVirtualCameraIpc(mainWindow.webContents);
       }
     });
   });
@@ -118,6 +121,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", () => {
+  stopVirtualCamera();
   stopAudioPlugins();
   stopAllCursorFreeCaptures();
   unregisterHotkeys();

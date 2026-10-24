@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.34**.
+Current release: **v0.6.35**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,14 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.34
+### What's new in v0.6.35
+
+- Add **Install / Start / Stop Virtual Camera** in Controls on Windows x64. Select **OpenChurch Virtual Camera** in a compatible meeting, browser or production app to receive live Program at 720p/30, including transitions, overlays, Freeze and Cut to Black.
+- Include both 64-bit and 32-bit DirectShow camera components, per-user installation and removal, bounded frame transport, black output after stopping, and automatic cleanup when the studio closes. Audio is selected separately in the receiving app. Native macOS/Linux virtual cameras and Media Foundation-only clients are not supported in this release.
+
+See [Virtual Camera setup and compatibility](docs/virtual-camera.md).
+
+### Included from v0.6.34
 
 - Preserve queued audio/video through short upload stalls instead of flushing both tracks and waiting for a new keyframe. Sustained congestion requests fresh, lower-bandwidth capture on its first detected occurrence. Healthy streams keep the selected settings. Recovery retains its reduced video profile for that broadcast, progressing to 720p/30 and then 720p/15 if needed; the selected audio bitrate is preserved.
 - Preserve source dynamics by disabling microphone/desktop speech suppression, echo cancellation and automatic gain. Keep source routes through mixer edits and recover disconnected microphones without replacing the Program output track.

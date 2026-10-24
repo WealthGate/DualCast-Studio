@@ -46,6 +46,14 @@ import {
 } from "../src/shared/types";
 
 const api = {
+  getVirtualCameraStatus: (): Promise<import("../src/shared/virtualCamera").VirtualCameraStatus> => ipcRenderer.invoke(IpcChannels.getVirtualCameraStatus),
+  configureVirtualCamera: (action: "install" | "uninstall" | "start" | "stop"): Promise<import("../src/shared/virtualCamera").VirtualCameraStatus> => ipcRenderer.invoke(IpcChannels.configureVirtualCamera, action),
+  sendVirtualCameraFrame: (frame: import("../src/shared/virtualCamera").VirtualCameraFrame): Promise<boolean> => ipcRenderer.invoke(IpcChannels.virtualCameraFrame, frame),
+  onVirtualCameraStatus: (callback: (status: import("../src/shared/virtualCamera").VirtualCameraStatus) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: import("../src/shared/virtualCamera").VirtualCameraStatus) => callback(status);
+    ipcRenderer.on(IpcChannels.virtualCameraStatus, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.virtualCameraStatus, listener);
+  },
   getAudioPluginStatus: (): Promise<import("../src/shared/audioPlugins").AudioPluginStatus> => ipcRenderer.invoke(IpcChannels.getAudioPluginStatus),
   configureAudioPlugin: (action: { action: "add" | "start" | "stop" | "editor" | "remove"; id?: string }): Promise<import("../src/shared/audioPlugins").AudioPluginStatus> => ipcRenderer.invoke(IpcChannels.configureAudioPlugin, action),
   sendAudioPluginBlock: (block: import("../src/shared/audioPlugins").AudioPluginBlock) => ipcRenderer.send(IpcChannels.audioPluginBlock, block),
