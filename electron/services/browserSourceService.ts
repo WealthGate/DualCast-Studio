@@ -1,3 +1,4 @@
+import { sendToWindow } from "./safeSend";
 import { BrowserWindow } from "electron";
 import { IpcChannels } from "../../src/shared/ipc";
 import { BrowserFramePayload, BrowserSourcePayload } from "../../src/shared/types";
@@ -13,7 +14,7 @@ const sources = new Map<string, BrowserSourceEntry>();
 const broadcastFrame = (payload: BrowserFramePayload) => {
   BrowserWindow.getAllWindows().forEach((window) => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed() && !Array.from(sources.values()).some(entry => entry.window === window) && !/[?&](projection|multiview)=/.test(window.webContents.getURL())) {
-      window.webContents.send(IpcChannels.browserFrame, payload);
+      sendToWindow(window, IpcChannels.browserFrame, payload);
     }
   });
 };

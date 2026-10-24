@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import { ProjectionDisplay } from "../../shared/types";
 
-const SanctuaryDisplaysPanel: React.FC = () => {
+const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenBackgrounds }) => {
   const {
     programSceneId,
     settings,
@@ -135,7 +135,7 @@ const SanctuaryDisplaysPanel: React.FC = () => {
       >
         {isProjecting ? "Stop Projection" : settings.sanctuaryDisplay?.mode === "independent" ? "Project Sanctuary Layout" : "Project Program"}
       </button>
-      <SanctuaryLayoutEditor />
+      <SanctuaryLayoutEditor onOpenBackgrounds={onOpenBackgrounds} />
       <div className="lower-third-dock-section">
         <label htmlFor="lowerThirdDisplay">Lower-third screen</label>
         <select

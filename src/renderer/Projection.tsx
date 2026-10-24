@@ -183,7 +183,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   }, [mode, programState.isCutToBlack, programState.programSceneId, programState.sanctuary?.settings.mode]);
 
   if (mode === "program" && programState.sanctuary?.settings.mode === "independent") {
-    return <SanctuaryLayout state={programState.sanctuary} black={programState.isCutToBlack} frameRate={programState.frameRate} />;
+    return <SanctuaryLayout state={programState.sanctuary} black={programState.isCutToBlack} frozen={programState.isFrozen} frameRate={programState.frameRate} />;
   }
 
   return (

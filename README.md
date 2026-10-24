@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.35**.
+Current release: **v0.6.36**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,15 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.35
+### What's new in v0.6.36
+
+- Fix the **Object has been destroyed** main-process popup on closing the app. Audio plugin cleanup and the other output/status services now skip destroyed renderers safely, including the window/renderer destruction race. Plugin and camera ownership also refresh correctly when the studio is reopened.
+- Add **Controls → Backgrounds**, one shared local image/video library with separate choices for Program, the shared sanctuary layout, each connected sanctuary display, and the lower-third band. Upload files once; choose an image, a muted looping video, or **None**, preview fit/color/opacity, then Apply. Files copy into app storage and assignments save locally.
+- Keep monitor background overrides separate from other screens and Program recordings/streams. Custom sanctuary backgrounds use the independent text layout. Lower-third video keeps animating after text entrances and clears correctly when None is selected.
+
+See [background setup and shutdown verification](docs/backgrounds-and-shutdown.md).
+
+### Included from v0.6.35
 
 - Add **Install / Start / Stop Virtual Camera** in Controls on Windows x64. Select **OpenChurch Virtual Camera** in a compatible meeting, browser or production app to receive live Program at 720p/30, including transitions, overlays, Freeze and Cut to Black.
 - Include both 64-bit and 32-bit DirectShow camera components, per-user installation and removal, bounded frame transport, black output after stopping, and automatic cleanup when the studio closes. Audio is selected separately in the receiving app. Native macOS/Linux virtual cameras and Media Foundation-only clients are not supported in this release.
@@ -357,7 +365,7 @@ Provider subscriptions and licensing remain the church's responsibility. Worship
 
 ## Known Limits
 
-- Main sanctuary projector targets share one selected layout: Mirror Program or Independent Layout. The lower-third bus remains a separate auxiliary output.
+- Sanctuary projector targets share their text styling and default layout, with separate media backgrounds assignable per display. The lower-third bus remains a separate auxiliary output.
 - Remote operators provide focused control actions, not simultaneous collaborative scene editing or conflict resolution.
 - Song and AI panels provide adapter/settings foundations; paid provider calls still require credentials, subscriptions, and any required provider review.
 - AI live captions, sermon summaries, and highlight detection are not executed in v0.6.9; the current controls only prepare provider settings for a future implementation.

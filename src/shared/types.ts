@@ -270,6 +270,7 @@ export type SanctuaryDisplaySettings = {
 };
 
 export type SanctuaryDisplayState = {
+  background?: import("./backgrounds").BackgroundSelection;
   exitDurationMs?: number;
   scrollingSources?: Extract<Source, { type: "scrolling-text" }>[];
   settings: SanctuaryDisplaySettings;
@@ -289,6 +290,7 @@ export type ServiceSchedule = {
 };
 
 export type Settings = {
+  displayBackgrounds?: import("./backgrounds").DisplayBackgrounds;
   audioEqualizer?: import("./programAudio").ProgramEqualizerSettings;
   serviceSchedules?: ServiceSchedule[];
   sanctuaryDisplay?: SanctuaryDisplaySettings;
@@ -447,6 +449,7 @@ export type ExportClipResult = {
 };
 
 export type ProgramState = {
+  backgrounds?: import("./backgrounds").DisplayBackgrounds;
   outputExitDurationMs?: number;
   frameRate?: number;
   sanctuary?: SanctuaryDisplayState;
@@ -608,6 +611,7 @@ export type StreamingCredentialStatus = {
 };
 
 export type AppCommand =
+  | "open-backgrounds"
   | "open-settings"
   | "open-stream-setup"
   | "open-auto-config"

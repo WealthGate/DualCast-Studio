@@ -64,4 +64,10 @@ describe("dock layout", () => {
     expect(migrated.right[0].panelIds).toEqual(["streaming", "venue", "schedule"]);
     expect(migrateDockLayout(migrated, panels, 4)).toEqual(migrated);
   });
+  it("adds Backgrounds on upgrade without restoring a deliberately hidden Schedule", () => {
+    const panels = new Set(["scenes", "streaming", "venue", "controls", "schedule", "backgrounds"]);
+    const next = migrateDockLayout(layout(), panels, 4);
+    expect(next.right[0].panelIds).toEqual(["streaming", "venue", "backgrounds"]);
+    expect(migrateDockLayout(layout(), panels, 5)).toEqual(layout());
+  });
 });

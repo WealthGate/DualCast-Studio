@@ -1,4 +1,14 @@
-# OpenChurch Broadcast Studio v0.6.35 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.36 - Complete User Guide
+
+## Display backgrounds
+
+Open **Controls → Backgrounds**. Upload images or videos to one shared library,
+choose **Display / output**, select media or **None**, and **Apply background**.
+Choose separate backgrounds for Program, individual sanctuary screens and the
+lower-third band. Videos loop silently; uploaded files are copied into app storage.
+Custom sanctuary backgrounds use the independent text layout and follow live text.
+Use **Use shared sanctuary layout** to remove a screen override. Open/route physical
+outputs in Sanctuary Displays. See [full setup](backgrounds-and-shutdown.md).
 
 ## Virtual Camera
 

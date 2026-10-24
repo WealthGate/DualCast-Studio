@@ -1,3 +1,4 @@
+import { sendToWindow } from "./safeSend";
 import { app, BrowserWindow, dialog, Menu, MenuItemConstructorOptions, shell } from "electron";
 import fs from "fs";
 import path from "path";
@@ -21,7 +22,7 @@ const runMenuAction = (action: () => Promise<unknown>, actionLabel: string) => {
 export const installApplicationMenu = (getWindow: () => BrowserWindow | null) => {
   const send = (command: AppCommand) => {
     const window = getWindow();
-    if (window && !window.isDestroyed()) window.webContents.send(IpcChannels.appCommand, command);
+    if (window && !window.isDestroyed()) sendToWindow(window, IpcChannels.appCommand, command);
   };
 
   const template: MenuItemConstructorOptions[] = [
@@ -61,6 +62,7 @@ export const installApplicationMenu = (getWindow: () => BrowserWindow | null) =>
       label: "Tools",
       submenu: [
         { label: "Stream Setup", click: () => send("open-stream-setup") },
+        { label: "Background Library & Display Backgrounds…", click: () => send("open-backgrounds") },
         { label: "Auto-Configuration Wizard…", click: () => send("open-auto-config") },
         { label: "Settings", click: () => send("open-settings") }
       ]

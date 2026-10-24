@@ -1,3 +1,4 @@
+import { sendToWindow } from "./safeSend";
 import { app, BrowserWindow } from "electron";
 import path from "path";
 import { IpcChannels } from "../../src/shared/ipc";
@@ -10,7 +11,7 @@ export const hasMultiviewWindow = () => Boolean(multiviewWindow && !multiviewWin
 const notifyStudioWindows = (channel: string, payload?: unknown) => {
   BrowserWindow.getAllWindows().forEach((window) => {
     if (window !== multiviewWindow && !window.isDestroyed()) {
-      window.webContents.send(channel, payload);
+      sendToWindow(window, channel, payload);
     }
   });
 };
@@ -42,7 +43,7 @@ export const openMultiviewWindow = async () => {
   multiviewWindow.once("ready-to-show", () => multiviewWindow?.show());
   multiviewWindow.webContents.on("did-finish-load", () => {
     if (lastPayload && multiviewWindow && !multiviewWindow.isDestroyed()) {
-      multiviewWindow.webContents.send(IpcChannels.multiviewData, lastPayload);
+      sendToWindow(multiviewWindow, IpcChannels.multiviewData, lastPayload);
     }
     notifyStudioWindows(IpcChannels.multiviewOpened);
   });
@@ -78,7 +79,7 @@ export const closeMultiviewWindow = () => {
 export const forwardMultiviewData = (payload: MultiviewPayload) => {
   lastPayload = payload;
   if (multiviewWindow && !multiviewWindow.isDestroyed()) {
-    multiviewWindow.webContents.send(IpcChannels.multiviewData, payload);
+    sendToWindow(multiviewWindow, IpcChannels.multiviewData, payload);
   }
 };
 

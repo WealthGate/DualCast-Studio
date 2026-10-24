@@ -16,7 +16,7 @@ const animationOptions: Array<{ value: LowerThirdAnimation; label: string }> = [
   { value: "wipe", label: "Wipe" }
 ];
 
-const LowerThirdPanel: React.FC = () => {
+const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenBackgrounds }) => {
   const {
     settings,
     updateSettings,
@@ -263,7 +263,7 @@ const LowerThirdPanel: React.FC = () => {
     setDraftSlideId(null);
   };
 
-  const chooseImage = async (field: "imageUrl" | "bibleImageUrl" | "backgroundImageUrl") => {
+  const chooseImage = async (field: "imageUrl" | "bibleImageUrl") => {
     const image = await window.dualcast.selectMediaFile({ kind: "image" });
     if (image) {
       await saveLowerThird({ [field]: image.fileUrl });
@@ -469,7 +469,7 @@ const LowerThirdPanel: React.FC = () => {
           </div>
           <div className="field">
             <label htmlFor="lowerThirdBgColor">Background</label>
-            <input id="lowerThirdBgColor" type="color" value={lowerThird.backgroundColor} onChange={(event) => saveLowerThird({ backgroundColor: event.target.value })} />
+            <input id="lowerThirdBgColor" type="color" disabled={Boolean(settings.displayBackgrounds?.lowerThird)} value={settings.displayBackgrounds?.lowerThird?.color ?? lowerThird.backgroundColor} onChange={(event) => saveLowerThird({ backgroundColor: event.target.value })} />
           </div>
           <div className="field">
             <label htmlFor="lowerThirdBgOpacity">Background Opacity ({Math.round(lowerThird.backgroundOpacity * 100)}%)</label>
@@ -539,16 +539,7 @@ const LowerThirdPanel: React.FC = () => {
           </select>
           <span className="field-help">Used only for slides sent from the Scripture dock.</span>
         </div>
-        <div className="field">
-          <label>Lower-Third Background Image</label>
-          <div className="field-row">
-            <button className="btn btn-outline" onClick={() => chooseImage("backgroundImageUrl")}>Choose Background</button>
-            {lowerThird.backgroundImageUrl ? <button className="btn btn-danger" onClick={() => saveLowerThird({ backgroundImageUrl: "" })}>Remove</button> : null}
-          </div>
-          {lowerThird.backgroundImageUrl ? <img className="lower-third-image-preview" src={lowerThird.backgroundImageUrl} alt="Lower-third background" /> : null}
-          <label htmlFor="lowerThirdBgImageOpacity">Image Opacity ({Math.round(lowerThird.backgroundImageOpacity * 100)}%)</label>
-          <input id="lowerThirdBgImageOpacity" type="range" min={0} max={1} step={0.01} value={lowerThird.backgroundImageOpacity} onChange={(event) => saveLowerThird({ backgroundImageOpacity: Number(event.target.value) })} />
-        </div>
+        {onOpenBackgrounds && <button className="btn btn-outline" onClick={onOpenBackgrounds}>Background library & lower-third background…</button>}
       </details>
     </div>
   );

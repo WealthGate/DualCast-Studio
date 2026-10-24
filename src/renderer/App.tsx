@@ -1,6 +1,7 @@
 import { getSanctuaryDisplayState } from "./utils/sanctuaryContent";
 import React, { useEffect, useRef, useState } from "react";
 import Header from "./components/Header";
+import BackgroundsPanel from "./components/BackgroundsPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import StreamingPanel from "./components/StreamingPanel";
 import ServiceSchedulePanel from "./components/ServiceSchedulePanel";
@@ -71,6 +72,7 @@ const App: React.FC = () => {
 
   useEffect(() => window.dualcast.onAppCommand((command) => {
     if (command === "open-settings") focusDock("system");
+    else if (command === "open-backgrounds") focusDock("backgrounds");
     else if (command === "open-stream-setup") focusDock("streaming");
     else if (command === "open-auto-config") setShowAutoConfiguration(true);
     else if (command === "profile-new") setProfileManagerIntent("new");
@@ -139,9 +141,10 @@ const App: React.FC = () => {
       isCutToBlack,
       isFrozen,
       qualityPreset: settings.qualityPreset,
-      sanctuary: getSanctuaryDisplayState(useAppStore.getState())
+      sanctuary: getSanctuaryDisplayState(useAppStore.getState()),
+      backgrounds: settings.displayBackgrounds
     });
-  }, [programSceneId, programSceneSnapshot, programSources, displayTextMode, isLowerThirdHidden, isCutToBlack, isFrozen, settings.qualityPreset, settings.frameRate, settings.sanctuaryDisplay, settings.lowerThird]);
+  }, [programSceneId, programSceneSnapshot, programSources, displayTextMode, isLowerThirdHidden, isCutToBlack, isFrozen, settings.qualityPreset, settings.frameRate, settings.sanctuaryDisplay, settings.lowerThird, settings.displayBackgrounds]);
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onHotkey((action) => {
@@ -271,6 +274,7 @@ const App: React.FC = () => {
           onOpenStreamSetup={() => focusDock("streaming")}
           onToggleStudioMode={() => setViewMode((current) => current === "studio" ? "program-focus" : "studio")}
           onOpenSettings={() => focusDock("system")}
+          onOpenBackgrounds={() => focusDock("backgrounds")}
           onOpenAutoConfiguration={() => setShowAutoConfiguration(true)}
         />
       )
@@ -281,9 +285,10 @@ const App: React.FC = () => {
       content: <StreamingPanel streamer={streamer} startRequest={streamStartRequest} />
     },
     { id: "venue", title: "Venue & Outputs", content: <VenuePanel /> },
-    { id: "lower-third", title: "Lower Third Studio", content: <LowerThirdPanel /> },
+    { id: "lower-third", title: "Lower Third Studio", content: <LowerThirdPanel onOpenBackgrounds={() => focusDock("backgrounds")} /> },
     { id: "scripture", title: "Scripture", content: <ScripturePanel /> },
-    { id: "displays", title: "Sanctuary Displays", content: <SanctuaryDisplaysPanel /> },
+    { id: "displays", title: "Sanctuary Displays", content: <SanctuaryDisplaysPanel onOpenBackgrounds={() => focusDock("backgrounds")} /> },
+    { id: "backgrounds", title: "Backgrounds", content: <BackgroundsPanel onOpenDisplays={() => focusDock("displays")} /> },
     { id: "system", title: "System Settings", content: <SettingsPanel /> },
     { id: "editor", title: "Post Editor", content: <EditorPanel /> }
   ];

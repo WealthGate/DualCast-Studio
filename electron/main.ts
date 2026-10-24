@@ -1,4 +1,6 @@
+import { sendToWindow } from "./services/safeSend";
 import { getSettings } from "./services/settingsService";
+import { registerBackgroundMediaIpc } from "./services/backgroundMediaService";
 import { registerVirtualCameraIpc, stopVirtualCamera } from "./services/virtualCameraService";
 import { stopAllCursorFreeCaptures } from "./services/cursorFreeCaptureService";
 import { configureGraphics } from "./services/hardwareService";
@@ -91,9 +93,10 @@ if (!hasSingleInstanceLock) {
     registerIpcHandlers();
     if (mainWindow) registerAudioPluginIpc(mainWindow.webContents);
     if (mainWindow) registerVirtualCameraIpc(mainWindow.webContents);
+    if (mainWindow) registerBackgroundMediaIpc(mainWindow.webContents);
     const notifyProjectionDisplaysChanged = () => {
       BrowserWindow.getAllWindows().forEach((window) => {
-        if (!window.isDestroyed()) window.webContents.send(IpcChannels.projectionDisplaysChanged);
+        if (!window.isDestroyed()) sendToWindow(window, IpcChannels.projectionDisplaysChanged);
       });
     };
     screen.on("display-added", notifyProjectionDisplaysChanged);
@@ -108,7 +111,9 @@ if (!hasSingleInstanceLock) {
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createMainWindow();
+        if (mainWindow) registerAudioPluginIpc(mainWindow.webContents);
         if (mainWindow) registerVirtualCameraIpc(mainWindow.webContents);
+        if (mainWindow) registerBackgroundMediaIpc(mainWindow.webContents);
       }
     });
   });

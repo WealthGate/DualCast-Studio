@@ -1,3 +1,5 @@
+import { safeSend } from "./safeSend";
+import { sendToWindow } from "./safeSend";
 import { app, BrowserWindow, dialog, ipcMain, WebContents } from "electron";
 import Store from "electron-store";
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
@@ -15,6 +17,8 @@ type PluginSession = {
   id: string; plugin: RegisteredPlugin; owner: WebContents; child: ChildProcessWithoutNullStreams;
   pending: Map<number, number>; timer: ReturnType<typeof setInterval>; writable: boolean;
 };
+let studioOwner: WebContents | null = null;
+let ipcRegistered = false;
 let registry: Store<{ plugins: RegisteredPlugin[] }> | null = null;
 let current: PluginSession | null = null;
 let stoppedHosts: Promise<void> = Promise.resolve();
@@ -31,7 +35,7 @@ export const getAudioPluginStatus = (): AudioPluginStatus => ({
   message: supported() ? message : "Native plugins require the Windows x64 desktop app. Supported format: VST2 (.dll)."
 });
 const publish = () => BrowserWindow.getAllWindows().forEach(window => {
-  if (!window.isDestroyed()) window.webContents.send(IpcChannels.audioPluginStatus, getAudioPluginStatus());
+  if (!window.isDestroyed()) sendToWindow(window, IpcChannels.audioPluginStatus, getAudioPluginStatus());
 });
 
 const launch = (pluginPath: string, statePath?: string) => spawn(hostPath(), [
@@ -141,7 +145,7 @@ const startPlugin = async (owner: WebContents, id: string) => {
       reader.push(data, (sequence, samples) => {
         const session = current;
         if (!session || session.child !== child || !session.pending.delete(sequence) || owner.isDestroyed()) return;
-        owner.send(IpcChannels.audioPluginBlock, { session: session.id, sequence, samples } satisfies AudioPluginBlock);
+        safeSend(owner, IpcChannels.audioPluginBlock, { session: session.id, sequence, samples } satisfies AudioPluginBlock);
       });
     } catch { if (current?.child === child) stopSession("The plugin returned invalid audio and was bypassed."); }
   });
@@ -174,17 +178,24 @@ const startPlugin = async (owner: WebContents, id: string) => {
 // Register only for the studio's WebContents: projection and remote browser
 // sources cannot select native code or send audio into another user's session.
 export const registerAudioPluginIpc = (studio: WebContents) => {
-  const guard = (sender: WebContents) => { if (sender !== studio || sender.isDestroyed()) throw new Error("Audio plugins are controlled from the studio."); };
+  studioOwner = studio;
+  const stopIfOwned = () => { if (studioOwner === studio) stopSession(); };
+  studio.on("render-process-gone", stopIfOwned);
+  studio.on("did-start-loading", stopIfOwned);
+  studio.once("destroyed", () => { if (studioOwner === studio) { studioOwner = null; stopSession(); } });
+  if (ipcRegistered) return;
+  ipcRegistered = true;
+  const guard = (sender: WebContents) => { if (sender !== studioOwner || sender.isDestroyed()) throw new Error("Audio plugins are controlled from the studio."); };
   ipcMain.handle(IpcChannels.getAudioPluginStatus, event => { guard(event.sender); return getAudioPluginStatus(); });
   ipcMain.handle(IpcChannels.configureAudioPlugin, async (event, action: { action: string; id?: string }) => {
     guard(event.sender);
     if (busy) throw new Error("Wait for the current plugin operation to finish.");
     busy = true;
     try {
-      if (action?.action === "add") return await addPlugin(studio);
-      if (action?.action === "start" && typeof action.id === "string") return await startPlugin(studio, action.id);
+      if (action?.action === "add") return await addPlugin(event.sender);
+      if (action?.action === "start" && typeof action.id === "string") return await startPlugin(event.sender, action.id);
       if (action?.action === "stop") { stopSession("Plugin bypassed. Program uses the source audio."); return getAudioPluginStatus(); }
-      if (action?.action === "editor" && current?.owner === studio) { current.child.stdin.write(pluginPacket(2)); return getAudioPluginStatus(); }
+      if (action?.action === "editor" && current?.owner === studioOwner) { current.child.stdin.write(pluginPacket(2)); return getAudioPluginStatus(); }
       if (action?.action === "remove" && typeof action.id === "string") {
         if (current?.plugin.id === action.id) stopSession();
         getRegistry().set("plugins", plugins().filter(plugin => plugin.id !== action.id));
@@ -196,7 +207,7 @@ export const registerAudioPluginIpc = (studio: WebContents) => {
   });
   ipcMain.on(IpcChannels.audioPluginBlock, (event, block: AudioPluginBlock) => {
     const session = current;
-    if (!session || event.sender !== studio || session.owner !== studio || block?.session !== session.id ||
+    if (!session || event.sender !== studioOwner || session.owner !== studioOwner || block?.session !== session.id ||
       !Number.isSafeInteger(block.sequence) || block.sequence < 1 || block.sequence > 0xffffffff ||
       !(block.samples instanceof Float32Array) || block.samples.length !== AUDIO_PLUGIN_BLOCK_FRAMES * 2) return;
     if (!session.writable || session.pending.size >= 8 || session.pending.has(block.sequence)) return;
@@ -204,5 +215,4 @@ export const registerAudioPluginIpc = (studio: WebContents) => {
     session.pending.set(block.sequence, Date.now());
     session.writable = session.child.stdin.write(packet);
   });
-  studio.once("destroyed", () => stopSession());
 };

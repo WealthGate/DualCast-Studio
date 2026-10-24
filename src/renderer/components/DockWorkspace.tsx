@@ -36,7 +36,7 @@ type DockContextMenu = {
 const STORAGE_KEY = "openchurch:dock-layout:v2";
 const SIZE_STORAGE_KEY = "openchurch:dock-sizes:v1";
 const SCHEMA_STORAGE_KEY = "openchurch:dock-layout-schema";
-const CURRENT_LAYOUT_SCHEMA = 4;
+const CURRENT_LAYOUT_SCHEMA = 5;
 
 const defaultLayout: DockLayout = {
   top: [],
@@ -47,7 +47,7 @@ const defaultLayout: DockLayout = {
   right: [
     {
       id: "dock-live",
-      panelIds: ["schedule", "streaming", "venue", "displays", "lower-third", "scripture"],
+      panelIds: ["schedule", "streaming", "venue", "displays", "backgrounds", "lower-third", "scripture"],
       activePanelId: "streaming"
     },
     {
@@ -128,7 +128,7 @@ export const migrateDockLayout = (layout: DockLayout, panelIds: Set<string>, sch
   }
 
   const visibleIds = new Set(zoneIds.flatMap((zoneId) => normalized[zoneId].flatMap((group) => group.panelIds)));
-  const newPanelIds = [...(schemaVersion < 3 ? ["lower-third", "scripture"] : []), "schedule"].filter(
+  const newPanelIds = [...(schemaVersion < 3 ? ["lower-third", "scripture"] : []), ...(schemaVersion < 4 ? ["schedule"] : []), "backgrounds"].filter(
     (panelId) => panelIds.has(panelId) && !visibleIds.has(panelId)
   );
   if (newPanelIds.length === 0) {

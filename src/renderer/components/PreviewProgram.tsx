@@ -1,3 +1,4 @@
+import { useCanvasBackground } from "../hooks/useCanvasBackground";
 import { setProgramChannelMode } from "../utils/audioChannels";
 import { createProgramAudioBus, ProgramAudioSource } from "../utils/programAudioBus";
 import { attachAudioPluginBridge } from "../utils/audioPluginBridge";
@@ -223,6 +224,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     },
     [allSources, isMultiviewOpen, needsPreviewMedia, programScene, previewScene, programSources, scenes]
   );
+
+  const programBackground = useCanvasBackground(settings.displayBackgrounds?.program);
+  const bandBackground = useCanvasBackground(settings.displayBackgrounds?.lowerThird);
 
   const profile = getOutputProfile(settings.qualityPreset, settings.outputResolution);
   const programSize = { width: profile.maxWidth, height: profile.maxHeight };
@@ -850,6 +854,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     canvasHeight: number,
     configuredSlideId: string | null = null
   ) => {
+    programBackground.draw(ctx, 0, 0, canvasWidth, canvasHeight, true);
     if (!scene || scene.enabled === false) {
       return;
     }
@@ -917,22 +922,23 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
       ctx.save();
       ctx.globalAlpha *= clamp(config.backgroundOpacity, 0, 1);
-      ctx.fillStyle = config.backgroundColor;
+      ctx.fillStyle = settings.displayBackgrounds?.lowerThird?.color ?? config.backgroundColor;
       ctx.fillRect(0, areaY, canvasWidth, areaHeight);
       ctx.restore();
       const backgroundImage = lowerThirdBackgroundImageRef.current;
-      if (backgroundImage) {
+      if (backgroundImage && !settings.displayBackgrounds?.lowerThird) {
         ctx.save();
         ctx.globalAlpha *= clamp(config.backgroundImageOpacity, 0, 1);
         ctx.drawImage(backgroundImage, 0, areaY, canvasWidth, areaHeight);
         ctx.restore();
       }
+      bandBackground.draw(ctx, 0, areaY, canvasWidth, areaHeight);
       const useBibleBranding = slide.kind === "scripture" && Boolean(config.bibleImageUrl);
       const image = useBibleBranding ? bibleImageRef.current : lowerThirdImageRef.current;
       const imagePosition = useBibleBranding ? config.bibleImagePosition : config.imagePosition;
       let textLeft = canvasWidth * 0.055;
       let textRight = canvasWidth * 0.945;
-      if (image && mode !== "theme") {
+      if (image && mode !== "theme" && !(imagePosition === "background" && settings.displayBackgrounds?.lowerThird?.kind === "none")) {
         if (imagePosition === "background") {
           ctx.save();
           ctx.globalAlpha *= 0.25;
@@ -1173,8 +1179,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   useCanvasRenderer(previewCanvasRef, previewBitmapSize.width, previewBitmapSize.height, settings.frameRate, (ctx, now) => {
     if (!previewWarmupRef.current(previewScene, sceneReady(previewScene, sources), now)) return false;
     const state = useAppStore.getState();
-    if (!previewInvalidationRef.current([previewScene, sources, mediaRevision, settings.lowerThird, state.displayTextMode, state.isLowerThirdHidden, previewBitmapSize.width, previewBitmapSize.height, ...scenePixels(previewScene, sources)], now,
-      animatedScene(previewScene, sources) || lowerThirdVisibility.current.active(now, 100) || now - previewLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100)) return false;
+    if (!previewInvalidationRef.current([previewScene, sources, mediaRevision, settings.lowerThird, settings.displayBackgrounds?.program, settings.displayBackgrounds?.lowerThird, programBackground.revision, bandBackground.revision, state.displayTextMode, state.isLowerThirdHidden, previewBitmapSize.width, previewBitmapSize.height, ...scenePixels(previewScene, sources)], now,
+      programBackground.animated || bandBackground.animated || animatedScene(previewScene, sources) || lowerThirdVisibility.current.active(now, 100) || now - previewLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100)) return false;
     ctx.save();
     ctx.scale(previewBitmapSize.width / programSize.width, previewBitmapSize.height / programSize.height);
     ctx.fillStyle = "#000";
@@ -1187,8 +1193,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   useCanvasRenderer(programCanvasRef, programSize.width, programSize.height, settings.frameRate, (ctx, now) => {
     const canvas = ctx.canvas;
     const state = useAppStore.getState();
-    if (!programInvalidationRef.current([programScene, programSources, mediaRevision, settings.lowerThird, state.displayTextMode, state.isLowerThirdHidden, isFrozen, isCutToBlack, manualBlend, programSize.width, programSize.height, ...(isFrozen || isCutToBlack ? [] : scenePixels(programScene, programSources)), ...(!isFrozen && !isCutToBlack && manualBlend > 0 ? scenePixels(previewScene, sources) : [])], now,
-      !isFrozen && !isCutToBlack && (Boolean(transitionRef.current) || manualBlend > 0 || lowerThirdVisibility.current.active(now, 100) || animatedScene(programScene, programSources) || now - programLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100))) return false;
+    if (!programInvalidationRef.current([programScene, programSources, mediaRevision, settings.lowerThird, settings.displayBackgrounds?.program, settings.displayBackgrounds?.lowerThird, programBackground.revision, bandBackground.revision, state.displayTextMode, state.isLowerThirdHidden, isFrozen, isCutToBlack, manualBlend, programSize.width, programSize.height, ...(isFrozen || isCutToBlack ? [] : scenePixels(programScene, programSources)), ...(!isFrozen && !isCutToBlack && manualBlend > 0 ? scenePixels(previewScene, sources) : [])], now,
+      !isFrozen && !isCutToBlack && (programBackground.animated || bandBackground.animated || Boolean(transitionRef.current) || manualBlend > 0 || lowerThirdVisibility.current.active(now, 100) || animatedScene(programScene, programSources) || now - programLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100))) return false;
     if (isFrozen && !isCutToBlack && frozenFrameRef.current) {
       ctx.drawImage(frozenFrameRef.current, 0, 0, canvas.width, canvas.height);
       publishProgramFrameRef.current(canvas, now);
@@ -1289,7 +1295,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
     sendLowerThirdFrame();
     const interval = window.setInterval(sendLowerThirdFrame, 1000 / 15);
-    const stopAnimation = window.setTimeout(
+    const stopAnimation = settings.displayBackgrounds?.lowerThird?.kind === "video" ? undefined : window.setTimeout(
       () => window.clearInterval(interval),
       Math.max(100, settings.lowerThird.animationDurationMs) + 100
     );
@@ -1305,6 +1311,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     programSize.height,
     programSize.width,
     settings.lowerThird,
+    settings.displayBackgrounds?.lowerThird,
+    bandBackground.revision,
     programSources,
     isLowerThirdHidden,
     displayTextMode

@@ -1,3 +1,4 @@
+import { sendToWindow } from "./safeSend";
 import { app, BrowserWindow } from "electron";
 import { autoUpdater } from "electron-updater";
 import { IpcChannels } from "../../src/shared/ipc";
@@ -28,7 +29,7 @@ const publishStatus = (update: Partial<UpdateStatusPayload>) => {
   };
   BrowserWindow.getAllWindows().forEach((window) => {
     if (!window.isDestroyed()) {
-      window.webContents.send(IpcChannels.updateStatus, status);
+      sendToWindow(window, IpcChannels.updateStatus, status);
     }
   });
 };

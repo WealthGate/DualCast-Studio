@@ -1,3 +1,6 @@
+import { stateForDisplay } from "../../src/shared/displayBackgroundState";
+import { safeSend } from "./safeSend";
+import { sendToWindow } from "./safeSend";
 import { app, BrowserWindow, screen } from "electron";
 import path from "path";
 import { ProgramState, ProjectionSignal, NativeCaptureFrame } from "../../src/shared/types";
@@ -17,28 +20,35 @@ export const routeProjectionSignal = (sender: Electron.WebContents, signal: Proj
   if (!signal || typeof signal !== "object") return;
   const outputs = Array.from(programWindows.values()).filter(window => !window.isDestroyed());
   const output = outputs.find(window => window.webContents.id === sender.id);
+  const mirrorsProgram = (window: BrowserWindow) => {
+    const displayId = Array.from(programWindows).find(([, candidate]) => candidate === window)?.[0];
+    return !lastProgramState || !displayId || stateForDisplay(lastProgramState, displayId).sanctuary?.settings.mode !== "independent";
+  };
   if (signal.type === "register" && !output) {
     const window = BrowserWindow.fromWebContents(sender);
     if (!window || isOutputWindow(window) || /[?&](multiview|projection)=/.test(sender.getURL())) return;
     videoProducer = sender;
-    outputs.forEach(window => sender.send(IpcChannels.projectionSignal, { type: "ready", peerId: window.webContents.id }));
+    outputs.filter(mirrorsProgram).forEach(window => safeSend(sender, IpcChannels.projectionSignal, { type: "ready", peerId: window.webContents.id }));
   } else if (sender === videoProducer) {
     const target = outputs.find(window => window.webContents.id === signal.peerId);
-    if (target && ["offer", "candidate"].includes(signal.type)) target.webContents.send(IpcChannels.projectionSignal, signal);
-  } else if (output && videoProducer && !videoProducer.isDestroyed() && ["ready", "answer", "candidate", "closed", "fallback"].includes(signal.type)) {
-    videoProducer.send(IpcChannels.projectionSignal, { ...signal, peerId: sender.id });
+    if (target && mirrorsProgram(target) && ["offer", "candidate"].includes(signal.type)) sendToWindow(target, IpcChannels.projectionSignal, signal);
+  } else if (output && (signal.type === "closed" || mirrorsProgram(output)) && videoProducer && !videoProducer.isDestroyed() && ["ready", "answer", "candidate", "closed", "fallback"].includes(signal.type)) {
+    safeSend(videoProducer, IpcChannels.projectionSignal, { ...signal, peerId: sender.id });
   }
 };
 export const acknowledgeProjectionFrame = (senderId: number, sequence: number) => relays.get(senderId)?.acknowledge(sequence);
 export const acknowledgeProgramVideo = (senderId: number, sequence: number) => videoRelays.get(senderId)?.acknowledge(sequence);
 export const forwardProgramVideo = (sender: Electron.WebContents, frame: NativeCaptureFrame) => {
   if(sender !== videoProducer || !frame || !(frame.data instanceof Uint8Array) || !frame.data.byteLength || frame.data.byteLength>32*1024*1024 || typeof frame.codec!=="string" || !/^(avc1\.|av01\.)/.test(frame.codec) || !Number.isFinite(frame.timestamp))return;
-  if(lastProgramState?.sanctuary?.settings.mode==="independent")return;
-  programWindows.forEach(window=>{if(!window.isDestroyed())videoRelays.get(window.webContents.id)?.offer(frame);});
+  programWindows.forEach((window, displayId)=>{if(!window.isDestroyed() && (!lastProgramState || stateForDisplay(lastProgramState, displayId).sanctuary?.settings.mode !== "independent"))videoRelays.get(window.webContents.id)?.offer(frame);});
 };
 export const hasProjectionWindows = () =>
   [...programWindows.values(), ...lowerThirdWindows.values()].some((window) => !window.isDestroyed());
-export const getProgramState = () => lastProgramState;
+export const getProgramState = (sender?: Electron.WebContents) => {
+  if (!lastProgramState) return null;
+  for (const [displayId, window] of programWindows) if (!window.isDestroyed() && window.webContents === sender) return stateForDisplay(lastProgramState, displayId);
+  return lastProgramState;
+};
 
 const getDisplayBounds = (displayId?: string | null) => {
   if (displayId) {
@@ -64,7 +74,7 @@ const isOutputWindow = (window: BrowserWindow) =>
 const notifyMainWindows = (channel: string) => {
   BrowserWindow.getAllWindows().forEach((window) => {
     if (!isOutputWindow(window)) {
-      window.webContents.send(channel);
+      sendToWindow(window, channel);
     }
   });
 };
@@ -99,16 +109,16 @@ const createOutputWindow = async (
   });
 
   collection.set(displayId, outputWindow);
-  if(mode === "program") videoRelays.set(outputWindow.webContents.id,createH264Relay(frame=>{if(!outputWindow.isDestroyed())outputWindow.webContents.send(IpcChannels.programVideoFrame,frame);},32*1024*1024));
+  if(mode === "program") videoRelays.set(outputWindow.webContents.id,createH264Relay(frame=>{if(!outputWindow.isDestroyed())sendToWindow(outputWindow, IpcChannels.programVideoFrame,frame);},32*1024*1024));
   relays.set(outputWindow.webContents.id, createLatestFrameRelay(payload => {
-    if (!outputWindow.isDestroyed()) outputWindow.webContents.send(mode === "program" ? IpcChannels.programFrame : IpcChannels.lowerThirdFrame, payload);
+    if (!outputWindow.isDestroyed()) sendToWindow(outputWindow, mode === "program" ? IpcChannels.programFrame : IpcChannels.lowerThirdFrame, payload);
   }));
   const contentsId = outputWindow.webContents.id;
   outputWindow.setBounds(getDisplayBounds(displayId));
 
   outputWindow.once("ready-to-show", () => outputWindow.show());
   outputWindow.on("closed", () => {
-    if (mode === "program" && videoProducer && !videoProducer.isDestroyed()) videoProducer.send(IpcChannels.projectionSignal, { type: "closed", peerId: contentsId });
+    if (mode === "program" && videoProducer && !videoProducer.isDestroyed()) safeSend(videoProducer, IpcChannels.projectionSignal, { type: "closed", peerId: contentsId });
     relays.delete(contentsId);
     videoRelays.delete(contentsId);
     collection.delete(displayId);
@@ -134,7 +144,7 @@ const createOutputWindow = async (
   }
 
     if (lastProgramState) {
-      outputWindow.webContents.send(IpcChannels.programState, lastProgramState);
+      sendToWindow(outputWindow, IpcChannels.programState, mode === "program" ? stateForDisplay(lastProgramState, displayId) : lastProgramState);
     }
     notifyMainWindows(mode === "program" ? IpcChannels.projectionOpened : IpcChannels.lowerThirdOpened);
   outputWindow.show();
@@ -180,17 +190,14 @@ export const closeLowerThirdWindow = async () => {
 
 export const setProgramState = (state: ProgramState) => {
   lastProgramState = state;
-  [...programWindows.values(), ...lowerThirdWindows.values()].forEach((window) => {
-    if (!window.isDestroyed()) {
-      window.webContents.send(IpcChannels.programState, state);
-    }
-  });
+  programWindows.forEach((window, displayId) => sendToWindow(window, IpcChannels.programState, stateForDisplay(state, displayId)));
+  lowerThirdWindows.forEach(window => sendToWindow(window, IpcChannels.programState, state));
 };
 
 export const forwardProgramFrame = (dataUrl: string) => {
-  programWindows.forEach((window) => {
+  programWindows.forEach((window, displayId) => {
     if (!window.isDestroyed()) {
-      if (lastProgramState?.sanctuary?.settings.mode !== "independent") relays.get(window.webContents.id)?.offer(dataUrl);
+      if (!lastProgramState || stateForDisplay(lastProgramState, displayId).sanctuary?.settings.mode !== "independent") relays.get(window.webContents.id)?.offer(dataUrl);
     }
   });
 };

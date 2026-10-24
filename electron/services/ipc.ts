@@ -1,3 +1,4 @@
+import { sendToWindow } from "./safeSend";
 import { ipcMain, dialog, shell, BrowserWindow, app } from "electron";
 import fs from "fs/promises";
 import path from "path";
@@ -91,9 +92,9 @@ export const registerIpcHandlers = () => {
     if (typeof id === "string" && Number.isSafeInteger(sequence)) acknowledgeCursorFreeFrame(event.sender.id, id, sequence);
   });
   ipcMain.handle(IpcChannels.stopCursorFreeCapture, (event, id: string) => stopCursorFreeCapture(id, event.sender.id));
-  ipcMain.handle(IpcChannels.getProgramState, () => getProgramState());
+  ipcMain.handle(IpcChannels.getProgramState, event => getProgramState(event.sender));
   setStreamStatusPublisher((payload) => {
-    BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(IpcChannels.streamStatus, payload));
+    BrowserWindow.getAllWindows().forEach((window) => sendToWindow(window, IpcChannels.streamStatus, payload));
   });
 
   ipcMain.handle(IpcChannels.listDisplays, async () => listDisplays());
@@ -149,7 +150,7 @@ export const registerIpcHandlers = () => {
     return { filePath, fileUrl, name: filePath.split(/[\\/]/).pop() ?? "Media" };
   });
   setRemoteActionPublisher((action) => {
-    BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(IpcChannels.remoteOperatorAction, action));
+    BrowserWindow.getAllWindows().forEach((window) => sendToWindow(window, IpcChannels.remoteOperatorAction, action));
   });
 
   ipcMain.handle(IpcChannels.openFolder, async (_event, filePath: string) => {

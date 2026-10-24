@@ -18,6 +18,8 @@ export const installDevelopmentBridge = () => {
   }
 
   window.dualcast = {
+    listBackgroundMedia: async () => [],
+    importBackgroundMedia: async () => { throw Error("Upload backgrounds in the desktop app."); },
     getVirtualCameraStatus: async () => ({ supported: false, installed: false, state: "stopped", name: "OpenChurch Virtual Camera", message: "Virtual Camera requires the Windows x64 desktop app." }),
     configureVirtualCamera: async () => ({ supported: false, installed: false, state: "stopped", name: "OpenChurch Virtual Camera", message: "Virtual Camera requires the Windows x64 desktop app." }),
     sendVirtualCameraFrame: async () => false,

@@ -1,3 +1,4 @@
+import { safeSend } from "./safeSend";
 import { desktopCapturer, screen, WebContents } from "electron";
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 import { randomUUID } from "crypto";
@@ -59,8 +60,8 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
   const child = spawn(executable, ["-hide_banner", "-loglevel", "error", "-filter_threads", "1", "-filter_complex_threads", "1", ...input,
     "-an", "-fps_mode", "passthrough", ...(isWindow ? [] : ["-vf", `scale=w='min(${maxWidth},iw)':h='min(${maxHeight},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=${encodedVideo ? "nv12" : "yuvj420p"}`]),
     ...(encoder ? h264CaptureArgs(encoder, fps) : ["-c:v", "mjpeg", "-pix_fmt", "yuvj420p", "-q:v", "3", "-threads", "1", "-f", "image2pipe", "pipe:1"])], { windowsHide: true });
-  const relay = createLatestFrameRelay(frame => { if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, { id, ...frame }); });
-  const videoRelay = createH264Relay(frame => { if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, frame); }, Math.max(2 * 1024 * 1024, maxWidth * maxHeight));
+  const relay = createLatestFrameRelay(frame => { if (!owner.isDestroyed()) safeSend(owner, IpcChannels.cursorFreeFrame, { id, ...frame }); });
+  const videoRelay = createH264Relay(frame => { if (!owner.isDestroyed()) safeSend(owner, IpcChannels.cursorFreeFrame, frame); }, Math.max(2 * 1024 * 1024, maxWidth * maxHeight));
   captures.set(id, { owner: owner.id, process: child, relay: encodedVideo ? videoRelay : relay });
   const close = () => stopCursorFreeCapture(id);
   owner.once("destroyed", close);
@@ -115,7 +116,7 @@ export const startCursorFreeCapture = async (owner: WebContents, sourceId: strin
     owner.removeListener("destroyed", close);
     owner.removeListener("render-process-gone", close);
     owner.removeListener("did-start-navigation", close);
-    if (!owner.isDestroyed()) owner.send(IpcChannels.cursorFreeFrame, { id, dataUrl: null, ...(wasActive ? { error: lastError.trim() || "Capture window closed or became unavailable." } : {}) });
+    if (!owner.isDestroyed()) safeSend(owner, IpcChannels.cursorFreeFrame, { id, dataUrl: null, ...(wasActive ? { error: lastError.trim() || "Capture window closed or became unavailable." } : {}) });
   });
   return id;
 };

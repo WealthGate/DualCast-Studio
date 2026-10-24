@@ -1,4 +1,6 @@
 export const IpcChannels = {
+  listBackgroundMedia: "dualcast:list-background-media",
+  importBackgroundMedia: "dualcast:import-background-media",
   getVirtualCameraStatus: "dualcast:get-virtual-camera-status",
   configureVirtualCamera: "dualcast:configure-virtual-camera",
   virtualCameraFrame: "dualcast:virtual-camera-frame",

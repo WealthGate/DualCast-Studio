@@ -1,3 +1,4 @@
+import { safeSend } from "./safeSend";
 import { app, ipcMain, WebContents } from "electron";
 import { spawn, execFile, ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs/promises";
@@ -23,7 +24,7 @@ const run = (file: string, args: string[]) => new Promise<void>((resolve, reject
   execFile(file, args, { windowsHide: true, timeout: 15000 }, (error, _stdout, stderr) => error ? reject(new Error(stderr.trim() || error.message)) : resolve());
 });
 const publish = () => {
-  if (owner && !owner.isDestroyed()) owner.send(IpcChannels.virtualCameraStatus, status);
+  if (owner && !owner.isDestroyed()) safeSend(owner, IpcChannels.virtualCameraStatus, status);
   return { ...status };
 };
 const armWatchdog = () => {
@@ -125,9 +126,9 @@ async function configure(action: string): Promise<VirtualCameraStatus> {
 }
 export function registerVirtualCameraIpc(studio: WebContents) {
   owner = studio;
-  studio.once("destroyed", () => { stopVirtualCamera(); owner = null; });
-  studio.on("render-process-gone", () => stopVirtualCamera());
-  studio.on("did-start-loading", () => stopVirtualCamera());
+  studio.once("destroyed", () => { if (owner === studio) { stopVirtualCamera(); owner = null; } });
+  studio.on("render-process-gone", () => { if (owner === studio) stopVirtualCamera(); });
+  studio.on("did-start-loading", () => { if (owner === studio) stopVirtualCamera(); });
   if (registered) return;
   registered = true;
   ipcMain.handle(IpcChannels.getVirtualCameraStatus, event => event.sender === owner ? getVirtualCameraStatus() : { ...status, supported: false });

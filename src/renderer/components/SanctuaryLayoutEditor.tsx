@@ -5,7 +5,7 @@ import { useAppStore } from "../store/useAppStore";
 import { getSanctuaryDisplayState } from "../utils/sanctuaryContent";
 import SanctuaryLayout from "./SanctuaryLayout";
 
-const SanctuaryLayoutEditor: React.FC = () => {
+const SanctuaryLayoutEditor: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenBackgrounds }) => {
   const state = useAppStore();
   const [draft, setDraft] = useState(() => normalizeSanctuaryDisplay(state.settings.sanctuaryDisplay));
   const [message, setMessage] = useState("");
@@ -17,19 +17,15 @@ const SanctuaryLayoutEditor: React.FC = () => {
     setSaving(true);
     try {
       await state.updateSettings({ sanctuaryDisplay: normalizeSanctuaryDisplay(config) });
-      setMessage(config.mode === "program" ? "Sanctuary screens mirror Program." : "Independent layout applied to sanctuary screens.");
+      setMessage(config.mode === "program" ? "Default layout set to Mirror Program. Background assignments keep their own display layout." : "Independent text layout applied to sanctuary screens.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save the sanctuary layout."); }
     finally { setSaving(false); }
-  };
-  const chooseBackground = async (kind: "image" | "video") => {
-    try {
-      const media = await window.dualcast.selectMediaFile({ kind });
-      if (media) edit({ backgroundType: kind, backgroundUrl: media.fileUrl });
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to choose the background."); }
   };
   const preview = getSanctuaryDisplayState({ ...state, settings: { ...state.settings, sanctuaryDisplay: draft } });
   return <section className="sanctuary-layout-editor" aria-label="Sanctuary display layout">
     <h3>Sanctuary display layout</h3>
+    {onOpenBackgrounds && <button onClick={onOpenBackgrounds}>Background library & display assignments…</button>}
+    <p className="field-help">Backgrounds manages images, videos and per-screen assignments. Assigned backgrounds take precedence over the default mode below; restore the shared layout there to mirror Program again.</p>
     <label className="field">Display mode
       <select aria-label="Sanctuary display mode" value={draft.mode} disabled={saving} onChange={event => {
         const next = { ...draft, mode: event.target.value as SanctuaryDisplaySettings["mode"] };
@@ -44,18 +40,6 @@ const SanctuaryLayoutEditor: React.FC = () => {
       </label>
       {draft.textSource === "custom" && <label className="field">Sanctuary-only text<textarea value={draft.customText} onChange={event => edit({ customText: event.target.value })} /></label>}
       <p className="field-help">Following Program uses its live Scripture, lyrics, or scene text with the sanctuary styling below. Program and recordings keep their own layout.</p>
-      <div className="field-grid">
-        <label className="field">Background<select aria-label="Sanctuary background" value={draft.backgroundType} onChange={event => edit({ backgroundType: event.target.value as SanctuaryDisplaySettings["backgroundType"], backgroundUrl: "" })}>
-          <option value="color">Color</option><option value="image">Image</option><option value="video">Looping Video</option>
-        </select></label>
-        <label className="field">Background color<input type="color" value={draft.backgroundColor} onChange={event => edit({ backgroundColor: event.target.value })} /></label>
-      </div>
-      {draft.backgroundType !== "color" && <>
-        <button type="button" className="btn btn-outline" onClick={() => void chooseBackground(draft.backgroundType === "video" ? "video" : "image")}>Choose Background {draft.backgroundType === "video" ? "Video" : "Image"}</button>
-        <span className="field-help sanctuary-media-name">{draft.backgroundUrl ? draft.backgroundUrl.split("/").pop() : "No background selected"}</span>
-        <label className="field">Background fit<select aria-label="Sanctuary background fit" value={draft.backgroundFit} onChange={event => edit({ backgroundFit: event.target.value as "cover" | "contain" })}><option value="cover">Fill screen</option><option value="contain">Fit whole image / video</option></select></label>
-      </>}
-      <label className="field">Background dimming<input type="range" min={0} max={1} step={0.05} value={draft.backgroundDim} onChange={event => edit({ backgroundDim: Number(event.target.value) })} /></label>
       <div className="field-grid">
         <label className="field">Font<input value={draft.fontFamily} onChange={event => edit({ fontFamily: event.target.value })} /></label>
         <label className="field">Font size (at 1920 px)<input type="number" min={12} max={240} value={draft.fontSize} onChange={event => edit({ fontSize: Number(event.target.value) })} /></label>

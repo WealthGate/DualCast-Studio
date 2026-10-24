@@ -1,4 +1,5 @@
 import { defaultSanctuaryDisplay, normalizeSanctuaryDisplay } from "../../src/shared/sanctuaryDisplay";
+import { normalizeDisplayBackgrounds } from "../../src/shared/backgrounds";
 import { configureHotkeys, defaultHotkeys } from "./hotkeyService";
 import Store from "electron-store";
 import path from "path";
@@ -132,6 +133,7 @@ const createStore = () => {
       operatorRole: "director",
       masterAudioGain: 1,
       sanctuaryDisplay: defaultSanctuaryDisplay,
+      displayBackgrounds: { displays: {} },
       audioChannelMode: "stereo",
       swapPreviewProgram: true,
       hideOutputCursor: true,
@@ -169,6 +171,7 @@ const createStore = () => {
       operatorRole: { type: "string" },
       masterAudioGain: { type: "number" },
       sanctuaryDisplay: { type: "object" },
+      displayBackgrounds: { type: "object" },
       audioChannelMode: { type: "string", enum: ["mono", "stereo"] },
       swapPreviewProgram: { type: "boolean" },
       hideOutputCursor: { type: "boolean" },
@@ -313,6 +316,7 @@ export const getSettings = (): Settings => {
     microphoneGain: Number.isFinite(stored.microphoneGain) ? stored.microphoneGain : 1,
     audioEqualizer: normalizeProgramEqualizer(stored.audioEqualizer),
     sanctuaryDisplay: normalizeSanctuaryDisplay(stored.sanctuaryDisplay),
+    displayBackgrounds: normalizeDisplayBackgrounds(stored.displayBackgrounds),
     audioChannelMode: stored.audioChannelMode === "mono" ? "mono" : "stereo",
     swapPreviewProgram: stored.swapPreviewProgram !== false,
     hideOutputCursor: stored.hideOutputCursor !== false,
@@ -341,6 +345,7 @@ export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate =
     if (update[key] !== undefined) sanitized[key] = normalizeVideoResolution(update[key]);
   }
   if (update.sanctuaryDisplay) sanitized.sanctuaryDisplay = normalizeSanctuaryDisplay(update.sanctuaryDisplay);
+  if (update.displayBackgrounds !== undefined) sanitized.displayBackgrounds = normalizeDisplayBackgrounds(update.displayBackgrounds);
   if (update.audioChannelMode === "mono" || update.audioChannelMode === "stereo") sanitized.audioChannelMode = update.audioChannelMode;
   if (typeof update.swapPreviewProgram === "boolean") sanitized.swapPreviewProgram = update.swapPreviewProgram;
   if (typeof update.hideOutputCursor === "boolean") sanitized.hideOutputCursor = update.hideOutputCursor;

@@ -1,3 +1,4 @@
+import { sendToWindow } from "./safeSend";
 import { BrowserWindow, globalShortcut } from "electron";
 import { IpcChannels } from "../../src/shared/ipc";
 import { HotkeyAction } from "../../src/shared/types";
@@ -30,7 +31,7 @@ const sendHotkey = (getWindow: () => BrowserWindow | null, action: HotkeyAction)
   if (!window || window.isDestroyed()) {
     return;
   }
-  window.webContents.send(IpcChannels.hotkey, { action });
+  sendToWindow(window, IpcChannels.hotkey, { action });
 };
 
 export const registerHotkeys = (getWindow: () => BrowserWindow | null) => {

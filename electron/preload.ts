@@ -46,6 +46,8 @@ import {
 } from "../src/shared/types";
 
 const api = {
+  listBackgroundMedia: (): Promise<import("../src/shared/backgrounds").BackgroundMedia[]> => ipcRenderer.invoke(IpcChannels.listBackgroundMedia),
+  importBackgroundMedia: (kind: "image" | "video"): Promise<import("../src/shared/backgrounds").BackgroundImportResult> => ipcRenderer.invoke(IpcChannels.importBackgroundMedia, kind),
   getVirtualCameraStatus: (): Promise<import("../src/shared/virtualCamera").VirtualCameraStatus> => ipcRenderer.invoke(IpcChannels.getVirtualCameraStatus),
   configureVirtualCamera: (action: "install" | "uninstall" | "start" | "stop"): Promise<import("../src/shared/virtualCamera").VirtualCameraStatus> => ipcRenderer.invoke(IpcChannels.configureVirtualCamera, action),
   sendVirtualCameraFrame: (frame: import("../src/shared/virtualCamera").VirtualCameraFrame): Promise<boolean> => ipcRenderer.invoke(IpcChannels.virtualCameraFrame, frame),
