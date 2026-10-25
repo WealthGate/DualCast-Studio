@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createVisibilityTransition, emptyLowerThirdCue, updateLowerThirdCue } from "../lowerThirdCue";
 
 describe("lower third exit cues", () => {
+  it("updates a live title and content without replaying entrance animations", () => {
+    const cue = updateLowerThirdCue(emptyLowerThirdCue(), { id: "card", title: "Title", text: "Body" }, "show", 100);
+    const updated = updateLowerThirdCue(cue, { id: "card", title: "New title", text: "New body" }, "show", 2000);
+    expect(updated.changedAt).toBe(100);
+    expect(updated.current).toMatchObject({ title: "New title", text: "New body" });
+  });
   it("retains the outgoing slide and text mode when hidden or cleared", () => {
     const slide = { id: "verse", text: "Live verse" };
     let cue = updateLowerThirdCue(emptyLowerThirdCue(), slide, "show", 0);

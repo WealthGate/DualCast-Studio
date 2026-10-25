@@ -98,7 +98,7 @@ if (!process.versions.electron) {
       await services.openLowerThirdWindow('202'); await wait(1000);
       await js(`window.testStore.setState({isLowerThirdProjecting:true})`); await wait(600);
       const count = bandFrameCount; const videoPixel = await programPixel(); await wait(2100);
-      assert.ok(bandFrameCount > count + 15, 'video lower third keeps sending frames after entrance animation');
+      assert.ok(bandFrameCount > count + 15, `video lower third keeps sending frames after entrance animation: ${bandFrameCount - count} frames, kind ${services.getSettings().displayBackgrounds.lowerThird?.kind}`);
       const bandPixels = () => js(`(()=>{const c=document.querySelector('.program-pane canvas'),s=document.createElement('canvas');s.width=40;s.height=8;s.getContext('2d').drawImage(c,0,c.height*.74,c.width,c.height*.25,0,0,40,8);return s.toDataURL();})()`);
       const animatedA = await bandPixels(); await wait(400); assert.notEqual(await bandPixels(), animatedA, 'video pixels animate, not just the delivery clock');
       await js(`window.testStore.getState().toggleFreeze()`); await wait(150);

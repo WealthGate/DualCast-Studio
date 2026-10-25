@@ -12,8 +12,9 @@ describe("Scripture controls", () => {
       expect(picker).toContain(label);
     }
     expect(picker).toContain("Jump to verse");
-    expect(picker).not.toContain("End verse");
-    expect(picker).not.toContain("Start verse");
+    expect(picker).toContain('aria-label="Bible verse"');
+    expect(picker).toContain('aria-label="Through verse"');
+    expect(picker).toContain("Jump live");
     expect(html).not.toContain("Load Reference");
     expect(html).not.toContain("Load John");
     expect(html.match(/Create Slides in Preview/g)).toHaveLength(1);

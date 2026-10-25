@@ -1,5 +1,7 @@
 import { defaultSanctuaryDisplay, normalizeSanctuaryDisplay } from "../../src/shared/sanctuaryDisplay";
 import { normalizeDisplayBackgrounds } from "../../src/shared/backgrounds";
+import { defaultLowerThirdDesign, normalizeLowerThirdDesign } from "../../src/shared/lowerThirdDesign";
+import { sanitizeScriptureText } from "../../src/shared/scriptureText";
 import { configureHotkeys, defaultHotkeys } from "./hotkeyService";
 import Store from "electron-store";
 import path from "path";
@@ -38,7 +40,7 @@ const allowedStreamingEncoders: StreamingEncoder[] = [
 ];
 const allowedOperatorRoles = ["director", "graphics", "audio", "stream"];
 const allowedThemes: ThemePreference[] = ["system", "dark", "light", "high-contrast", "midnight", "warm"];
-const allowedLowerThirdAnimations = ["none", "fade", "slide-left", "slide-right", "slide-up", "zoom", "wipe"] as const;
+const allowedLowerThirdAnimations = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "wipe", "reveal", "spring"] as const;
 
 export const getDefaultSaveDirectory = () => path.join(app.getPath("videos"), "OpenChurch Broadcast Studio");
 
@@ -51,6 +53,8 @@ const defaultStudioState: StudioState = {
 };
 
 const defaultLowerThird = {
+  mode: "classic" as const,
+  design: defaultLowerThirdDesign,
   enabled: false,
   displayId: null,
   heightPercent: 28,
@@ -231,8 +235,9 @@ const normalizeLowerThird = (value: unknown): Settings["lowerThird"] => {
     if (typeof slide.id !== "string" || !slide.id || typeof slide.text !== "string") return [];
     return [{
       id: slide.id.slice(0, 200),
-      text: slide.text.slice(0, 100_000),
-      reference: typeof slide.reference === "string" ? slide.reference.slice(0, 500) : undefined,
+      text: slide.kind === "scripture" ? sanitizeScriptureText(slide.text.slice(0, 100_000)) : slide.text.slice(0, 100_000),
+      title: typeof slide.title === "string" ? (slide.kind === "scripture" ? sanitizeScriptureText(slide.title) : slide.title).slice(0, 500) : undefined,
+      reference: typeof slide.reference === "string" ? (slide.kind === "scripture" ? sanitizeScriptureText(slide.reference) : slide.reference).slice(0, 500) : undefined,
       kind: slide.kind === "song" || slide.kind === "scripture" ? slide.kind : "text" as const,
       deckId: typeof slide.deckId === "string" ? slide.deckId.slice(0, 200) : undefined,
       deckTitle: typeof slide.deckTitle === "string" ? slide.deckTitle.slice(0, 300) : undefined
@@ -248,6 +253,8 @@ const normalizeLowerThird = (value: unknown): Settings["lowerThird"] => {
       : null;
   return {
     ...defaultLowerThird,
+    mode: raw.mode === "designer" ? "designer" : "classic",
+    design: normalizeLowerThirdDesign(raw.design),
     enabled: raw.enabled === true,
     displayId: typeof raw.displayId === "string" ? raw.displayId : null,
     heightPercent: finiteNumber(raw.heightPercent, defaultLowerThird.heightPercent, 10, 50),

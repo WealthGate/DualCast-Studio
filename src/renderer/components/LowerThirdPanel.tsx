@@ -3,18 +3,12 @@ import { LowerThirdAnimation, LowerThirdSlide, SongLibraryEntry } from "../../sh
 import { useAppStore } from "../store/useAppStore";
 import { insertSlideAfter, replaceSlideWithLines, splitSlideLines } from "../utils/lowerThirdSlides";
 import { splitTextIntoSlides } from "../utils/presentationSlides";
+import LowerThirdDesigner, { lowerThirdAnimationOptions } from "./LowerThirdDesigner";
+import { lowerThirdTitle } from "../../shared/lowerThirdDesign";
 
 const createId = () => crypto.randomUUID?.() ?? `lower-third-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-const animationOptions: Array<{ value: LowerThirdAnimation; label: string }> = [
-  { value: "none", label: "None" },
-  { value: "fade", label: "Fade" },
-  { value: "slide-left", label: "Slide Left" },
-  { value: "slide-right", label: "Slide Right" },
-  { value: "slide-up", label: "Slide Up" },
-  { value: "zoom", label: "Zoom" },
-  { value: "wipe", label: "Wipe" }
-];
+const animationOptions = lowerThirdAnimationOptions;
 
 const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenBackgrounds }) => {
   const {
@@ -32,6 +26,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
   const [maxCharactersPerLine, setMaxCharactersPerLine] = useState(52);
   const [editingSlideId, setEditingSlideId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  const [editingTitle, setEditingTitle] = useState("");
   const [draftSlideId, setDraftSlideId] = useState<string | null>(null);
   const [songs, setSongs] = useState<SongLibraryEntry[]>([]);
   const [selectedSongId, setSelectedSongId] = useState("");
@@ -184,6 +179,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
   const beginEditSlide = (slide: LowerThirdSlide) => {
     setEditingSlideId(slide.id);
     setEditingText(slide.text);
+    setEditingTitle(lowerThirdTitle(slide));
   };
 
   const saveEditedSlide = (live = false) => {
@@ -193,11 +189,11 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
     if (!current) return;
 
     if (current.id === lowerThird.programSlideId) {
-      const previewCopy = { ...current, id: createId(), text };
+      const previewCopy = { ...current, id: createId(), text, title: editingTitle };
       void stageLowerThird(insertSlideAfter(lowerThird.slides, current.id, previewCopy), previewCopy.id, live);
     } else {
       void stageLowerThird(
-        lowerThird.slides.map((slide) => slide.id === editingSlideId ? { ...slide, text } : slide),
+        lowerThird.slides.map((slide) => slide.id === editingSlideId ? { ...slide, text, title: editingTitle } : slide),
         editingSlideId,
         live
       );
@@ -212,13 +208,13 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
     if (!editingSlideId || !text) return;
     const current = lowerThird.slides.find((slide) => slide.id === editingSlideId);
     if (!current) return;
-    const draft: LowerThirdSlide = { ...current, id: createId(), text: "" };
+    const draft: LowerThirdSlide = { ...current, id: createId(), text: "", title: editingTitle };
     if (current.id === lowerThird.programSlideId) {
-      const previewCopy = { ...current, id: createId(), text };
+      const previewCopy = { ...current, id: createId(), text, title: editingTitle };
       const withPreviewCopy = insertSlideAfter(lowerThird.slides, current.id, previewCopy);
       void stageLowerThird(insertSlideAfter(withPreviewCopy, previewCopy.id, draft), previewCopy.id);
     } else {
-      const updated = lowerThird.slides.map((slide) => slide.id === current.id ? { ...slide, text } : slide);
+      const updated = lowerThird.slides.map((slide) => slide.id === current.id ? { ...slide, text, title: editingTitle } : slide);
       void stageLowerThird(insertSlideAfter(updated, current.id, draft), current.id);
     }
     setEditingSlideId(draft.id);
@@ -233,7 +229,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
     if (current.id === lowerThird.programSlideId) {
       const lines = splitSlideLines(editingText);
       if (lines.length < 2) return;
-      const replacements = lines.map((text) => ({ ...current, id: createId(), text }));
+      const replacements = lines.map((text) => ({ ...current, id: createId(), text, title: editingTitle }));
       const currentIndex = lowerThird.slides.findIndex((slide) => slide.id === current.id);
       const slides = [...lowerThird.slides];
       slides.splice(currentIndex + 1, 0, ...replacements);
@@ -243,7 +239,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
       setDraftSlideId(null);
       return;
     }
-    const result = replaceSlideWithLines(lowerThird.slides, editingSlideId, editingText, createId);
+    const result = replaceSlideWithLines(lowerThird.slides.map(slide => slide.id === editingSlideId ? { ...slide, title: editingTitle } : slide), editingSlideId, editingText, createId);
     if (!result) return;
     void stageLowerThird(result.slides, result.activeSlideId);
     setEditingSlideId(null);
@@ -300,6 +296,12 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
         <span className="tag">{activeSlide ? `Preview ${navigationIndex + 1}/${navigationSlides.length}` : "Preview Clear"}</span>
       </div>
 
+      <div className="lower-third-design-switch" role="group" aria-label="Lower-third presentation style">
+        <button type="button" className={`btn ${lowerThird.mode !== "designer" ? "btn-primary" : "btn-outline"}`} aria-pressed={lowerThird.mode !== "designer"} onClick={() => void saveLowerThird({ mode: "classic" })}>Classic lower third</button>
+        <button type="button" className={`btn ${lowerThird.mode === "designer" ? "btn-primary" : "btn-outline"}`} aria-pressed={lowerThird.mode === "designer"} onClick={() => void saveLowerThird({ mode: "designer" })}>Designer · Title + Content</button>
+      </div>
+      {lowerThird.mode === "designer" && <LowerThirdDesigner />}
+
       <div className="presentation-safety-card">
         <strong>Text Layer Safety</strong>
         <span>{lowerThird.allowMultipleTextLayers ? "Multiple presentation text layers are allowed." : "One presentation text layer at a time (recommended)."}</span>
@@ -314,7 +316,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
         <span className="field-help">When off, new presentation text replaces previous managed text. Enter or Show Live sends it to Preview and Program together.</span>
       </div>
 
-      <div className="field">
+      {lowerThird.mode !== "designer" && <div className="field">
         <label htmlFor="manualLowerThird">Manual lower-third text</label>
         <textarea
           id="manualLowerThird"
@@ -333,7 +335,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
           <button className="btn btn-outline" onClick={() => addManualSlide()} disabled={!manualText.trim()}>Add to Queue</button>
         </div>
         <span className="field-help">Enter shows text in Preview and Program. Shift+Enter adds a new line. Add to Queue saves it for later.</span>
-      </div>
+      </div>}
 
       <div className="field">
         <label htmlFor="bulkLowerThird">Songs, lyrics or long text</label>
@@ -401,6 +403,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
             {editingSlideId === slide.id ? (
               <div className="lower-third-slide-editor">
                 <label htmlFor={`edit-slide-${slide.id}`}>Edit slide {index + 1}</label>
+                {lowerThird.mode === "designer" && <input aria-label={`Slide ${index + 1} title`} value={editingTitle} onChange={event => setEditingTitle(event.target.value)} placeholder="Title" />}
                 <textarea id={`edit-slide-${slide.id}`} value={editingText} onChange={(event) => setEditingText(event.target.value)} autoFocus onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
@@ -426,6 +429,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
                 }} title="Click to cue; Enter shows this text in Preview and Program">
                 <span>{index + 1}</span>
                 <strong>{slide.text}</strong>
+                {slide.title ? <small>{slide.title}</small> : null}
                 {slide.reference ? <small>{slide.reference}</small> : null}
                 {slide.deckTitle ? <small>{slide.deckTitle}</small> : null}
                 {slide.id === lowerThird.programSlideId ? <small>PROGRAM LIVE</small> : null}

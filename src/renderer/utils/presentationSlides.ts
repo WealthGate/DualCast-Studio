@@ -58,7 +58,7 @@ export const createScriptureSlides = (
       .map((verse) => ({
         id: options.createId(),
         text: sanitizeScriptureText(verse.text),
-        reference: verse.reference.trim() || result.reference,
+        reference: sanitizeScriptureText(verse.reference.trim() || result.reference),
         kind: "scripture",
         deckId: options.deckId,
         deckTitle: options.deckTitle
@@ -70,7 +70,7 @@ export const createScriptureSlides = (
   return texts.filter(Boolean).map((text, index) => ({
     id: options.createId(),
     text,
-    reference: texts.length > 1 ? `${result.reference} (${index + 1}/${texts.length})` : result.reference,
+    reference: sanitizeScriptureText(texts.length > 1 ? `${result.reference} (${index + 1}/${texts.length})` : result.reference),
     kind: "scripture",
     deckId: options.deckId,
     deckTitle: options.deckTitle

@@ -1,6 +1,6 @@
 {
   "name": "openchurch-broadcast-studio",
-  "version": "0.6.38",
+  "version": "0.6.39",
   "private": true,
   "description": "Open church production, presentation, recording, and multi-destination streaming studio",
   "author": {
@@ -38,7 +38,8 @@
     "verify:service-features": "node scripts/verify-live-output.cjs --service-features-only",
     "prepare:virtual-camera": "node scripts/build-virtual-camera.cjs",
     "verify:virtual-camera": "node scripts/verify-virtual-camera.cjs && node scripts/verify-virtual-camera-ui.cjs",
-    "verify:backgrounds": "node scripts/verify-app-backgrounds.cjs"
+    "verify:backgrounds": "node scripts/verify-app-backgrounds.cjs",
+    "verify:lower-thirds": "node scripts/verify-live-output.cjs --designer-only"
   },
   "dependencies": {
     "electron-log": "^5.1.2",

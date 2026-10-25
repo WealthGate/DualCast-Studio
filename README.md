@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.38**.
+Current release: **v0.6.39**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,16 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.38
+### What's new in v0.6.39
+
+- Choose **Lower Third Studio → Designer · Title + Content** for six original styles: **Prism, Aurora, Editorial, Glassline, Momentum and Sanctuary**. Customize title and content colors, panels, fonts, sizes, alignment, letter spacing and emphasis separately; choose shapes, placement, gradient, border, shadow and logo framing. The existing **Classic lower third** remains available and stays selected on upgrade.
+- Reuse the existing standard lower-third logo. Show a new card live, cue a private Preview copy, update a loaded card, or opt into **Update live while typing**. Live text edits retain the cue ID and do not replay entrances. Song titles and Scripture references supply the title automatically. Add layered reveal, soft spring and downward slide to entrance/exit choices.
+- Restore **Verse** and **Through verse** selectors alongside **Jump to verse → Jump live**. Show a selected verse/range, or jump immediately to one verse with Enter. Previous/Next move beyond the selected range. Online lists use standard KJV chapter counts; offline lists follow the selected library, including missing verses.
+- Save title/content styling and titles locally, preserve titles in service schedules, and redraw newly loaded logos on Program and transparent lower-third outputs.
+
+See [designer lower thirds and verse selection](docs/designer-lower-thirds.md).
+
+### Included from v0.6.38
 
 - Add **Audio Mixer → Scan installed VST2 plugins** and **Scan folder…**. Scan common Windows x64 VST folders, registered custom locations and remembered folders, with isolated DLL validation, duplicate detection and scan details for incompatible files.
 - Make plugin selection update from action results as well as status notifications. Enable opens native controls automatically, including ReaStream; missing files and a missing host now explain how to recover. Wait for scan helpers to release plugins before activation.

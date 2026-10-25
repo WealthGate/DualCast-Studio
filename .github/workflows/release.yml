@@ -93,6 +93,11 @@ jobs:
         timeout-minutes: 3
         run: npm run verify:backgrounds
 
+      - name: Verify designer lower thirds and Scripture selection
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: npm run verify:lower-thirds
+
       - name: Package desktop application
         run: npx electron-builder ${{ matrix.target }} --publish never
         env:

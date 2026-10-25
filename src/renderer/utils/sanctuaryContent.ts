@@ -1,5 +1,6 @@
 import { SanctuaryDisplayState } from "../../shared/types";
 import { normalizeSanctuaryDisplay } from "../../shared/sanctuaryDisplay";
+import { lowerThirdTitle } from "../../shared/lowerThirdDesign";
 import { useAppStore } from "../store/useAppStore";
 import { isPresentationTextSource, visiblePresentationSourceIds } from "./presentationText";
 
@@ -13,7 +14,7 @@ export const getSanctuaryDisplayState = (state: ContentState): SanctuaryDisplayS
     const slide = state.settings.lowerThird.slides.find(slide => slide.id === state.settings.lowerThird.programSlideId);
     if (slide) {
       text = state.isLowerThirdHidden ? "" : slide.text;
-      reference = state.isLowerThirdHidden ? "" : slide.reference ?? "";
+      reference = state.isLowerThirdHidden ? "" : state.settings.lowerThird.mode === "designer" ? lowerThirdTitle(slide) : slide.reference ?? "";
     } else {
       const visible = visiblePresentationSourceIds(state.programSceneSnapshot, state.programSources, state.settings.lowerThird.allowMultipleTextLayers, false);
       text = (state.programSceneSnapshot?.enabled === false ? [] : state.programSceneSnapshot?.sourceIds ?? []).flatMap(id => {

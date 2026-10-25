@@ -1,4 +1,26 @@
-# OpenChurch Broadcast Studio v0.6.38 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.39 - Complete User Guide
+
+## Designer lower thirds and verse selection
+
+Open **Lower Third Studio → Designer · Title + Content**. Choose **Prism**, **Aurora**,
+**Editorial**, **Glassline**, **Momentum** or **Sanctuary**. Enter a title and description,
+then **Cue in Preview** or **Show card live**. Expand **Title styling** and **Content
+styling** to set colors, panel opacity, font, size, alignment, letter spacing and emphasis
+independently. Shape, gradient, placement, logo frame, entrance and exit are adjustable.
+The same standard lower-third logo is reused. **Classic lower third** remains available.
+
+To change a queued song or Scripture slide, select it, choose **Load selected slide**,
+and edit its title/content. **Update live** changes the loaded live card without replaying
+its entrance. Enable **Update live while typing** only when you want typed edits to
+appear on Program. Cue in Preview creates a private copy of a live card. Song titles
+and Scripture references fill the title automatically. Style settings save on this PC.
+
+In **Scripture**, select Book, Chapter, **Verse** and optional **Through verse**, then
+**Show Live (Enter)**. **Jump to verse → Jump live** (or Enter in that field) immediately
+shows one verse. Previous/Next move beyond the selected range. Online selectors use
+standard KJV chapter counts; offline selectors use the chosen library's available verses.
+For another numbering scheme, use **Type a reference instead**. See
+[full designer setup and verification](designer-lower-thirds.md).
 
 ## VST scanning and ReaStream audio
 
@@ -361,8 +383,8 @@ Lower thirds can show a name, title, announcement, lyric, or Scripture passage.
 
 1. Open Lower Third Studio.
 2. Type a short message in Manual lower-third text.
-3. Choose Add and Show.
-4. Check the staged message in Preview. Program remains unchanged.
+3. Choose **Add to Queue** to save it for later, or **Show Live (Enter)** to display it immediately.
+4. Click a queued slide to check it privately in Preview.
 5. Choose **Take Text Live** to change only Program text, or press **TAKE** to send the complete Preview scene and staged text together.
 6. Click any saved slide to stage it in Preview.
 7. Use Previous and Next, or focus the dock and use the arrow keys. Navigation remains inside the selected song or Scripture deck.
@@ -405,13 +427,13 @@ Downloaded and imported songs remain stored on the computer. Compatible JSON may
 1. Find the slide in the lower-third slide list.
 2. Choose **Edit** beside that slide.
 3. Correct the words, spelling, or line breaks.
-4. Choose **Save & Show**.
+4. Choose **Show Live (Enter)** when the edit should go live.
 
-Save & Show updates the existing slide and stages the edited slide in Preview. Choose Take Text Live or TAKE only after checking it. Cancel leaves the original slide unchanged. This works for split lyrics, manual text slides, and Scripture slides.
+Show Live displays the edited slide in Preview and Program. Editing an already live slide creates a separate replacement, so the previous text stays visible until the replacement is committed. In Designer, use Load selected slide and Cue in Preview for a private draft, or Update live to revise the current card without replaying its entrance. Cancel leaves the original slide unchanged.
 
 While editing a slide, two additional choices are available:
 
-- **Add Slide After** saves the current edit and opens a new blank slide immediately after it. Type the new lyric or text, then choose **Save & Show**. Cancel removes the unfinished blank slide.
+- **Add Slide After** saves the current edit and opens a new blank slide immediately after it. Type the new lyric or text, then choose **Show Live (Enter)**. Cancel removes the unfinished blank slide.
 - **Each Line → Slide** turns every non-empty line in the editor into an ordered slide. The first line stays in the current slide and every remaining line is inserted directly after it. Use this only when every line should appear separately.
 
 ### Format the lower third
@@ -457,10 +479,10 @@ The Scripture dock can use the configured online provider, individual passages s
 1. Open the Scripture dock.
 2. Set Scripture Source to **Configured Online Provider**.
 3. Select the Bible book.
-4. Select the chapter, start verse, and end verse.
-5. Press Enter or choose the displayed **Load [reference]** button.
+4. Select the chapter, **Verse**, and optional **Through verse**.
+5. Press Enter or choose **Show Live (Enter)**. This displays the selection in Preview and Program.
 6. Read the complete returned passage and reference.
-7. Correct the text manually if your licensed source requires it.
+7. Correct the text manually if your licensed source requires it; Enter in Verse Text shows the edited words live. Use **Jump to verse → Jump live** or Enter in that field to move immediately to one verse. Previous/Next move beyond the selected range.
 
 OpenChurch removes provider HTML, encoded entities, zero-width characters, and stray wrapping `<` or `>` characters before Scripture is displayed or saved. The Verse Text box therefore contains the readable passage rather than API formatting. If a source includes publisher footnotes as ordinary words, review them manually before going live.
 

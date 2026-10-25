@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { LowerThirdAnimation, ScriptureFetchResult, ScriptureLibraryCatalog, ScriptureLibrarySummary, Source, SourceRect } from "../../shared/types";
 import { useAppStore } from "../store/useAppStore";
-import { maximumBibleVerseNumber, standardBibleBooks } from "../utils/bibleBooks";
+import { standardBibleBooks } from "../utils/bibleBooks";
 import { createScriptureSlides } from "../utils/presentationSlides";
-import { adjacentScriptureVerse } from "../utils/scriptureNavigation";
+import { adjacentScriptureVerse, scriptureVerseOptions } from "../utils/scriptureNavigation";
+import { lowerThirdAnimationOptions } from "./LowerThirdDesigner";
 import { sanitizeScriptureText } from "../../shared/scriptureText";
 
 const createId = () => crypto.randomUUID?.() ?? `scripture-${Date.now()}`;
@@ -17,15 +18,7 @@ type ScriptureSceneLayout =
   | "quarter-video-right"
   | "custom";
 
-const animationOptions: Array<{ value: LowerThirdAnimation; label: string }> = [
-  { value: "none", label: "None" },
-  { value: "fade", label: "Fade" },
-  { value: "slide-left", label: "Slide Left" },
-  { value: "slide-right", label: "Slide Right" },
-  { value: "slide-up", label: "Slide Up" },
-  { value: "zoom", label: "Zoom" },
-  { value: "wipe", label: "Wipe" }
-];
+const animationOptions = lowerThirdAnimationOptions;
 
 const toRgba = (hex: string, opacity: number) => {
   const match = hex.match(/^#([0-9a-f]{6})$/i);
@@ -63,6 +56,7 @@ const ScripturePanel: React.FC = () => {
   const [selectedBook, setSelectedBook] = useState("John");
   const [selectedChapter, setSelectedChapter] = useState(3);
   const [startVerse, setStartVerse] = useState(16);
+  const [endVerse, setEndVerse] = useState(16);
   const [jumpVerse, setJumpVerse] = useState("16");
   const [splitMode, setSplitMode] = useState<"passage" | "verse" | "lines">("verse");
   const [linesPerSlide, setLinesPerSlide] = useState(2);
@@ -104,6 +98,7 @@ const ScripturePanel: React.FC = () => {
           setSelectedBook(firstBook.name);
           setSelectedChapter(firstBook.chapters[0]?.number ?? 1);
           setStartVerse(firstBook.chapters[0]?.verses[0] ?? 1);
+          setJumpVerse(String(firstBook.chapters[0]?.verses[0] ?? 1));
         }
       })
       .catch(() => active && setCatalog(null));
@@ -117,9 +112,7 @@ const ScripturePanel: React.FC = () => {
   const chapterOptions = selectedBookInfo?.chapters?.map((chapter) => chapter.number)
     ?? Array.from({ length: selectedBookInfo?.chapterCount ?? 1 }, (_, index) => index + 1);
   const selectedChapterInfo = selectedBookInfo?.chapters?.find((chapter) => chapter.number === selectedChapter);
-  const verseOptions = selectedChapterInfo?.verses?.length
-    ? selectedChapterInfo.verses
-    : Array.from({ length: maximumBibleVerseNumber }, (_, index) => index + 1);
+  const verseOptions = scriptureVerseOptions(selectedBook, selectedChapter, selectedChapterInfo?.verses);
 
   useEffect(() => {
     if (!chapterOptions.includes(selectedChapter)) setSelectedChapter(chapterOptions[0] ?? 1);
@@ -127,8 +120,11 @@ const ScripturePanel: React.FC = () => {
 
   useEffect(() => {
     const firstVerse = verseOptions[0] ?? 1;
-    if (!verseOptions.includes(startVerse)) setStartVerse(firstVerse);
+    if (!verseOptions.includes(startVerse)) { setStartVerse(firstVerse); setJumpVerse(String(firstVerse)); }
   }, [selectedBook, selectedChapter, catalog, startVerse]);
+  useEffect(() => {
+    if (endVerse < startVerse || !verseOptions.includes(endVerse)) setEndVerse(startVerse);
+  }, [selectedBook, selectedChapter, catalog, startVerse, endVerse]);
 
   const fetchVerse = async (requestedReference = reference, live = false) => {
     const query = requestedReference.trim();
@@ -146,6 +142,8 @@ const ScripturePanel: React.FC = () => {
         setSelectedBook(position[1]);
         setSelectedChapter(Number(position[2]));
         setStartVerse(Number(position[3]));
+        setEndVerse(Number(position[4] ?? position[3]));
+        setJumpVerse(position[3]);
       }
       setVerseText(result.text);
       setResolvedReference(result.reference);
@@ -166,8 +164,6 @@ const ScripturePanel: React.FC = () => {
     }
   };
 
-  useEffect(() => { setJumpVerse(String(startVerse)); }, [startVerse, selectedBook, selectedChapter]);
-
   const jumpToVerse = async () => {
     const verse = Number(jumpVerse);
     if (!Number.isInteger(verse) || !verseOptions.includes(verse)) {
@@ -178,10 +174,12 @@ const ScripturePanel: React.FC = () => {
   };
 
   const navigateVerse = async (direction: -1 | 1) => {
-    const adjacent = adjacentScriptureVerse(verseOptions, startVerse, startVerse, direction);
+    const adjacent = adjacentScriptureVerse(verseOptions, startVerse, endVerse, direction);
     if (adjacent === null) return;
     await fetchVerse(`${selectedBook} ${selectedChapter}:${adjacent}`, true);
   };
+
+  const showSelectedVerses = () => fetchVerse(`${selectedBook} ${selectedChapter}:${startVerse}${endVerse > startVerse ? `-${endVerse}` : ""}`, true);
 
   const sendToLowerThird = async () => {
     const text = sanitizeScriptureText(verseText);
@@ -369,31 +367,46 @@ const ScripturePanel: React.FC = () => {
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof HTMLButtonElement)) {
             event.preventDefault();
-            if (!event.repeat) void jumpToVerse();
+            if (!event.repeat) void showSelectedVerses();
           }
         }}
       >
         <div className="field-grid scripture-reference-grid">
           <label className="field">
             <span>Book</span>
-            <select aria-label="Bible book" disabled={loading} value={selectedBook} onChange={(event) => setSelectedBook(event.target.value)}>
+            <select aria-label="Bible book" disabled={loading} value={selectedBook} onChange={(event) => { setSelectedBook(event.target.value); setSelectedChapter(1); setStartVerse(1); setEndVerse(1); setJumpVerse("1"); }}>
               {navigatorBooks.map((book) => <option key={book.name} value={book.name}>{book.name}</option>)}
             </select>
           </label>
           <label className="field">
             <span>Chapter</span>
-            <select aria-label="Bible chapter" disabled={loading} value={selectedChapter} onChange={(event) => setSelectedChapter(Number(event.target.value))}>
+            <select aria-label="Bible chapter" disabled={loading} value={selectedChapter} onChange={(event) => { setSelectedChapter(Number(event.target.value)); setStartVerse(1); setEndVerse(1); setJumpVerse("1"); }}>
               {chapterOptions.map((chapter) => <option key={chapter} value={chapter}>{chapter}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Verse</span>
+            <select aria-label="Bible verse" disabled={loading || !verseOptions.length} value={startVerse} onChange={event => { const verse = Number(event.target.value); setStartVerse(verse); setEndVerse(verse); setJumpVerse(String(verse)); }}>
+              {verseOptions.map(verse => <option key={verse} value={verse}>{verse}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Through verse</span>
+            <select aria-label="Through verse" disabled={loading || !verseOptions.length} value={endVerse} onChange={event => setEndVerse(Number(event.target.value))}>
+              {verseOptions.filter(verse => verse >= startVerse).map(verse => <option key={verse} value={verse}>{verse}</option>)}
             </select>
           </label>
           <label className="field">
             <span>Jump to verse</span>
             <input aria-label="Jump to verse" type="number" min={verseOptions[0]} max={verseOptions[verseOptions.length - 1]} step={1}
-              disabled={loading} value={jumpVerse} onChange={event => setJumpVerse(event.target.value)} />
+              disabled={loading} value={jumpVerse} onChange={event => setJumpVerse(event.target.value)} onKeyDown={event => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); if (!event.repeat) void jumpToVerse(); }
+              }} />
+            <button type="button" className="btn btn-outline" disabled={loading} onClick={() => void jumpToVerse()}>Jump live</button>
           </label>
         </div>
         <div className="scripture-action-grid">
-          <button className="btn btn-primary" onClick={() => void jumpToVerse()} disabled={loading}>
+          <button className="btn btn-primary" onClick={() => void showSelectedVerses()} disabled={loading || !verseOptions.length}>
             {loading ? "Working..." : "Show Live (Enter)"}
           </button>
           <button className="btn btn-outline" disabled={loading} onClick={() => {
@@ -404,7 +417,7 @@ const ScripturePanel: React.FC = () => {
           <button className="btn btn-primary" onClick={() => void sendToLowerThird()} disabled={loading || !verseText.trim()}>Create Slides in Preview</button>
           <button className="btn btn-outline" onClick={() => void savePassageOffline()} disabled={loading || !verseText.trim()}>Save Passage Offline</button>
         </div>
-        <span className="field-help">Show Live or Enter loads the selected passage directly into Preview, Program and connected viewing outputs. Enter a verse number and press Enter or Show Live to jump within this chapter. Previous and Next display the adjacent verse immediately.</span>
+        <span className="field-help">Select Verse and optional Through verse, then Show Live or Enter. Jump live (or Enter in Jump to verse) displays one verse immediately. Previous and Next move beyond the selected range. Offline lists follow the selected library; online lists use standard KJV verse numbering and the provider validates the passage.</span>
       </div>
       <details className="scripture-direct-reference">
         <summary>Type a reference instead</summary>

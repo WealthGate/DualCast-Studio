@@ -23,7 +23,7 @@ export type StreamingEncoder =
 export type OperatorRole = "director" | "graphics" | "audio" | "stream";
 export type TextSourceRole = "standard" | "lower-third" | "presentation";
 export type ThemePreference = "system" | "dark" | "light" | "high-contrast" | "midnight" | "warm";
-export type LowerThirdAnimation = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "zoom" | "wipe";
+export type LowerThirdAnimation = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "slide-down" | "zoom" | "wipe" | "reveal" | "spring";
 export type WorkspaceViewMode = "studio" | "program-focus" | "program-only";
 export type StreamPlatform = "custom" | "youtube" | "facebook";
 export type StreamingCredentialProvider = "youtube" | "facebook";
@@ -187,6 +187,7 @@ export type StreamDestinationInput = StreamDestinationConfig & {
 export type LowerThirdSlide = {
   id: string;
   text: string;
+  title?: string;
   reference?: string;
   kind?: "text" | "song" | "scripture";
   deckId?: string;
@@ -194,6 +195,8 @@ export type LowerThirdSlide = {
 };
 
 export type LowerThirdSettings = {
+  mode?: "classic" | "designer";
+  design?: import("./lowerThirdDesign").LowerThirdDesign;
   enabled: boolean;
   displayId: string | null;
   heightPercent: number;

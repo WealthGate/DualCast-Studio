@@ -3,6 +3,7 @@ import { setProgramChannelMode } from "../utils/audioChannels";
 import { createProgramAudioBus, ProgramAudioSource } from "../utils/programAudioBus";
 import { attachAudioPluginBridge } from "../utils/audioPluginBridge";
 import { createVisibilityTransition, emptyLowerThirdCue, updateLowerThirdCue, LowerThirdCue } from "../utils/lowerThirdCue";
+import { drawDesignerLowerThird } from "../utils/designerLowerThird";
 import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { resizeCanvas, useCanvasRenderer } from "../hooks/useCanvasRenderer";
@@ -169,6 +170,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const [previewSize, setPreviewSize] = useState({ width: 1, height: 1 });
   const [isMultiviewOpen, setIsMultiviewOpen] = useState(false);
   const [mediaRevision, setMediaRevision] = useState(0);
+  const [lowerThirdAssetsRevision, setLowerThirdAssetsRevision] = useState(0);
   const [microphoneRevision, setMicrophoneRevision] = useState(0);
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
   const transitionRef = useRef<{
@@ -288,8 +290,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       return;
     }
     const image = new Image();
-    image.onload = () => { lowerThirdImageRef.current = image; };
+    lowerThirdImageRef.current = null;
+    image.onload = () => { lowerThirdImageRef.current = image; setMediaRevision(value => value + 1); setLowerThirdAssetsRevision(value => value + 1); };
     image.src = settings.lowerThird.imageUrl;
+    return () => { image.onload = null; };
   }, [settings.lowerThird.imageUrl]);
 
   useEffect(() => {
@@ -298,8 +302,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       return;
     }
     const image = new Image();
-    image.onload = () => { bibleImageRef.current = image; };
+    bibleImageRef.current = null;
+    image.onload = () => { bibleImageRef.current = image; setMediaRevision(value => value + 1); setLowerThirdAssetsRevision(value => value + 1); };
     image.src = settings.lowerThird.bibleImageUrl;
+    return () => { image.onload = null; };
   }, [settings.lowerThird.bibleImageUrl]);
 
   useEffect(() => {
@@ -308,8 +314,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       return;
     }
     const image = new Image();
-    image.onload = () => { lowerThirdBackgroundImageRef.current = image; };
+    lowerThirdBackgroundImageRef.current = null;
+    image.onload = () => { lowerThirdBackgroundImageRef.current = image; setMediaRevision(value => value + 1); setLowerThirdAssetsRevision(value => value + 1); };
     image.src = settings.lowerThird.backgroundImageUrl;
+    return () => { image.onload = null; };
   }, [settings.lowerThird.backgroundImageUrl]);
 
   const microphoneEnabled = settings.audioMode === "microphone" || settings.audioMode === "both";
@@ -892,10 +900,17 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const drawSlide = (slide: LowerThirdSlide, animation: LowerThirdAnimation, phase: "enter" | "exit", amount: number, mode: LowerThirdCue["mode"]) => {
       const visible = phase === "enter" ? amount : 1 - amount;
       ctx.save();
+      if (config.mode === "designer" && mode !== "logo") {
+        drawDesignerLowerThird(ctx, canvasWidth, canvasHeight, config, slide, mode === "theme" ? null : lowerThirdImageRef.current ?? bibleImageRef.current,
+          animation, phase, amount, mode === "show", settings.displayBackgrounds?.lowerThird ? (context, x, y, w, h) => bandBackground.draw(context, x, y, w, h) : undefined);
+        ctx.restore(); return;
+      }
       if (animation === "fade") ctx.globalAlpha = visible;
       if (animation === "slide-left") ctx.translate((phase === "enter" ? 1 - amount : -amount) * canvasWidth, 0);
       if (animation === "slide-right") ctx.translate((phase === "enter" ? amount - 1 : amount) * canvasWidth, 0);
       if (animation === "slide-up") ctx.translate(0, (phase === "enter" ? 1 - amount : -amount) * areaHeight);
+      if (animation === "slide-down") ctx.translate(0, (phase === "enter" ? amount - 1 : amount) * areaHeight);
+      if (animation === "spring") { ctx.globalAlpha = visible; ctx.translate(0, (1 - visible) * areaHeight * .2); }
       if (animation === "zoom") {
         const scale = phase === "enter" ? 0.72 + amount * 0.28 : 1 - amount * 0.28;
         ctx.translate(canvasWidth / 2, areaY + areaHeight / 2);
@@ -903,7 +918,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         ctx.translate(-canvasWidth / 2, -(areaY + areaHeight / 2));
         ctx.globalAlpha = visible;
       }
-      if (animation === "wipe") {
+      if (animation === "wipe" || animation === "reveal") {
         const width = canvasWidth * visible;
         ctx.beginPath();
         ctx.rect(phase === "enter" ? 0 : canvasWidth - width, areaY, width, areaHeight);
@@ -1313,6 +1328,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     settings.lowerThird,
     settings.displayBackgrounds?.lowerThird,
     bandBackground.revision,
+    lowerThirdAssetsRevision,
     programSources,
     isLowerThirdHidden,
     displayTextMode
