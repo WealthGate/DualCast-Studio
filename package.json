@@ -1,6 +1,6 @@
 {
   "name": "openchurch-broadcast-studio",
-  "version": "0.6.37",
+  "version": "0.6.38",
   "private": true,
   "description": "Open church production, presentation, recording, and multi-destination streaming studio",
   "author": {
@@ -32,6 +32,7 @@
     "verify:audio-host": "node scripts/verify-audio-host.cjs",
     "verify:audio-fidelity": "node scripts/verify-audio-fidelity.cjs",
     "verify:audio-plugin-bridge": "node scripts/verify-audio-plugin-bridge.cjs",
+    "verify:audio-plugin-ui": "node scripts/verify-audio-plugin-ui.cjs",
     "verify:live-output": "node scripts/verify-live-output.cjs",
     "verify:broadcast-continuity": "node scripts/verify-live-output.cjs --continuity-only",
     "verify:service-features": "node scripts/verify-live-output.cjs --service-features-only",

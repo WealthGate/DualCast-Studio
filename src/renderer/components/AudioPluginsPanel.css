@@ -8,3 +8,5 @@
 .audio-plugin-actions .btn { flex: 1 1 130px; white-space: normal; min-height: 34px; }
 .audio-plugins p { margin: 0; overflow-wrap: anywhere; }
 .audio-plugin-error { color: #ffb6b6; font-size: 12px; }
+.audio-plugin-scan-results { font-size: 12px; overflow-wrap: anywhere; }
+.audio-plugin-scan-results ul { padding-left: 20px; max-height: 180px; overflow-y: auto; }

@@ -1,4 +1,27 @@
-# OpenChurch Broadcast Studio v0.6.37 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.38 - Complete User Guide
+
+## VST scanning and ReaStream audio
+
+In **Audio Mixer**, choose **Scan installed VST2 plugins** to search common Windows
+plugin folders, or **Scan folder…** to choose your installation folder. Custom folders
+are remembered. Scans add compatible effects without enabling them. Select the
+effect and choose **Enable plugin**; its native controls open automatically.
+**Add VST2 .dll** also lets you choose one installed file directly.
+
+For ReaStream, install/use the **64-bit ReaPlugs VST2** version. Select
+**ReaStream (ReaPlugs Edition)**, normally `reastream-standalone.dll`. In its controls,
+turn on **Enable audio/MIDI**, select **Receive audio/MIDI**, and use the same
+identifier as the sending instance. Allow the audio host through Windows Firewall
+if Windows asks. A microphone is not needed to keep the receiver running.
+Check Program audio before going live; master volume and **Mute all** also affect
+received audio. **Bypass plugin** stops processing and saves plugin settings.
+
+If Enable is unavailable, read the message below the buttons. A moved/missing DLL
+must be scanned or added again from its current location. A missing audio host
+requires reinstalling the latest Windows x64 app. Expand **Scan details** for rejected
+files. This release hosts one Windows x64 VST2 effect at a time. VST3, 32-bit plugins,
+and native plugin hosting on macOS/Linux are unsupported. Enable again after each
+app restart. See [complete setup and checks](vst-scanning-and-reastream.md).
 
 ## Display backgrounds
 

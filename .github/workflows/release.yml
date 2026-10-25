@@ -58,6 +58,13 @@ jobs:
         timeout-minutes: 5
         run: npm run verify:virtual-camera
 
+      - name: Verify VST discovery, activation and native audio bridge
+        if: runner.os == 'Windows'
+        timeout-minutes: 4
+        run: |
+          npm run verify:audio-plugin-ui
+          npm run verify:audio-plugin-bridge
+
       - name: Verify release tag matches package version
         shell: bash
         env:

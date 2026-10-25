@@ -7,9 +7,10 @@ import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
-import { AudioPluginBlock, AudioPluginInfo, AudioPluginStatus, AUDIO_PLUGIN_BLOCK_FRAMES, AUDIO_PLUGIN_SAMPLE_RATE } from "../../src/shared/audioPlugins";
+import { AudioPluginAction, AudioPluginBlock, AudioPluginInfo, AudioPluginStatus, AUDIO_PLUGIN_BLOCK_FRAMES, AUDIO_PLUGIN_SAMPLE_RATE } from "../../src/shared/audioPlugins";
 import { IpcChannels } from "../../src/shared/ipc";
 import { AudioPluginPacketReader, pluginPacket } from "./audioPluginProtocol";
+import { defaultVstFolders, findVstDlls, pluginPathKey, validateVstDll } from "./audioPluginDiscovery";
 
 type RegisteredPlugin = AudioPluginInfo & { filePath: string };
 type HostEvent = Partial<AudioPluginInfo> & { event?: string; error?: string; message?: string; protocol?: number };
@@ -19,20 +20,24 @@ type PluginSession = {
 };
 let studioOwner: WebContents | null = null;
 let ipcRegistered = false;
-let registry: Store<{ plugins: RegisteredPlugin[] }> | null = null;
+let registry: Store<{ plugins: RegisteredPlugin[]; folders: string[] }> | null = null;
 let current: PluginSession | null = null;
 let stoppedHosts: Promise<void> = Promise.resolve();
 let busy = false;
-let message = "Add a plugin from this device, then enable it for Program audio.";
-const getRegistry = () => registry ??= new Store({ name: "audio-plugins", defaults: { plugins: [] as RegisteredPlugin[] } });
+let message = "Scan for installed VST2 plugins or add a DLL, then enable it for Program audio.";
+let scan: AudioPluginStatus["scan"];
+const getRegistry = () => registry ??= new Store({ name: "audio-plugins", defaults: { plugins: [] as RegisteredPlugin[], folders: [] as string[] } });
 const hostPath = () => path.join(app.isPackaged ? process.resourcesPath : app.getAppPath() + "/assets", "audio-host", "openchurch-audio-host.exe");
-const supported = () => process.platform === "win32" && process.arch === "x64" && existsSync(hostPath());
+const supportError = () => process.platform !== "win32" || process.arch !== "x64"
+  ? "Native plugins require the Windows x64 desktop app and a 64-bit VST2 (.dll) plugin."
+  : !existsSync(hostPath()) ? "The VST2 audio host is missing. Reinstall the latest Windows x64 app (development: run npm run prepare:audio-host), then retry." : null;
+const supported = () => !supportError();
 const plugins = () => getRegistry().get("plugins").filter(plugin => plugin && typeof plugin.id === "string" && typeof plugin.filePath === "string");
-const publicPlugin = ({ filePath: _filePath, ...info }: RegisteredPlugin): AudioPluginInfo => info;
+const publicPlugin = ({ filePath, ...info }: RegisteredPlugin): AudioPluginInfo => ({ ...info, available: existsSync(filePath) });
 export const getAudioPluginStatus = (): AudioPluginStatus => ({
   supported: supported(), plugins: plugins().map(publicPlugin), activeId: current?.plugin.id ?? null,
   running: Boolean(current), session: current?.id ?? null,
-  message: supported() ? message : "Native plugins require the Windows x64 desktop app. Supported format: VST2 (.dll)."
+  message: supportError() ?? message, scan
 });
 const publish = () => BrowserWindow.getAllWindows().forEach(window => {
   if (!window.isDestroyed()) sendToWindow(window, IpcChannels.audioPluginStatus, getAudioPluginStatus());
@@ -93,25 +98,8 @@ const stopSession = (reason?: string) => {
 };
 export const stopAudioPlugins = () => stopSession();
 
-const addPlugin = async (owner: WebContents) => {
-  if (!supported()) throw new Error(getAudioPluginStatus().message);
-  const window = BrowserWindow.fromWebContents(owner);
-  const options: Electron.OpenDialogOptions = { title: "Add a Windows x64 VST2 plugin", properties: ["openFile"], filters: [{ name: "VST2 plugin (64-bit)", extensions: ["dll"] }] };
-  const selected = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
-  if (selected.canceled || !selected.filePaths[0]) return getAudioPluginStatus();
-  const filePath = path.resolve(selected.filePaths[0]);
-  const existing = plugins();
-  if (existing.some(plugin => plugin.filePath.toLowerCase() === filePath.toLowerCase())) return getAudioPluginStatus();
-  if (existing.length >= 64) throw new Error("Remove an unused plugin before adding more.");
-  const file = await fs.open(filePath, "r");
-  try {
-    const header = Buffer.alloc(64);
-    await file.read(header, 0, header.length, 0);
-    const offset = header.readUInt32LE(60);
-    if (header.readUInt16LE(0) !== 0x5a4d || offset > 16 * 1024 * 1024) throw new Error("Select a Windows x64 VST2 DLL.");
-    const pe = Buffer.alloc(6); await file.read(pe, 0, pe.length, offset);
-    if (pe.readUInt32LE(0) !== 0x4550 || pe.readUInt16LE(4) !== 0x8664) throw new Error("This host needs a 64-bit Windows plugin. 32-bit plugins are not supported.");
-  } finally { await file.close(); }
+const inspectPlugin = async (filePath: string): Promise<RegisteredPlugin> => {
+  await validateVstDll(filePath);
   const child = launch(filePath);
   child.stdout.resume();
   try {
@@ -121,11 +109,67 @@ const addPlugin = async (owner: WebContents) => {
       vendor: String(ready.vendor ?? "").slice(0, 200), format: "vst2", hasEditor: ready.hasEditor === true,
       inputs: Number(ready.inputs) || 0, outputs: Number(ready.outputs) || 0, latencyFrames: Math.max(0, Number(ready.latencyFrames) || 0)
     };
-    if (info.outputs < 1 || info.outputs > 64 || info.inputs > 64) throw new Error("This plugin does not expose a supported audio output.");
-    getRegistry().set("plugins", [...existing, info]);
-    message = `${info.name} added. Plugin files stay in their installed location on this device.`;
-    publish(); return getAudioPluginStatus();
-  } finally { child.kill(); }
+    if (info.outputs < 1 || info.outputs > 64 || info.inputs < 0 || info.inputs > 64) throw new Error("This plugin does not expose a supported audio output.");
+    return info;
+  } finally {
+    // Wait for probes to release the DLL/network resources before enabling it.
+    await new Promise<void>(resolve => {
+      if (!child.pid || child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      child.once("exit", () => resolve()); child.kill();
+    });
+  }
+};
+
+const scanPlugins = async (owner: WebContents, chooseFolder: boolean) => {
+  if (!supported()) throw new Error(getAudioPluginStatus().message);
+  let folders = getRegistry().get("folders").filter(folder => typeof folder === "string");
+  if (chooseFolder) {
+    const window = BrowserWindow.fromWebContents(owner);
+    const options: Electron.OpenDialogOptions = { title: "Scan a VST2 plugin folder", properties: ["openDirectory"] };
+    const selected = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    if (selected.canceled || !selected.filePaths[0]) return getAudioPluginStatus();
+    const folder = path.resolve(selected.filePaths[0]);
+    folders = [...new Map([...folders, folder].map(item => [pluginPathKey(item), item])).values()];
+    getRegistry().set("folders", folders);
+    folders = [folder];
+  } else folders = [...await defaultVstFolders(), ...folders];
+  const found = await findVstDlls(folders);
+  scan = { checked: 0, added: 0, existing: 0, issues: found.issues.slice(0, 20), limited: found.limited };
+  const known = new Set(plugins().map(plugin => pluginPathKey(plugin.filePath)));
+  const deadline = Date.now() + 120_000;
+  for (const filePath of found.files) {
+    if (owner.isDestroyed() || owner !== studioOwner || Date.now() > deadline || plugins().length >= 64) { scan.limited = true; break; }
+    scan.checked++;
+    if (known.has(pluginPathKey(filePath))) { scan.existing++; continue; }
+    message = `Scanning ${path.basename(filePath)} (${scan.checked}/${found.files.length})…`; publish();
+    try {
+      const info = await inspectPlugin(filePath);
+      getRegistry().set("plugins", [...plugins(), info]);
+      known.add(pluginPathKey(filePath)); scan.added++;
+    } catch (error) {
+      if (scan.issues.length < 20) scan.issues.push(`${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  message = `Scan complete: ${scan.added} added, ${scan.existing} already registered, ${scan.checked} DLLs checked.${scan.limited ? " Scan limit reached; scan a smaller folder to continue." : ""} Select a plugin and enable it. VST3 and 32-bit plugins are not supported.`;
+  publish(); return getAudioPluginStatus();
+};
+
+const addPlugin = async (owner: WebContents) => {
+  if (!supported()) throw new Error(getAudioPluginStatus().message);
+  const window = BrowserWindow.fromWebContents(owner);
+  const options: Electron.OpenDialogOptions = { title: "Add a Windows x64 VST2 plugin", properties: ["openFile"], filters: [{ name: "VST2 plugin (64-bit)", extensions: ["dll"] }] };
+  const selected = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+  if (selected.canceled || !selected.filePaths[0]) return getAudioPluginStatus();
+  const filePath = path.resolve(selected.filePaths[0]);
+  const existing = plugins();
+  if (existing.some(plugin => pluginPathKey(plugin.filePath) === pluginPathKey(filePath))) {
+    message = "This plugin is already registered. Select it and choose Enable plugin."; publish(); return getAudioPluginStatus();
+  }
+  if (existing.length >= 64) throw new Error("Remove an unused plugin before adding more.");
+  const info = await inspectPlugin(filePath);
+  getRegistry().set("plugins", [...existing, info]);
+  message = `${info.name} added. Select Enable plugin, then Open plugin controls to configure it.`;
+  publish(); return getAudioPluginStatus();
 };
 
 const startPlugin = async (owner: WebContents, id: string) => {
@@ -134,6 +178,7 @@ const startPlugin = async (owner: WebContents, id: string) => {
   if (!plugin || !existsSync(plugin.filePath)) throw new Error("The plugin file is missing. Add it again from this device.");
   stopSession();
   await stoppedHosts;
+  await validateVstDll(plugin.filePath);
   const stateDirectory = path.join(app.getPath("userData"), "audio-plugin-state");
   await fs.mkdir(stateDirectory, { recursive: true });
   const child = launch(plugin.filePath, path.join(stateDirectory, `${plugin.id}.bin`));
@@ -159,7 +204,7 @@ const startPlugin = async (owner: WebContents, id: string) => {
     if (latencyFrames > 8192) throw new Error("This plugin needs more than 171 ms lookahead. Use a low-latency setting before enabling it for live audio.");
     plugin.latencyFrames = latencyFrames;
     getRegistry().set("plugins", plugins().map(item => item.id === plugin.id ? plugin : item));
-    if (owner.isDestroyed() || child.exitCode !== null) throw new Error("The plugin host stopped before activation.");
+    if (owner.isDestroyed() || owner !== studioOwner || child.exitCode !== null || child.signalCode !== null) throw new Error("The plugin host stopped before activation.");
     const session: PluginSession = {
       id: randomUUID(), plugin, owner, child, pending: new Map(), writable: true,
       timer: setInterval(() => {
@@ -187,12 +232,13 @@ export const registerAudioPluginIpc = (studio: WebContents) => {
   ipcRegistered = true;
   const guard = (sender: WebContents) => { if (sender !== studioOwner || sender.isDestroyed()) throw new Error("Audio plugins are controlled from the studio."); };
   ipcMain.handle(IpcChannels.getAudioPluginStatus, event => { guard(event.sender); return getAudioPluginStatus(); });
-  ipcMain.handle(IpcChannels.configureAudioPlugin, async (event, action: { action: string; id?: string }) => {
+  ipcMain.handle(IpcChannels.configureAudioPlugin, async (event, action: AudioPluginAction) => {
     guard(event.sender);
     if (busy) throw new Error("Wait for the current plugin operation to finish.");
     busy = true;
     try {
       if (action?.action === "add") return await addPlugin(event.sender);
+      if (action?.action === "scan" || action?.action === "scan-folder") return await scanPlugins(event.sender, action.action === "scan-folder");
       if (action?.action === "start" && typeof action.id === "string") return await startPlugin(event.sender, action.id);
       if (action?.action === "stop") { stopSession("Plugin bypassed. Program uses the source audio."); return getAudioPluginStatus(); }
       if (action?.action === "editor" && current?.owner === studioOwner) { current.child.stdin.write(pluginPacket(2)); return getAudioPluginStatus(); }
@@ -203,6 +249,8 @@ export const registerAudioPluginIpc = (studio: WebContents) => {
         publish(); return getAudioPluginStatus();
       }
       throw new Error("Invalid audio plugin action.");
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error); publish(); throw error;
     } finally { busy = false; }
   });
   ipcMain.on(IpcChannels.audioPluginBlock, (event, block: AudioPluginBlock) => {

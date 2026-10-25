@@ -56,7 +56,7 @@ declare global {
       sendVirtualCameraFrame: (frame: import("../shared/virtualCamera").VirtualCameraFrame) => Promise<boolean>;
       onVirtualCameraStatus: (callback: (status: import("../shared/virtualCamera").VirtualCameraStatus) => void) => () => void;
       getAudioPluginStatus: () => Promise<import("../shared/audioPlugins").AudioPluginStatus>;
-      configureAudioPlugin: (action: { action: "add" | "start" | "stop" | "editor" | "remove"; id?: string }) => Promise<import("../shared/audioPlugins").AudioPluginStatus>;
+      configureAudioPlugin: (action: import("../shared/audioPlugins").AudioPluginAction) => Promise<import("../shared/audioPlugins").AudioPluginStatus>;
       sendAudioPluginBlock: (block: import("../shared/audioPlugins").AudioPluginBlock) => void;
       onAudioPluginBlock: (callback: (block: import("../shared/audioPlugins").AudioPluginBlock) => void) => () => void;
       onAudioPluginStatus: (callback: (status: import("../shared/audioPlugins").AudioPluginStatus) => void) => () => void;

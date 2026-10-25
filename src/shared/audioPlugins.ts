@@ -7,6 +7,7 @@ export type AudioPluginInfo = {
   inputs: number;
   outputs: number;
   latencyFrames: number;
+  available?: boolean;
 };
 
 export type AudioPluginStatus = {
@@ -16,7 +17,10 @@ export type AudioPluginStatus = {
   running: boolean;
   session: string | null;
   message: string;
+  scan?: { checked: number; added: number; existing: number; issues: string[]; limited: boolean };
 };
+
+export type AudioPluginAction = { action: "add" | "scan" | "scan-folder" | "start" | "stop" | "editor" | "remove"; id?: string };
 
 export type AudioPluginBlock = { session: string; sequence: number; samples: Float32Array };
 export const AUDIO_PLUGIN_BLOCK_FRAMES = 512;
