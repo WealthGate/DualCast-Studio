@@ -21,6 +21,7 @@ import ScripturePanel from "./components/ScripturePanel";
 import ProfileManager, { ProfileManagerIntent } from "./components/ProfileManager";
 import AutoConfigurationWizard from "./components/AutoConfigurationWizard";
 import { useAppStore } from "./store/useAppStore";
+import { useConnectedDisplays } from "./store/useConnectedDisplays";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
 import { useProgramStreamer } from "./hooks/useProgramStreamer";
 import { useVirtualCamera } from "./hooks/useVirtualCamera";
@@ -70,9 +71,18 @@ const App: React.FC = () => {
 
   const focusDock = (panelId: string) => setDockFocus({ panelId, token: Date.now() + Math.random() });
 
+  useEffect(() => {
+    const refresh = () => void useConnectedDisplays.getState().refresh();
+    refresh();
+    const off = window.dualcast.onProjectionDisplaysChanged(refresh);
+    window.addEventListener("focus", refresh);
+    return () => { off(); window.removeEventListener("focus", refresh); };
+  }, []);
+
   useEffect(() => window.dualcast.onAppCommand((command) => {
     if (command === "open-settings") focusDock("system");
     else if (command === "open-backgrounds") focusDock("backgrounds");
+    else if (command === "open-displays") focusDock("displays");
     else if (command === "open-stream-setup") focusDock("streaming");
     else if (command === "open-auto-config") setShowAutoConfiguration(true);
     else if (command === "profile-new") setProfileManagerIntent("new");
@@ -275,6 +285,7 @@ const App: React.FC = () => {
           onToggleStudioMode={() => setViewMode((current) => current === "studio" ? "program-focus" : "studio")}
           onOpenSettings={() => focusDock("system")}
           onOpenBackgrounds={() => focusDock("backgrounds")}
+          onOpenDisplays={() => focusDock("displays")}
           onOpenAutoConfiguration={() => setShowAutoConfiguration(true)}
         />
       )

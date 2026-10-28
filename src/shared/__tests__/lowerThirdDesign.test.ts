@@ -4,12 +4,29 @@ import verseCounts from "../bibleVerseCounts.json";
 import { standardBibleBooks } from "../../renderer/utils/bibleBooks";
 
 describe("designer lower thirds", () => {
-  it("provides six independent presets with separate title/content styles", () => {
-    expect(lowerThirdDesignPresets).toHaveLength(6);
-    expect(new Set(lowerThirdDesignPresets.map(preset => preset.design.content.background)).size).toBe(6);
+  it("provides twelve independent bold presets with separate title/content styles", () => {
+    expect(lowerThirdDesignPresets).toHaveLength(12);
+    expect(new Set(lowerThirdDesignPresets.map(preset => preset.design.content.background)).size).toBe(12);
     for (const preset of lowerThirdDesignPresets) {
       expect(normalizeLowerThirdDesign(preset.design)).toEqual(preset.design);
       expect(preset.design.title).not.toBe(preset.design.content);
+      expect(preset.design.title.weight).toBeGreaterThanOrEqual(800); expect(preset.design.content.weight).toBeGreaterThanOrEqual(800);
+    }
+  });
+  it("keeps legacy emphasis choices and normalizes editable font weights", () => {
+    expect(normalizeLowerThirdDesign({ content: { bold: false } }).content).toMatchObject({ bold: false, weight: 400 });
+    expect(normalizeLowerThirdDesign({ title: { weight: 900 }, content: { weight: 500 } })).toMatchObject({ title: { bold: true, weight: 900 }, content: { bold: false, weight: 500 } });
+  });
+  it("keeps new preset text readable against both gradient endpoints", () => {
+    const luminance = (color: string) => {
+      const values = color.slice(1).match(/../g)!.map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+      return values[0] * .2126 + values[1] * .7152 + values[2] * .0722;
+    };
+    const contrast = (a: string, b: string) => (Math.max(luminance(a), luminance(b)) + .05) / (Math.min(luminance(a), luminance(b)) + .05);
+    for (const { design } of lowerThirdDesignPresets.slice(6)) {
+      expect(contrast(design.title.color, design.title.background)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(design.content.color, design.content.background)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(design.content.color, design.gradientEnd)).toBeGreaterThanOrEqual(4.5);
     }
   });
   it("normalizes imported settings and bounds geometry, fonts, opacity and colors", () => {

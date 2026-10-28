@@ -255,6 +255,7 @@ export type ChurchIntegrationSettings = {
 
 export type SanctuaryDisplaySettings = {
   mode: "program" | "independent";
+  displayModes?: Record<string, "program" | "independent">;
   backgroundType: "color" | "image" | "video";
   backgroundColor: string;
   backgroundUrl: string;
@@ -273,6 +274,9 @@ export type SanctuaryDisplaySettings = {
 };
 
 export type SanctuaryDisplayState = {
+  cueId?: string;
+  entranceAnimation?: LowerThirdAnimation;
+  exitAnimation?: LowerThirdAnimation;
   background?: import("./backgrounds").BackgroundSelection;
   exitDurationMs?: number;
   scrollingSources?: Extract<Source, { type: "scrolling-text" }>[];
@@ -614,6 +618,7 @@ export type StreamingCredentialStatus = {
 };
 
 export type AppCommand =
+  | "open-displays"
   | "open-backgrounds"
   | "open-settings"
   | "open-stream-setup"

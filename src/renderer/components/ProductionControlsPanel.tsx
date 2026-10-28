@@ -15,6 +15,7 @@ type ProductionControlsPanelProps = {
   onToggleStudioMode: () => void;
   onOpenSettings: () => void;
   onOpenBackgrounds?: () => void;
+  onOpenDisplays?: () => void;
   onOpenAutoConfiguration: () => void;
 };
 
@@ -30,6 +31,7 @@ const ProductionControlsPanel: React.FC<ProductionControlsPanelProps> = ({
   onToggleStudioMode,
   onOpenSettings,
   onOpenBackgrounds,
+  onOpenDisplays,
   onOpenAutoConfiguration
 }) => {
   const {
@@ -67,6 +69,7 @@ const ProductionControlsPanel: React.FC<ProductionControlsPanelProps> = ({
       <button onClick={onOpenAutoConfiguration}>Auto Configure</button>
       <button onClick={onOpenSettings}>Settings</button>
       {onOpenBackgrounds && <button onClick={onOpenBackgrounds}>Backgrounds</button>}
+      {onOpenDisplays && <button onClick={onOpenDisplays}>Display screens</button>}
       <div className="virtual-camera-controls">
         <button
           className={virtualCamera.status.state === "running" ? "active" : ""}

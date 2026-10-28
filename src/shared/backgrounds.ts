@@ -2,6 +2,7 @@ export type BackgroundMedia = { id: string; name: string; kind: "image" | "video
 export type BackgroundSelection = { kind: "none" | "image" | "video"; assetId: string; url: string; fit: "cover" | "contain"; opacity: number; color: string };
 export type DisplayBackgrounds = { program?: BackgroundSelection; lowerThird?: BackgroundSelection; sanctuary?: BackgroundSelection; displays: Record<string, BackgroundSelection> };
 export type BackgroundImportResult = { items: BackgroundMedia[]; errors: string[] };
+export type BackgroundDeleteResult = { items: BackgroundMedia[] } & ({ deleted: false } | { deleted: true; backgrounds: DisplayBackgrounds });
 export const emptyBackground: BackgroundSelection = { kind: "none", assetId: "", url: "", fit: "cover", opacity: 1, color: "#101722" };
 const text = (value: unknown, limit: number) => typeof value === "string" ? value.slice(0, limit) : "";
 export function normalizeBackground(value: unknown): BackgroundSelection {
@@ -22,4 +23,14 @@ export function normalizeDisplayBackgrounds(value: unknown): DisplayBackgrounds 
   return { displays, ...(raw.program ? { program: normalizeBackground(raw.program) } : {}),
     ...(raw.lowerThird ? { lowerThird: normalizeBackground(raw.lowerThird) } : {}),
     ...(raw.sanctuary ? { sanctuary: normalizeBackground(raw.sanctuary) } : {}) };
+}
+
+// Keep each output's color and layout when its uploaded media is deleted.
+export function withoutBackgroundMedia(value: unknown, media: Pick<BackgroundMedia, "id" | "url">): DisplayBackgrounds {
+  const backgrounds = normalizeDisplayBackgrounds(value);
+  const clear = (selection: BackgroundSelection) => selection.assetId === media.id || (media.url && selection.url === media.url)
+    ? { ...selection, kind: "none" as const, assetId: "", url: "" } : selection;
+  for (const key of ["program", "sanctuary", "lowerThird"] as const) if (backgrounds[key]) backgrounds[key] = clear(backgrounds[key]!);
+  for (const id of Object.keys(backgrounds.displays)) backgrounds.displays[id] = clear(backgrounds.displays[id]);
+  return backgrounds;
 }

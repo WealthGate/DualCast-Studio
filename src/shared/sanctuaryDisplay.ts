@@ -16,8 +16,13 @@ export const normalizeSanctuaryDisplay = (raw: unknown = {}): SanctuaryDisplaySe
   const d = defaultSanctuaryDisplay;
   const x = number(value.textRect?.x, d.textRect.x, 0, 95);
   const y = number(value.textRect?.y, d.textRect.y, 0, 95);
+  const displayModes: Record<string, "program" | "independent"> = {};
+  if (value.displayModes && typeof value.displayModes === "object") for (const [id, mode] of Object.entries(value.displayModes).slice(0, 64)) {
+    if (/^[\w.:-]{1,150}$/.test(id) && !["__proto__", "constructor", "prototype"].includes(id) && (mode === "program" || mode === "independent")) displayModes[id] = mode;
+  }
   return {
     mode: value.mode === "independent" ? "independent" : "program",
+    ...(value.displayModes ? { displayModes } : {}),
     backgroundType: value.backgroundType === "video" || value.backgroundType === "image" ? value.backgroundType : "color",
     backgroundColor: string(value.backgroundColor, d.backgroundColor, 64),
     backgroundUrl: string(value.backgroundUrl, d.backgroundUrl, 10000),

@@ -63,6 +63,7 @@ export const installApplicationMenu = (getWindow: () => BrowserWindow | null) =>
       submenu: [
         { label: "Stream Setup", click: () => send("open-stream-setup") },
         { label: "Background Library & Display Backgrounds…", click: () => send("open-backgrounds") },
+        { label: "Display Screens & Mode…", click: () => send("open-displays") },
         { label: "Auto-Configuration Wizard…", click: () => send("open-auto-config") },
         { label: "Settings", click: () => send("open-settings") }
       ]

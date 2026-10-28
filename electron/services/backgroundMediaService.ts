@@ -5,8 +5,9 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
-import { BackgroundImportResult, BackgroundMedia } from "../../src/shared/backgrounds";
+import { BackgroundDeleteResult, BackgroundImportResult, BackgroundMedia, withoutBackgroundMedia } from "../../src/shared/backgrounds";
 import { IpcChannels } from "../../src/shared/ipc";
+import { getSettings, updateSettings } from "./settingsService";
 
 type Entry = Omit<BackgroundMedia, "url" | "missing"> & { fileName: string };
 let store: Store<{ items: Entry[] }> | null = null;
@@ -50,6 +51,36 @@ export const importBackgroundMedia = async (kind: "image" | "video", owner: WebC
     return { items: listBackgroundMedia(), errors };
   } finally { importing = false; }
 };
+
+export async function deleteBackgroundMedia(id: string, owner: WebContents): Promise<BackgroundDeleteResult> {
+  if (importing) throw Error("Wait for the current library change to finish.");
+  importing = true;
+  try {
+    const items = entries(), entry = items.find(item => item.id === id);
+    if (!entry) throw Error("This uploaded file is no longer in the library. Refresh and try again.");
+    const file = path.resolve(directory(), entry.fileName);
+    if (path.dirname(file) !== path.resolve(directory())) throw Error("Only uploaded library files can be deleted.");
+    const options: Electron.MessageBoxOptions = { type: "question", title: "Delete uploaded file", buttons: ["Cancel", "Delete file"], defaultId: 0, cancelId: 0,
+      message: `Delete “${entry.name}” from your uploaded files?`, detail: "The copy stored in OpenChurch will be deleted. Your original file stays on your computer. Backgrounds using this file will switch to their base color." };
+    const window = BrowserWindow.fromWebContents(owner);
+    const choice = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
+    if (choice.response !== 1) return { deleted: false, items: listBackgroundMedia() };
+    const previous = getSettings().displayBackgrounds, backgrounds = withoutBackgroundMedia(previous, { id, url: pathToFileURL(file).toString() });
+    const changed = JSON.stringify(previous) !== JSON.stringify(backgrounds);
+    let settingsChanged = false, libraryChanged = false;
+    try {
+      if (changed) { updateSettings({ displayBackgrounds: backgrounds }); settingsChanged = true; }
+      library().set("items", items.filter(item => item.id !== id)); libraryChanged = true;
+      await fs.unlink(file).catch(error => { if (error.code !== "ENOENT") throw error; });
+    } catch (error) {
+      // A failed deletion must leave the file selectable and its assignments intact.
+      if (libraryChanged) library().set("items", items);
+      if (settingsChanged) updateSettings({ displayBackgrounds: previous });
+      throw error;
+    }
+    return { deleted: true, items: listBackgroundMedia(), backgrounds };
+  } finally { importing = false; }
+}
 export function registerBackgroundMediaIpc(owner: WebContents) {
   studio = owner;
   if (registered) return;
@@ -57,4 +88,5 @@ export function registerBackgroundMediaIpc(owner: WebContents) {
   const guard = (sender: WebContents) => { if (sender !== studio || sender.isDestroyed()) throw Error("Backgrounds are managed from the studio."); };
   ipcMain.handle(IpcChannels.listBackgroundMedia, event => { guard(event.sender); return listBackgroundMedia(); });
   ipcMain.handle(IpcChannels.importBackgroundMedia, (event, kind: "image" | "video") => { guard(event.sender); return importBackgroundMedia(kind, event.sender); });
+  ipcMain.handle(IpcChannels.deleteBackgroundMedia, (event, id: string) => { guard(event.sender); return deleteBackgroundMedia(id, event.sender); });
 }

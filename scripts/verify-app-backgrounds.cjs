@@ -61,10 +61,10 @@ if (!process.versions.electron) {
     services.registerIpcHandlers(); services.registerAudioPluginIpc(studio.webContents); services.registerBackgroundMediaIpc(studio.webContents); services.registerVirtualCameraIpc(studio.webContents);
     let bandFrameCount = 0;
     electron.ipcMain.on('dualcast:lower-third-frame', event => { if (event.sender === studioContents) bandFrameCount++; });
-    services.updateSettings({ qualityPreset: 'low', outputResolution: '720p', frameRate: 30, audioMode: 'none', networkOutput: { enabled: false, port: 8787, operatorPin: '' } });
+    services.updateSettings({ qualityPreset: 'low', outputResolution: '720p', frameRate: 30, audioMode: 'none', networkOutput: { enabled: false, port: 8787, operatorPin: '' }, sanctuaryDisplay: { ...services.getSettings().sanctuaryDisplay, mode: 'independent' } });
     const js = code => studio.webContents.executeJavaScript(code, true);
     async function until(predicate, label, milliseconds = 12000) { const end = Date.now() + milliseconds; while (!await predicate()) { if (Date.now() > end) throw Error('Timed out: ' + label); await wait(80); } }
-    const click = text => js(`(()=>{const b=[...document.querySelectorAll(${JSON.stringify(/\.(png|webm)$/.test(text) ? '.background-library button' : '.backgrounds-panel button')})].find(b=>b.textContent.includes(${JSON.stringify(text)}));if(!b||b.matches(':disabled'))throw Error('Unavailable button: '+${JSON.stringify(text)});b.click();})()`);
+    const click = text => js(`(()=>{const b=[...document.querySelectorAll(${JSON.stringify(/\.(png|webm)$/.test(text) ? '.background-media-choice' : '.backgrounds-panel button')})].find(b=>b.textContent.includes(${JSON.stringify(text)}));if(!b||b.matches(':disabled'))throw Error('Unavailable button: '+${JSON.stringify(text)});b.click();})()`);
     async function chooseTarget(target) { await js(`document.querySelector('[data-background-target="'+${JSON.stringify(target)}+'"]')?.click()`); await until(() => js(`document.querySelector('[data-background-target="'+${JSON.stringify(target)}+'"]')?.getAttribute('aria-pressed')==='true'`), 'choose target '+target); await wait(100); }
     async function changeField(label, value, input = false) {
       await js(`(()=>{const e=document.querySelector('[aria-label="'+${JSON.stringify(label)}+'"]');Object.getOwnPropertyDescriptor(${input ? 'HTMLInputElement' : 'HTMLSelectElement'}.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('${input ? 'input' : 'change'}',{bubbles:true}));})()`); await wait(100);
@@ -78,6 +78,39 @@ if (!process.versions.electron) {
       studio.webContents.send('dualcast:app-command', 'open-backgrounds');
       await until(() => js(`Boolean(document.querySelector('.backgrounds-panel'))`), 'central editor');
       await until(() => js(`document.querySelector('[data-background-target="display:202"]')?.getAttribute('aria-pressed')==='true'`), 'external screen selected by default');
+      await click('Manage display outputs');
+      await until(() => js(`Boolean(document.querySelector('[data-dock-panel-id="displays"].active'))`), 'display selector opened');
+      await until(() => js(`document.querySelectorAll('.sanctuary-displays-panel .display-target-option').length===2`), 'connected screens detected on independent startup');
+      assert.ok(await js(`document.querySelector('.sanctuary-displays-panel .display-target-grid').getBoundingClientRect().height>=50`), 'connected screens must be visible in Independent Layout before switching to Mirror Program');
+      assert.ok(await js(`(()=>{const box=document.querySelector('.display-target-option input[value="101"]'),r=box.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===box&&!box.disabled})()`), 'screen checkbox is visible and selectable in Independent Layout');
+      await js(`document.querySelector('.display-target-option input[value="101"]').click();document.querySelector('.display-target-option input[value="202"]').click()`);
+      await until(() => js(`JSON.stringify(window.testStore.getState().projectionTargetIds)==='["101"]'`), 'choose a screen in independent mode');
+      await changeField('Sanctuary text source', 'custom');
+      assert.ok(await js(`document.querySelector('.sanctuary-displays-panel .display-target-grid').getBoundingClientRect().height>=50`), 'extra custom text controls cannot collapse screen choices');
+      fs.writeFileSync(path.join(temp, 'connected-displays-independent.png'), (await studio.webContents.capturePage()).toPNG());
+      await changeField('Sanctuary display mode', 'program');
+      await until(() => js(`window.testStore.getState().settings.sanctuaryDisplay.mode==='program'`), 'switch to Mirror Program');
+      assert.ok(await js(`document.querySelector('.sanctuary-displays-panel .display-target-grid').getBoundingClientRect().height>=50`), 'screen list remains visible in Mirror Program');
+      assert.deepEqual(await js(`window.testStore.getState().projectionTargetIds`), ['101'], 'mode changes preserve the chosen display');
+      await changeField('Sanctuary display mode', 'independent');
+      await until(() => js(`window.testStore.getState().settings.sanctuaryDisplay.mode==='independent'`), 'switch back to independent mode');
+      displays.push({ ...displays[1], id: 303, label: 'Side screen', bounds: { ...displays[1].bounds, x: 2000 } });
+      studioContents.send('dualcast:projection-displays-changed');
+      await until(() => js(`document.querySelectorAll('.sanctuary-displays-panel .display-target-option').length===3`), 'newly connected screen appears without changing mode');
+      await js(`document.querySelector('.display-target-option input[value="303"]').click()`);
+      await until(() => js(`window.testStore.getState().projectionTargetIds.includes('303')`), 'new screen is selectable');
+      displays.pop(); studioContents.send('dualcast:projection-displays-changed');
+      await until(() => js(`document.querySelectorAll('.sanctuary-displays-panel .display-target-option').length===2&&!window.testStore.getState().projectionTargetIds.includes('303')`), 'disconnected screen removed from selection');
+      assert.deepEqual(await js(`window.testStore.getState().projectionTargetIds`), ['101']);
+      assert.equal(await js(`document.querySelectorAll('#lowerThirdDisplay option').length`), 3, 'lower-third screen selector is populated in independent mode');
+      await js(`document.querySelector('.sanctuary-displays-panel > .btn-primary').click()`);
+      await until(() => js(`window.testStore.getState().isProjecting`), 'independent layout opens on the chosen display');
+      await js(`document.querySelector('.sanctuary-displays-panel > .btn-primary').click()`);
+      await until(() => js(`!window.testStore.getState().isProjecting`), 'independent output closes');
+      await changeField('Sanctuary display mode', 'program');
+      await until(() => js(`window.testStore.getState().settings.sanctuaryDisplay.mode==='program'`), 'restore mirror for remaining background checks');
+      studio.webContents.send('dualcast:app-command', 'open-backgrounds');
+      await until(() => js(`Boolean(document.querySelector('[data-dock-panel-id="backgrounds"].active'))`), 'return to backgrounds');
       await click('Identify screens');
       await until(() => BrowserWindow.getAllWindows().filter(window => window.getTitle().startsWith('OpenChurch Screen')).length === 2, 'screen identifiers');
       const identifiers = BrowserWindow.getAllWindows().filter(window => window.getTitle().startsWith('OpenChurch Screen'));
@@ -91,10 +124,10 @@ if (!process.versions.electron) {
       await click('Upload videos'); await until(() => js(`document.querySelector('.background-library').textContent.includes('loop.webm')`), 'video upload');
       assert.equal(services.listBackgroundMedia().length, 3);
       await changeField('Filter uploaded backgrounds', 'video');
-      assert.equal(await js(`document.querySelectorAll('.background-library button').length`), 2);
+      assert.equal(await js(`document.querySelectorAll('.background-media-choice').length`), 2);
       await until(() => js(`document.querySelector('.background-thumbnail video')?.readyState>=2`), 'video thumbnail decodes');
       await changeField('Filter uploaded backgrounds', 'all'); await changeField('Search uploaded backgrounds', 'BLUE', true);
-      assert.equal(await js(`document.querySelectorAll('.background-library button').length`), 2);
+      assert.equal(await js(`document.querySelectorAll('.background-media-choice').length`), 2);
       await changeField('Search uploaded backgrounds', '', true);
       fs.renameSync(path.join(temp, 'red.png'), path.join(temp, 'red-original-moved.png'));
       await chooseTarget('program'); await click('red.png'); await apply();
@@ -121,7 +154,36 @@ if (!process.versions.electron) {
       assert.equal(services.getProgramState(first.webContents).sanctuary.background.assetId, services.listBackgroundMedia().find(item => item.name === 'blue.png').id, 'own assignment wins over shared background');
       assert.equal(services.getProgramState(second.webContents).sanctuary.settings.mode, 'independent', JSON.stringify({ saved: services.getSettings().displayBackgrounds, state: services.getProgramState(second.webContents).backgrounds, ui: await js(`document.querySelector('.background-selection-summary').textContent`) }));
       await click('Restore existing layout'); await wait(400);
-      assert.equal(services.getProgramState(second.webContents).sanctuary.settings.mode, 'program');
+      await click('Manage display outputs');
+      await changeField('Sanctuary display mode', 'program');
+      await until(() => services.getProgramState(first.webContents).sanctuary.settings.mode === 'program' && services.getProgramState(second.webContents).sanctuary.settings.mode === 'program', 'Mirror Program overrides all saved background routes');
+      assert.equal(services.getSettings().displayBackgrounds.displays['101'].assetId, services.listBackgroundMedia().find(item => item.name === 'blue.png').id, 'Mirror Program preserves saved backgrounds');
+      await until(() => first.webContents.executeJavaScript(`Boolean(document.querySelector('.projection-canvas'))`), 'independent screen returns to mirrored Program');
+      await until(() => first.webContents.executeJavaScript(`(()=>{const c=document.querySelector('.projection-canvas'),v=document.querySelector('.projection-video'),s=document.createElement('canvas');s.width=s.height=1;const x=s.getContext('2d');if(v?.readyState>=2&&getComputedStyle(v).visibility==='visible')x.drawImage(v,0,0,1,1);else x.drawImage(c,0,0,1,1);const p=x.getImageData(0,0,1,1).data;return p[0]>230&&p[1]<15})()`), 'Mirror Program displays actual Program pixels despite saved blue background');
+      await changeField('Sanctuary display mode', 'independent');
+      await until(() => services.getProgramState(first.webContents).sanctuary.settings.mode === 'independent', 'independent mode restores saved display background');
+      await js(`window.testStore.getState().updateSettings({sanctuaryDisplay:{...window.testStore.getState().settings.sanctuaryDisplay,textSource:'program'},lowerThird:{...window.testStore.getState().settings.lowerThird,entranceAnimation:'reveal',exitAnimation:'fade',animationDurationMs:1400,slides:[{id:'motion-1',text:'First animated slide'},{id:'motion-2',text:'Second animated slide'}],programSlideId:'motion-1',activeSlideId:'motion-1'}})`);
+      await until(() => first.webContents.executeJavaScript(`document.querySelector('.sanctuary-text[aria-hidden="false"]')?.getAnimations().some(a=>a.playState==='running')`), 'independent screen animates Show live').catch(async error => { throw Error(error.message+' '+JSON.stringify({state:services.getProgramState(first.webContents).sanctuary,dom:await first.webContents.executeJavaScript(`document.body.innerHTML.slice(0,2500)`) })); });
+      await wait(1500);
+      await js(`window.testStore.getState().stageLowerThird(window.testStore.getState().settings.lowerThird.slides,'motion-2',true)`);
+      await until(() => first.webContents.executeJavaScript(`document.querySelector('.sanctuary-text[aria-hidden="false"]')?.textContent.includes('Second animated slide')&&document.querySelector('.sanctuary-text[aria-hidden="false"]').getAnimations().some(a=>a.playState==='running')`), 'changing live slides animates on independent screen');
+      await first.webContents.executeJavaScript(`window.cueAnimation=document.querySelector('.sanctuary-text[aria-hidden="false"]').getAnimations()[0]`);
+      await js(`window.testStore.getState().stageLowerThird(window.testStore.getState().settings.lowerThird.slides.map(s=>s.id==='motion-2'?{...s,text:'Edited live without replay'}:s),'motion-2',true)`);
+      await until(() => first.webContents.executeJavaScript(`document.querySelector('.sanctuary-text[aria-hidden="false"]')?.textContent.includes('Edited live')`), 'live text edit reaches independent screen');
+      assert.equal(await first.webContents.executeJavaScript(`document.querySelector('.sanctuary-text[aria-hidden="false"]').getAnimations()[0]===window.cueAnimation`), true, 'editing the same live cue does not restart animation');
+      await js(`window.testStore.getState().toggleFreeze()`); await wait(100);
+      const pausedAt = await first.webContents.executeJavaScript(`window.cueAnimation.currentTime`); await wait(200);
+      assert.equal(await first.webContents.executeJavaScript(`window.cueAnimation.currentTime`), pausedAt, 'Freeze pauses independent text animation');
+      await js(`window.testStore.getState().cutToBlack()`); await wait(100);
+      await js(`window.testStore.getState().clearCutToBlack()`); await wait(100);
+      assert.ok(await first.webContents.executeJavaScript(`document.querySelector('.sanctuary-text[aria-hidden="false"]')?.textContent.includes('Edited live')`), 'Black/Restore retains the frozen independent text');
+      assert.equal(await first.webContents.executeJavaScript(`window.cueAnimation.currentTime`), pausedAt);
+      await js(`window.testStore.getState().toggleFreeze()`);
+      await js(`window.testStore.getState().clearProgramText()`); await wait(1600);
+      assert.equal(await first.webContents.executeJavaScript(`document.querySelectorAll('.sanctuary-text').length`), 0, 'independent exit removes old text');
+      await changeField('Sanctuary display mode', 'program');
+      studioContents.send('dualcast:app-command','open-backgrounds'); await wait(100);
+      await chooseTarget('display:101'); await click('blue.png'); await apply();
       await chooseTarget('lowerThird'); await click('loop.webm'); await apply();
       await js(`window.testStore.getState().updateSettings({lowerThird:{...window.testStore.getState().settings.lowerThird,slides:[{id:'bg-test',text:'Welcome'}],activeSlideId:'bg-test',programSlideId:'bg-test',showOnProgram:true,entranceAnimation:'none',exitAnimation:'none',animationDurationMs:100}})`);
       await js(`window.testStore.getState().updateSettings({lowerThird:{...window.testStore.getState().settings.lowerThird,displayId:'202'}})`);
@@ -148,11 +210,37 @@ if (!process.versions.electron) {
       assert.equal(services.getProgramState(first.webContents).sanctuary.background.kind, 'none');
       assert.equal(services.getProgramState(second.webContents).sanctuary.settings.mode, 'program');
       await click('Use shared sanctuary layout'); await wait(500); assert.equal(services.getProgramState(first.webContents).sanctuary.settings.mode, 'program');
+      const red = services.listBackgroundMedia().find(item => item.name === 'red.png'), blue = services.listBackgroundMedia().find(item => item.name === 'blue.png'), video = services.listBackgroundMedia().find(item => item.name === 'loop.webm');
+      await js(`localStorage.setItem('openchurch:profiles:v1',JSON.stringify([{id:'saved',name:'Sunday',createdAt:'2026-10-28',updatedAt:'2026-10-28',settings:window.testStore.getState().settings}]))`);
+      dialog.showMessageBox = async () => ({ response: 0 });
+      await js(`document.querySelector('[aria-label="Delete red.png"]').click()`); await wait(200);
+      assert.equal(services.listBackgroundMedia().length, 3); assert.equal(services.getSettings().displayBackgrounds.program.assetId, red.id, 'canceled deletion preserves the active background');
+      dialog.showMessageBox = async () => ({ response: 1 });
+      await js(`document.querySelector('[aria-label="Delete red.png"]').click()`);
+      await until(() => js(`document.querySelector('.backgrounds-panel [role="status"]')?.textContent.includes('Deleted red.png')`), 'delete an assigned image');
+      assert.equal(services.getSettings().displayBackgrounds.program.kind, 'none');
+      assert.equal(fs.existsSync(new URL(red.url)), false, 'managed image removed');
+      assert.equal(fs.existsSync(path.join(temp, 'red-original-moved.png')), true, 'original image retained');
+      assert.equal(await js(`JSON.parse(localStorage.getItem('openchurch:profiles:v1'))[0].settings.displayBackgrounds.program.kind`), 'none', 'saved profile clears the deleted background');
+      await chooseTarget('lowerThird'); await click('loop.webm'); await apply();
+      await js(`document.querySelector('[aria-label="Delete loop.webm"]').click()`);
+      await until(() => js(`document.querySelector('.backgrounds-panel [role="status"]')?.textContent.includes('Deleted loop.webm')`), 'delete a video while it is playing on the lower-third output');
+      assert.equal(services.getSettings().displayBackgrounds.lowerThird.kind, 'none');
+      assert.equal(fs.existsSync(new URL(video.url)), false); assert.equal(fs.existsSync(path.join(temp, 'loop.webm')), true);
+      fs.unlinkSync(new URL(blue.url));
+      await js(`window.dispatchEvent(new Event('focus'))`);
+      await until(() => js(`document.querySelector('.background-media-choice:disabled')?.textContent.includes('blue.png')`), 'missing file is marked unavailable');
+      assert.equal(await js(`document.querySelector('[aria-label="Delete blue.png"]').matches(':disabled')`), false, 'missing uploads can still be deleted');
+      await js(`document.querySelector('[aria-label="Delete blue.png"]').click()`);
+      await until(() => services.listBackgroundMedia().length === 0, 'missing library entry deleted');
+      await until(() => js(`document.querySelectorAll('.background-media-choice').length===1`), 'empty library shown after deletion');
+      await click('Upload images'); await until(() => services.listBackgroundMedia().length === 1, 'remaining original can be uploaded again');
+      assert.equal(services.listBackgroundMedia()[0].name, 'blue.png');
       assert.ok(await js(`document.querySelector('.backgrounds-panel').scrollWidth<=document.querySelector('.backgrounds-panel').clientWidth+2`), 'editor fits narrow dock');
       fs.writeFileSync(path.join(temp, 'backgrounds-ui.png'), (await studio.webContents.capturePage()).toPNG());
       await js(`document.querySelectorAll('.background-step')[1].scrollIntoView({block:'start'})`); await wait(150);
       fs.writeFileSync(path.join(temp, 'backgrounds-library-ui.png'), (await studio.webContents.capturePage()).toPNG());
-      const stored = services.getSettings(); assert.ok(stored.displayBackgrounds.program.assetId); assert.equal(stored.displayBackgrounds.lowerThird.kind, 'none');
+      const stored = services.getSettings(); assert.equal(stored.displayBackgrounds.program.kind, 'none'); assert.equal(stored.displayBackgrounds.lowerThird.kind, 'none');
       // This is the exact destruction order from the reported popup: WebContents
       // emits destroyed while its BrowserWindow can still appear in getAllWindows.
       for (const window of outputs) window.close();
@@ -164,8 +252,9 @@ if (!process.versions.electron) {
       services.registerAudioPluginIpc(reopened.webContents); services.registerVirtualCameraIpc(reopened.webContents);
       await reopened.loadFile(path.join(temp, 'renderer/index.html'));
       reopened.webContents.send('dualcast:app-command', 'open-backgrounds');
-      await until(() => reopened.webContents.executeJavaScript(`document.querySelector('.background-library')?.textContent.includes('loop.webm')`), 'uploaded library restored after reopening studio');
-      assert.equal(await reopened.webContents.executeJavaScript(`document.querySelectorAll('.background-library button').length`), 4);
+      await until(() => reopened.webContents.executeJavaScript(`document.querySelector('.background-library')?.textContent.includes('blue.png')`), 'uploaded library restored after reopening studio');
+      assert.equal(await reopened.webContents.executeJavaScript(`document.querySelectorAll('.background-media-choice').length`), 2);
+      assert.equal(await reopened.webContents.executeJavaScript(`Boolean(document.querySelector('[aria-label="Delete red.png"]')||document.querySelector('[aria-label="Delete loop.webm"]'))`), false, 'deleted uploads stay deleted after reopening');
       assert.equal(await reopened.webContents.executeJavaScript(`window.__backgroundTestStore.getState().settings.displayBackgrounds.program.assetId`), stored.displayBackgrounds.program.assetId);
       reopened.close();
       for (let i = 0; i < 5; i++) {
@@ -176,7 +265,7 @@ if (!process.versions.electron) {
       // Let renderer/video/GPU teardown finish before the normal Electron quit.
       // app.exit() forcefully exits while native completion ports can still run.
       await wait(750);
-      console.log('PASS: numbered screen choices and identifiers; disconnected outputs rejected; visible uploaded images/videos with search/filter; safe draft selection; Apply & show opens real outputs; independent and shared backgrounds; untouched mirror; physical lower-third routing; muted looping video beyond entrance; Freeze/Black; None clears media; library and assignments survive reopening; narrow dock; repeated shutdown without uncaught exceptions.');
+      console.log('PASS: visible and selectable connected screens on independent startup, mode changes and hotplug; numbered screen identifiers; disconnected outputs rejected; uploaded images/videos with search/filter; safe draft selection; Apply & show; independent/shared routing; untouched mirror; muted looping lower-third video; Freeze/Black; None; cancel/delete active image and playing video; original files preserved; missing files removable; saved profiles cleaned; deletion and reuse persist after reopening; narrow dock; safe repeated shutdown.');
       app.quit();
     } catch (error) {
       console.error(error);

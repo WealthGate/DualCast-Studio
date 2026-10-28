@@ -29,6 +29,9 @@ describe("Independent sanctuary content", () => {
     expect(output.reference).toBe("John 3:16");
     expect(original.settings.lowerThird.fontSize).toBe(48);
     expect(output.settings.fontSize).toBe(72);
+    expect(output.cueId).toBe("live");
+    expect(output.entranceAnimation).toBe(original.settings.lowerThird.entranceAnimation);
+    expect(output.exitAnimation).toBe(original.settings.lowerThird.exitAnimation);
   });
   it("removes hidden lower thirds but keeps independent custom text", () => {
     const original = state(); original.isLowerThirdHidden = true;

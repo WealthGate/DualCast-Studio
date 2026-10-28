@@ -1,5 +1,6 @@
 module.exports=async function verifyProjectionVideo(primary,root){
- const {BrowserWindow,ipcMain}=require('electron'),path=require('path'),fs=require('fs');
+ const {BrowserWindow,ipcMain,screen}=require('electron'),path=require('path'),fs=require('fs');
+ const displayId=String(screen.getPrimaryDisplay().id);
  const service=require(path.join(root,'tmp/projection-verification.cjs'));
  fs.copyFileSync(path.join(root,'dist-electron/preload.js'),path.join(root,'tmp/preload.js'));
  process.env.VITE_DEV_SERVER_URL='http://127.0.0.1:5174';
@@ -14,7 +15,8 @@ module.exports=async function verifyProjectionVideo(primary,root){
  let output;
  try{
   await primary.webContents.executeJavaScript(`(async()=>{const {store,wait}=window.__transitionCheck;window.__projectionTestRestore={send:window.dualcast.sendProjectionSignal,on:window.dualcast.onProjectionSignal,video:window.dualcast.sendProgramVideoFrame,settings:store.getState().settings};window.dualcast.onProjectionSignal=h=>{window.__projectionTestSignal=h;return()=>{window.__projectionTestSignal=null;};};window.dualcast.sendProjectionSignal=s=>console.log('PROJECTION_TEST_SIGNAL:'+JSON.stringify(s));window.dualcast.sendProgramVideoFrame=frame=>window.__outputTest.send(frame);store.setState({settings:{...store.getState().settings,sanctuaryDisplay:{...store.getState().settings.sanctuaryDisplay,mode:'independent'}}});await wait(50);store.setState({isCutToBlack:false,settings:{...store.getState().settings,frameRate:30,networkOutput:{...store.getState().settings.networkOutput,enabled:false},sanctuaryDisplay:{...store.getState().settings.sanctuaryDisplay,mode:'program'}}});await wait(50);})()`);
-  const state={programSceneId:'performance',isFrozen:false,isCutToBlack:false,qualityPreset:'medium',frameRate:30};service.setProgramState(state);await service.openProjectionWindows(['projection-verification']);
+  await primary.webContents.executeJavaScript(`(async()=>{const {store}=window.__transitionCheck;const {useConnectedDisplays}=await import('/store/useConnectedDisplays.ts');window.__projectionTestRestore.displays=useConnectedDisplays.getState().displays;useConnectedDisplays.setState({displays:[{id:${JSON.stringify(displayId)},name:'Verification screen',isPrimary:true,size:{width:1920,height:1080}}],loading:false,error:null});window.__projectionTestRestore.targets=store.getState().projectionTargetIds;window.__projectionTestRestore.projecting=store.getState().isProjecting;store.setState({projectionTargetIds:[${JSON.stringify(displayId)}],isProjecting:true});await new Promise(resolve=>setTimeout(resolve,100));})()`);
+  const state={programSceneId:'performance',isFrozen:false,isCutToBlack:false,qualityPreset:'medium',frameRate:30};service.setProgramState(state);await service.openProjectionWindows([displayId]);
   output=BrowserWindow.getAllWindows().find(window=>window!==primary&&window.webContents.getURL().includes('projection=program'));if(!output)throw Error('Output window missing');
   await output.webContents.executeJavaScript(`(()=>{window.__decoded=0;const original=CanvasRenderingContext2D.prototype.drawImage;CanvasRenderingContext2D.prototype.drawImage=function(image,...args){if(image instanceof VideoFrame){window.__decoded++;window.__dimensions={width:image.displayWidth,height:image.displayHeight};}return original.call(this,image,...args);};})()`);
   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)),decoded=()=>output.webContents.executeJavaScript('window.__decoded');
@@ -31,6 +33,7 @@ module.exports=async function verifyProjectionVideo(primary,root){
  }finally{
   await service.closeProjectionWindows();
   await primary.webContents.executeJavaScript(`(async()=>{const {store,wait}=window.__transitionCheck,s=window.__projectionTestRestore;if(!s)return;store.setState({settings:{...store.getState().settings,sanctuaryDisplay:{...store.getState().settings.sanctuaryDisplay,mode:'independent'}}});await wait(50);window.dualcast.sendProjectionSignal=s.send;window.dualcast.onProjectionSignal=s.on;window.dualcast.sendProgramVideoFrame=s.video;store.setState({settings:s.settings});})()`).catch(()=>{});
+  await primary.webContents.executeJavaScript(`(async()=>{const s=window.__projectionTestRestore;if(s){const {useConnectedDisplays}=await import('/store/useConnectedDisplays.ts');if(s.displays)useConnectedDisplays.setState({displays:s.displays});window.__transitionCheck.store.setState({projectionTargetIds:s.targets,isProjecting:s.projecting});}})()`).catch(()=>{});
   BrowserWindow.prototype.show=show;primary.webContents.send=originalSend;primary.webContents.removeListener('console-message',listener);
   ipcMain.removeListener('dualcast:projection-signal',route);ipcMain.removeListener('dualcast:program-video-frame',video);ipcMain.removeListener('dualcast:program-video-presented',ack);ipcMain.removeHandler('dualcast:get-program-state');
  }

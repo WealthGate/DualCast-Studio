@@ -28,7 +28,7 @@ module.exports = async function verifyDesigner(primary, rootPath) {
     const pixels=()=>program().getContext('2d').getImageData(0,0,program().width,program().height).data;
     const countColor=(data,r,g,b)=>{let n=0;for(let i=0;i<data.length;i+=4)if(Math.abs(data[i]-r)<12&&Math.abs(data[i+1]-g)<12&&Math.abs(data[i+2]-b)<12&&data[i+3]>200)n++;return n};
     try{
-      await click('Designer · Title + Content');await until(()=>box.querySelectorAll('.designer-preset').length===6,'designer gallery');
+      await click('Designer · Title + Content');await until(()=>box.querySelectorAll('.designer-preset').length===12,'designer gallery');
       box.querySelectorAll('.designer-preset')[0].click();await wait(80);
       input('Designer title','A MESSAGE OF HOPE');input('Designer content','Welcome to OpenChurch');await wait(50);
       await click('Show card live');await until(()=>live()?.text==='Welcome to OpenChurch','first live card');
@@ -41,9 +41,11 @@ module.exports = async function verifyDesigner(primary, rootPath) {
       await click('Show card live');await until(()=>live()?.text==='Private draft stays in Preview','take draft live');
       const titleBodyBefore=structuredClone(config().design.content);input('Title text color','#ffde00');await wait(80);assert(Object.keys(titleBodyBefore).every(key=>config().design.content[key]===titleBodyBefore[key]),'Title styling changed body');
       input('Content text color','#00ff00');await wait(100);
+      input('Title font weight','900');input('Content font weight','800');input('Title font','Trebuchet MS');input('Content font','Georgia');await wait(100);
+      assert(config().design.title.weight===900&&config().design.content.weight===800&&config().design.title.fontFamily==='Trebuchet MS'&&config().design.content.fontFamily==='Georgia','Separate text styling did not persist');
       await until(()=>{const data=pixels();return countColor(data,255,222,0)>20&&countColor(data,0,255,0)>20&&countColor(data,255,0,255)>50},'independent title/body colors and shared logo on Program');
       const programFrame=program().toDataURL();
-      const sheet=document.createElement('canvas');sheet.width=1920;sheet.height=1050;const sx=sheet.getContext('2d');sx.fillStyle='#0b1220';sx.fillRect(0,0,1920,1050);
+      const sheet=document.createElement('canvas');sheet.width=1920;sheet.height=Math.ceil(presets.length/2)*350;const sx=sheet.getContext('2d');sx.fillStyle='#0b1220';sx.fillRect(0,0,sheet.width,sheet.height);
       const presetImages=[];
       for(let i=0;i<presets.length;i++){
         const c=document.createElement('canvas');c.width=1920;c.height=1080;const x=c.getContext('2d');
@@ -57,7 +59,7 @@ module.exports = async function verifyDesigner(primary, rootPath) {
           x.clearRect(0,0,c.width,c.height);draw(x,c.width,c.height,cfg,slide,logo,anim,'exit',1);assert(!x.getImageData(0,0,c.width,c.height).data.some((v,n)=>n%4===3&&v),'Exit did not clear: '+anim);
         }
       }
-      assert(new Set(presetImages).size===6,'Presets are visually identical');
+      assert(new Set(presetImages).size===12,'Presets are visually identical');
       assert(box.scrollWidth<=box.clientWidth+2,'Designer controls overflow 320px dock');
       let frames=[];const oldFrame=window.dualcast.sendLowerThirdFrame;window.dualcast.sendLowerThirdFrame=frame=>frames.push(frame);
       await store.getState().updateSettings({lowerThird:{...config(),entranceAnimation:'none',exitAnimation:'reveal',animationDurationMs:600}});store.setState({isLowerThirdProjecting:true});await until(()=>frames.length>1,'transparent output frames');
@@ -80,7 +82,7 @@ module.exports = async function verifyDesigner(primary, rootPath) {
       const lookups=[];window.dualcast.lookupScriptureLibrary=async({reference})=>{lookups.push(reference);return{reference,text:'Offline verse'}};
       await store.getState().updateSettings({scriptureSourceId:'test-offline'});await until(()=>box.querySelector('[aria-label="Bible verse"]').options.length===3,'offline sparse verses');
       input('Jump to verse','3');await wait(30);await click('Jump live');await until(()=>lookups.at(-1)==='John 3:3','offline jump');await click('Next Verse');await until(()=>lookups.at(-1)==='John 3:7'&&live()?.reference==='John 3:7','offline gap navigation');
-      return {gallery:sheet.toDataURL(),programFrame,settings:config(),presets:6,sharedLogo:true,independentTextStyles:true,liveEditingWithoutNewCue:true,previewSafety:true,transparentOutput:true,animatedExit:true,classicPreserved:true,scripture:{range:true,keyboardJump:true,chapterCounts:true,sparseOffline:true,sanitized:true},responsive320px:true};
+      return {gallery:sheet.toDataURL(),programFrame,settings:config(),presets:12,sharedLogo:true,independentTextStyles:true,liveEditingWithoutNewCue:true,previewSafety:true,transparentOutput:true,animatedExit:true,classicPreserved:true,scripture:{range:true,keyboardJump:true,chapterCounts:true,sparseOffline:true,sanitized:true},responsive320px:true};
     }catch(error){throw Error(error.stack+'\\nControls: '+box.innerText.slice(0,2400));}finally{mounted.unmount();box.remove();}
   })()`, true);
   const fs = require('fs'), path = require('path'), assert = require('assert/strict');

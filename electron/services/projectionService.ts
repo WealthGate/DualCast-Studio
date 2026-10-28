@@ -13,6 +13,7 @@ const programWindows = new Map<string, BrowserWindow>();
 const lowerThirdWindows = new Map<string, BrowserWindow>();
 const outputExit = createOutputWindowExit();
 let lastProgramState: ProgramState | null = null;
+const mirrorsProgramDisplay = (displayId: string) => !lastProgramState || stateForDisplay(lastProgramState, displayId).sanctuary?.settings.mode !== "independent";
 const relays = new Map<number, ReturnType<typeof createLatestFrameRelay>>();
 const videoRelays = new Map<number, ReturnType<typeof createH264Relay>>();
 let videoProducer: Electron.WebContents | null = null;
@@ -22,7 +23,7 @@ export const routeProjectionSignal = (sender: Electron.WebContents, signal: Proj
   const output = outputs.find(window => window.webContents.id === sender.id);
   const mirrorsProgram = (window: BrowserWindow) => {
     const displayId = Array.from(programWindows).find(([, candidate]) => candidate === window)?.[0];
-    return !lastProgramState || !displayId || stateForDisplay(lastProgramState, displayId).sanctuary?.settings.mode !== "independent";
+    return !displayId || mirrorsProgramDisplay(displayId);
   };
   if (signal.type === "register" && !output) {
     const window = BrowserWindow.fromWebContents(sender);
@@ -40,7 +41,7 @@ export const acknowledgeProjectionFrame = (senderId: number, sequence: number) =
 export const acknowledgeProgramVideo = (senderId: number, sequence: number) => videoRelays.get(senderId)?.acknowledge(sequence);
 export const forwardProgramVideo = (sender: Electron.WebContents, frame: NativeCaptureFrame) => {
   if(sender !== videoProducer || !frame || !(frame.data instanceof Uint8Array) || !frame.data.byteLength || frame.data.byteLength>32*1024*1024 || typeof frame.codec!=="string" || !/^(avc1\.|av01\.)/.test(frame.codec) || !Number.isFinite(frame.timestamp))return;
-  programWindows.forEach((window, displayId)=>{if(!window.isDestroyed() && (!lastProgramState || stateForDisplay(lastProgramState, displayId).sanctuary?.settings.mode !== "independent"))videoRelays.get(window.webContents.id)?.offer(frame);});
+  programWindows.forEach((window, displayId)=>{if(!window.isDestroyed() && mirrorsProgramDisplay(displayId))videoRelays.get(window.webContents.id)?.offer(frame);});
 };
 export const hasProjectionWindows = () =>
   [...programWindows.values(), ...lowerThirdWindows.values()].some((window) => !window.isDestroyed());
@@ -200,7 +201,7 @@ export const setProgramState = (state: ProgramState) => {
 export const forwardProgramFrame = (dataUrl: string) => {
   programWindows.forEach((window, displayId) => {
     if (!window.isDestroyed()) {
-      if (!lastProgramState || stateForDisplay(lastProgramState, displayId).sanctuary?.settings.mode !== "independent") relays.get(window.webContents.id)?.offer(dataUrl);
+      if (mirrorsProgramDisplay(displayId)) relays.get(window.webContents.id)?.offer(dataUrl);
     }
   });
 };

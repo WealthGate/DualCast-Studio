@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { BackgroundMedia, BackgroundSelection, DisplayBackgrounds, emptyBackground, normalizeDisplayBackgrounds } from "../../shared/backgrounds";
-import { ProjectionDisplay, Settings } from "../../shared/types";
+import { BackgroundMedia, BackgroundSelection, DisplayBackgrounds, emptyBackground, normalizeDisplayBackgrounds, withoutBackgroundMedia } from "../../shared/backgrounds";
+import { Settings } from "../../shared/types";
 import { normalizeSanctuaryDisplay } from "../../shared/sanctuaryDisplay";
 import { useAppStore } from "../store/useAppStore";
 import BackgroundLayer from "./BackgroundLayer";
+import { parseStudioProfiles, PROFILE_STORAGE_KEY } from "../utils/profiles";
+import { useConnectedDisplays } from "../store/useConnectedDisplays";
+import { explicitDisplayRouting, modeForDisplay } from "../../shared/displayBackgroundState";
 
 function selectionFor(settings: Settings, target: string): BackgroundSelection {
   const backgrounds = normalizeDisplayBackgrounds(settings.displayBackgrounds);
@@ -20,7 +23,7 @@ function selectionFor(settings: Settings, target: string): BackgroundSelection {
 const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDisplays }) => {
   const { settings, updateSettings, isProjecting, projectionTargetIds, isLowerThirdProjecting } = useAppStore();
   const [items, setItems] = useState<BackgroundMedia[]>([]);
-  const [displays, setDisplays] = useState<ProjectionDisplay[]>([]);
+  const { displays, error: displayError } = useConnectedDisplays();
   const [target, setTarget] = useState("sanctuary");
   const choseTarget = useRef(false);
   const libraryRevision = useRef(0);
@@ -29,7 +32,6 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
   const [draft, setDraft] = useState(() => selectionFor(settings, effectiveTarget));
   const [busy, setBusy] = useState(false), [message, setMessage] = useState("");
   const [libraryLoading, setLibraryLoading] = useState(true), [libraryError, setLibraryError] = useState("");
-  const [displayError, setDisplayError] = useState("");
   const [search, setSearch] = useState(""), [filter, setFilter] = useState("all");
   const [previewError, setPreviewError] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -46,19 +48,17 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
       const revision = ++libraryRevision.current;
       void window.dualcast.listBackgroundMedia().then(value => { if (active && revision === libraryRevision.current) { setItems(value); setLibraryError(""); } })
         .catch(error => { if (active && revision === libraryRevision.current) setLibraryError(String(error)); }).finally(() => { if (active) setLibraryLoading(false); });
-      void window.dualcast.listProjectionDisplays().then(value => {
-        if (!active) return;
-        setDisplays(value); setDisplayError("");
-        if (!choseTarget.current && value.length) {
-          choseTarget.current = true;
-          setTarget(`display:${(value.find(display => !display.isPrimary) ?? value[0]).id}`);
-        }
-      }).catch(error => { if (active) setDisplayError(String(error)); });
     };
-    refresh(); const off = window.dualcast.onProjectionDisplaysChanged(refresh);
+    refresh();
     window.addEventListener("focus", refresh);
-    return () => { active = false; off(); window.removeEventListener("focus", refresh); };
+    return () => { active = false; window.removeEventListener("focus", refresh); };
   }, []);
+  useEffect(() => {
+    if (!choseTarget.current && displays.length) {
+      choseTarget.current = true;
+      setTarget(`display:${(displays.find(display => !display.isPrimary) ?? displays[0]).id}`);
+    }
+  }, [displays]);
   const savedSelection = JSON.stringify(selectionFor(settings, effectiveTarget));
   useEffect(() => { setDraft(JSON.parse(savedSelection)); }, [effectiveTarget, savedSelection]);
   useEffect(() => setPreviewError(false), [draft.url, draft.kind]);
@@ -72,7 +72,7 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
       return { id: `display:${display.id}`, name: `Screen ${index + 1} · ${display.name}`, badge: String(index + 1),
         detail: `${display.size.width} × ${display.size.height}${display.isPrimary ? " · Primary / operator screen" : ""}`,
         status: `${band ? "Lower-third output" : "Sanctuary output"} · ${open ? "Open" : "Not open"}`,
-        assignment: band ? mediaName(selectionFor(settings, "lowerThird")) : backgrounds.displays[display.id] ? mediaName(selectionFor(settings, `display:${display.id}`)) : backgrounds.sanctuary ? `Shared: ${mediaName(backgrounds.sanctuary)}` : normalizeSanctuaryDisplay(settings.sanctuaryDisplay).mode === "program" ? "Mirrors Program" : "Shared sanctuary layout" };
+        assignment: band ? mediaName(selectionFor(settings, "lowerThird")) : modeForDisplay(settings.sanctuaryDisplay, backgrounds, display.id) === "program" ? "Mirrors Program" : backgrounds.displays[display.id] ? mediaName(selectionFor(settings, `display:${display.id}`)) : backgrounds.sanctuary ? `Shared: ${mediaName(backgrounds.sanctuary)}` : "Shared sanctuary layout" };
     }),
     { id: "program", name: "Program / Preview", badge: "P", detail: "Recordings, streams, Virtual Camera & mirrored screens", status: "Behind scene sources", assignment: mediaName(selectionFor(settings, "program")) },
     { id: "sanctuary", name: "All sanctuary screens · shared default", badge: "All", detail: "Used by screens without their own background", status: "Individual screen choices stay in place", assignment: backgrounds.sanctuary ? mediaName(backgrounds.sanctuary) : "Existing sanctuary layout" },
@@ -102,15 +102,37 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
     } catch (error) { setMessage(`Upload failed: ${String(error)}`); }
     finally { setBusy(false); }
   };
+  const remove = async (item: BackgroundMedia) => {
+    setBusy(true);
+    try {
+      const result = await window.dualcast.deleteBackgroundMedia(item.id);
+      if (!result.deleted) return;
+      libraryRevision.current++;
+      setItems(result.items);
+      useAppStore.setState(state => ({ settings: { ...state.settings, displayBackgrounds: result.backgrounds } }));
+      setDraft(current => current.assetId === item.id || current.url === item.url ? { ...current, kind: "none", assetId: "", url: "" } : current);
+      let profileMessage = "";
+      try {
+        const profiles = parseStudioProfiles(localStorage.getItem(PROFILE_STORAGE_KEY));
+        if (profiles.length) localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profiles.map(profile => ({ ...profile, settings: { ...profile.settings, displayBackgrounds: withoutBackgroundMedia(profile.settings.displayBackgrounds, item) } }))));
+      } catch { profileMessage = " Saved profiles could not be updated; this file will be unavailable in those profiles."; }
+      setMessage(`Deleted ${item.name} from uploaded files. Backgrounds using it now use their base color.${profileMessage}`);
+    } catch (error) { setMessage(`Could not delete ${item.name}: ${String(error)}`); }
+    finally { setBusy(false); }
+  };
   const apply = async (inherit = false, show = false) => {
     setBusy(true); setMessage("");
     let saved = false;
     try {
       const next: DisplayBackgrounds = normalizeDisplayBackgrounds(useAppStore.getState().settings.displayBackgrounds);
+      const routing = explicitDisplayRouting(useAppStore.getState().settings.sanctuaryDisplay, useAppStore.getState().settings.displayBackgrounds);
       if (effectiveTarget.startsWith("display:")) { if (inherit) delete next.displays[effectiveTarget.slice(8)]; else next.displays[effectiveTarget.slice(8)] = { ...draft }; }
       else if (inherit) delete next[effectiveTarget as "program" | "sanctuary" | "lowerThird"];
       else next[effectiveTarget as "program" | "sanctuary" | "lowerThird"] = { ...draft };
-      await updateSettings({ displayBackgrounds: next }); saved = true;
+      if (effectiveTarget.startsWith("display:")) {
+        if (inherit) delete routing.displayModes![effectiveTarget.slice(8)]; else routing.displayModes![effectiveTarget.slice(8)] = "independent";
+      } else if (effectiveTarget === "sanctuary" && !inherit) routing.mode = "independent";
+      await updateSettings({ displayBackgrounds: next, ...(effectiveTarget === "sanctuary" || effectiveTarget.startsWith("display:") ? { sanctuaryDisplay: routing } : {}) }); saved = true;
       if (show) {
         const state = useAppStore.getState();
         if (effectiveTarget === "lowerThird") {
@@ -149,7 +171,7 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
     </div>
     {effectiveTarget === "program" ? <p className="field-help">Full-screen photos, videos and cameras in the scene cover this background.</p>
       : effectiveTarget === "lowerThird" ? <p className="field-help">Appears inside the text band when a lower-third slide is live. The rest of the dedicated output stays transparent.</p>
-      : <p className="field-help">Shows the background with sanctuary text on the chosen screen. This replaces its mirrored Program picture.</p>}
+      : <p className="field-help">Apply switches the chosen screen to its independent text layout. Choose Mirror Program in display outputs to show Program again; saved backgrounds remain available.</p>}
     </fieldset>
     <fieldset disabled={busy} className="background-step"><legend>2. Choose a background</legend>
     <div className="background-upload-actions"><button onClick={() => void upload("image")}>Upload images</button><button onClick={() => void upload("video")}>Upload videos</button></div>
@@ -159,10 +181,10 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
     {libraryLoading && <p className="field-help">Loading uploaded files…</p>}
     {libraryError && <p role="alert">Your library could not be loaded. Reopen this panel to retry. {libraryError}</p>}
     <div className="background-library" role="group" aria-label="Choose background media">
-      <button className={draft.kind === "none" ? "selected" : ""} aria-pressed={draft.kind === "none"} onClick={() => edit({ kind: "none", assetId: "", url: "" })}>None · solid color</button>
-      {visibleItems.map(item => <button key={item.id} disabled={item.missing} className={draft.assetId === item.id && draft.kind !== "none" ? "selected" : ""} aria-pressed={draft.assetId === item.id && draft.kind !== "none"} onClick={() => edit({ kind: item.kind, assetId: item.id, url: item.url })}>
+      <button className={`background-media-choice ${draft.kind === "none" ? "selected" : ""}`} aria-pressed={draft.kind === "none"} onClick={() => edit({ kind: "none", assetId: "", url: "" })}>None · solid color</button>
+      {visibleItems.map(item => <div key={item.id} className="background-library-item"><button disabled={item.missing} className={`background-media-choice ${draft.assetId === item.id && draft.kind !== "none" ? "selected" : ""}`} aria-pressed={draft.assetId === item.id && draft.kind !== "none"} onClick={() => edit({ kind: item.kind, assetId: item.id, url: item.url })}>
         <span className="background-thumbnail" aria-hidden="true">{!item.missing && (item.kind === "image" ? <img src={item.url} alt="" loading="lazy" /> : <video src={item.url} muted playsInline preload="metadata" />)}{item.kind === "video" && <span className="background-video-badge">▶</span>}</span><span>{item.name}<small>{item.missing ? "File unavailable · upload again" : item.kind === "video" ? "Uploaded · Video · silent loop" : "Uploaded · Image"}</small></span>
-      </button>)}
+      </button><button className="background-media-delete" aria-label={`Delete ${item.name}`} onClick={() => void remove(item)}>Delete</button></div>)}
     </div>
     {!libraryLoading && !libraryError && !items.length && <p className="field-help">No uploaded files yet. Upload images or videos above to see them here.</p>}
     {items.length > 0 && !visibleItems.length && <p className="field-help">No files match. Change the search or choose All files.</p>}

@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.40**.
+Current release: **v0.6.41**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,18 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.40
+### What's new in v0.6.41
+
+- Keep connected screen choices visible in Mirror Program and Independent Layout, including startup, switching modes and connecting displays. Share one display inventory across panels. Open **Display screens** in Controls or **Tools → Display Screens & Mode…**.
+- Make **Mirror Program · all screens** authoritative: saved backgrounds no longer silently force independent output. Preserve backgrounds for reuse, show **Individual screen layouts** when screens differ, and route video consistently through a shared resolver.
+- Animate independent display text when showing live, changing slides and hiding text, following the selected entrance/exit and duration. Editing the same live cue keeps its animation position.
+- Add six Designer Title + Content styles—**Beacon, Ember, Verdant, Cobalt, Porcelain and Royale**—for twelve total. New compositions include split title panels, accent rails and double frames. Use bolder defaults, independent font weights from Regular to Black and custom installed font names for title and content.
+- Add **Delete** to every uploaded background, including unavailable files. Confirm the filename, delete the managed copy, preserve originals and other files, clear its current/saved-profile background references to their base colors, and recover from canceled or failed deletion.
+- Consolidate repeated screen detection, output routing, frame subscription handling, resolution choices and development camera status without removing the separate output capabilities.
+
+See [display routing, animations, designs and deletion](docs/display-workflow-0.6.41.md).
+
+### Included from v0.6.40
 
 - Set backgrounds in three steps: choose a numbered screen/output, choose an uploaded file, then apply. Screen cards show names, resolution, output role, open status and the current background. **Identify screens** briefly shows matching OpenChurch numbers on the physical displays.
 - Browse **Your uploaded files** with image/video thumbnails, search and type filters. Successful uploads remain visible and reusable after reopening the studio, including when other files in the same upload fail. The first new file is selected for preview; applying remains explicit.

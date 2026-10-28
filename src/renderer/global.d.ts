@@ -51,6 +51,7 @@ declare global {
     dualcast: {
       listBackgroundMedia: () => Promise<import("../shared/backgrounds").BackgroundMedia[]>;
       importBackgroundMedia: (kind: "image" | "video") => Promise<import("../shared/backgrounds").BackgroundImportResult>;
+      deleteBackgroundMedia: (id: string) => Promise<import("../shared/backgrounds").BackgroundDeleteResult>;
       getVirtualCameraStatus: () => Promise<import("../shared/virtualCamera").VirtualCameraStatus>;
       configureVirtualCamera: (action: "install" | "uninstall" | "start" | "stop") => Promise<import("../shared/virtualCamera").VirtualCameraStatus>;
       sendVirtualCameraFrame: (frame: import("../shared/virtualCamera").VirtualCameraFrame) => Promise<boolean>;

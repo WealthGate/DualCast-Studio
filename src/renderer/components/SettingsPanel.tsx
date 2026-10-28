@@ -8,6 +8,7 @@ import { use8KSupport, supports8KEncoding } from "../hooks/use8KSupport";
 const SettingsPanel: React.FC = () => {
   const { settings, updateSettings } = useAppStore();
   const eightK = use8KSupport(settings.frameRate);
+  const resolutionOptions = VIDEO_RESOLUTIONS.map(item => <option key={item.value} value={item.value} disabled={item.value === "8k" && eightK !== true}>{item.label}{item.value === "8k" && eightK === false ? " — hardware encoding unavailable" : ""}</option>);
   const [hardware, setHardware] = useState<HardwareCapabilities | null>(null);
   const [hardwareError, setHardwareError] = useState("");
   const [credentialStatus, setCredentialStatus] = useState<Record<StreamingCredentialProvider, StreamingCredentialStatus | null>>({ youtube: null, facebook: null });
@@ -180,14 +181,14 @@ const SettingsPanel: React.FC = () => {
       <div className="field">
         <label htmlFor="outputResolution">Program and recording resolution</label>
         <select id="outputResolution" value={settings.outputResolution ?? "auto"} onChange={event => updateSettings({ outputResolution: event.target.value as VideoResolution })}>
-          {VIDEO_RESOLUTIONS.map(item => <option key={item.value} value={item.value} disabled={item.value === "8k" && eightK !== true}>{item.label}{item.value === "8k" && eightK === false ? " — hardware encoding unavailable" : ""}</option>)}
+          {resolutionOptions}
         </select>
         <p className="field-help">Automatic uses 720p with Low compression quality and 1080p otherwise. Choose QHD, 4K or 8K explicitly when the device can sustain it.</p>
       </div>
       <div className="field">
         <label htmlFor="displayResolution">Live display resolution</label>
         <select id="displayResolution" value={settings.displayResolution ?? "auto"} onChange={event => updateSettings({ displayResolution: event.target.value as VideoResolution })}>
-          {VIDEO_RESOLUTIONS.map(item => <option key={item.value} value={item.value} disabled={item.value === "8k" && eightK !== true}>{item.label}{item.value === "8k" && eightK === false ? " — hardware encoding unavailable" : ""}</option>)}
+          {resolutionOptions}
         </select>
         <p className="field-help">Automatic keeps local displays efficient. Explicit resolutions up to 8K use the selected output size, limited by the source, screen and device capabilities.</p>
       </div>

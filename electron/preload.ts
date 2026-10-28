@@ -45,9 +45,20 @@ import {
   AppCommand
 } from "../src/shared/types";
 
+const subscribeOutputFrame = (channel: string, handler: (dataUrl: string) => void | Promise<void>) => {
+  const listener = (_event: Electron.IpcRendererEvent, payload: string | { dataUrl: string; sequence: number }) => {
+    void Promise.resolve().then(() => handler(typeof payload === "string" ? payload : payload.dataUrl)).finally(() => {
+      if (typeof payload !== "string") ipcRenderer.send(IpcChannels.projectionFramePresented, payload.sequence);
+    }).catch(() => undefined);
+  };
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+};
+
 const api = {
   listBackgroundMedia: (): Promise<import("../src/shared/backgrounds").BackgroundMedia[]> => ipcRenderer.invoke(IpcChannels.listBackgroundMedia),
   importBackgroundMedia: (kind: "image" | "video"): Promise<import("../src/shared/backgrounds").BackgroundImportResult> => ipcRenderer.invoke(IpcChannels.importBackgroundMedia, kind),
+  deleteBackgroundMedia: (id: string): Promise<import("../src/shared/backgrounds").BackgroundDeleteResult> => ipcRenderer.invoke(IpcChannels.deleteBackgroundMedia, id),
   getVirtualCameraStatus: (): Promise<import("../src/shared/virtualCamera").VirtualCameraStatus> => ipcRenderer.invoke(IpcChannels.getVirtualCameraStatus),
   configureVirtualCamera: (action: "install" | "uninstall" | "start" | "stop"): Promise<import("../src/shared/virtualCamera").VirtualCameraStatus> => ipcRenderer.invoke(IpcChannels.configureVirtualCamera, action),
   sendVirtualCameraFrame: (frame: import("../src/shared/virtualCamera").VirtualCameraFrame): Promise<boolean> => ipcRenderer.invoke(IpcChannels.virtualCameraFrame, frame),
@@ -194,24 +205,8 @@ const api = {
     ipcRenderer.on(IpcChannels.streamStatus, listener);
     return () => ipcRenderer.removeListener(IpcChannels.streamStatus, listener);
   },
-  onProgramFrame: (handler: (dataUrl: string) => void | Promise<void>) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: string | { dataUrl: string; sequence: number }) => {
-      void Promise.resolve().then(() => handler(typeof payload === "string" ? payload : payload.dataUrl)).finally(() => {
-        if (typeof payload !== "string") ipcRenderer.send(IpcChannels.projectionFramePresented, payload.sequence);
-      }).catch(() => undefined);
-    };
-    ipcRenderer.on(IpcChannels.programFrame, listener);
-    return () => ipcRenderer.removeListener(IpcChannels.programFrame, listener);
-  },
-  onLowerThirdFrame: (handler: (dataUrl: string) => void | Promise<void>) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: string | { dataUrl: string; sequence: number }) => {
-      void Promise.resolve().then(() => handler(typeof payload === "string" ? payload : payload.dataUrl)).finally(() => {
-        if (typeof payload !== "string") ipcRenderer.send(IpcChannels.projectionFramePresented, payload.sequence);
-      }).catch(() => undefined);
-    };
-    ipcRenderer.on(IpcChannels.lowerThirdFrame, listener);
-    return () => ipcRenderer.removeListener(IpcChannels.lowerThirdFrame, listener);
-  },
+  onProgramFrame: (handler: (dataUrl: string) => void | Promise<void>) => subscribeOutputFrame(IpcChannels.programFrame, handler),
+  onLowerThirdFrame: (handler: (dataUrl: string) => void | Promise<void>) => subscribeOutputFrame(IpcChannels.lowerThirdFrame, handler),
   onBrowserFrame: (handler: (payload: BrowserFramePayload) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: BrowserFramePayload) => handler(payload);
     ipcRenderer.on(IpcChannels.browserFrame, listener);

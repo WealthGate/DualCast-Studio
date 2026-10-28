@@ -4,6 +4,7 @@ import { normalizeSanctuaryDisplay } from "../../shared/sanctuaryDisplay";
 import { useAppStore } from "../store/useAppStore";
 import { getSanctuaryDisplayState } from "../utils/sanctuaryContent";
 import SanctuaryLayout from "./SanctuaryLayout";
+import { explicitDisplayRouting } from "../../shared/displayBackgroundState";
 
 const SanctuaryLayoutEditor: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenBackgrounds }) => {
   const state = useAppStore();
@@ -17,20 +18,22 @@ const SanctuaryLayoutEditor: React.FC<{ onOpenBackgrounds?: () => void }> = ({ o
     setSaving(true);
     try {
       await state.updateSettings({ sanctuaryDisplay: normalizeSanctuaryDisplay(config) });
-      setMessage(config.mode === "program" ? "Default layout set to Mirror Program. Background assignments keep their own display layout." : "Independent text layout applied to sanctuary screens.");
+      setMessage(config.mode === "program" ? "All sanctuary screens now mirror Program. Saved backgrounds are retained for reuse." : "Independent text layout applied to sanctuary screens.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save the sanctuary layout."); }
     finally { setSaving(false); }
   };
   const preview = getSanctuaryDisplayState({ ...state, settings: { ...state.settings, sanctuaryDisplay: draft } });
+  const routing = explicitDisplayRouting(draft, state.settings.displayBackgrounds);
+  const individual = Object.keys(routing.displayModes ?? {}).length > 0 || routing.mode !== draft.mode;
   return <section className="sanctuary-layout-editor" aria-label="Sanctuary display layout">
     <h3>Sanctuary display layout</h3>
     {onOpenBackgrounds && <button onClick={onOpenBackgrounds}>Background library & display assignments…</button>}
-    <p className="field-help">Backgrounds manages images, videos and per-screen assignments. Assigned backgrounds take precedence over the default mode below; restore the shared layout there to mirror Program again.</p>
+    <p className="field-help">Mirror Program shows the same picture and animations on every sanctuary screen. Independent Layout uses sanctuary text and saved backgrounds.</p>
     <label className="field">Display mode
-      <select aria-label="Sanctuary display mode" value={draft.mode} disabled={saving} onChange={event => {
-        const next = { ...draft, mode: event.target.value as SanctuaryDisplaySettings["mode"] };
+      <select aria-label="Sanctuary display mode" value={individual ? "individual" : draft.mode} disabled={saving} onChange={event => {
+        const next = { ...draft, mode: event.target.value as SanctuaryDisplaySettings["mode"], displayModes: {} };
         setDraft(next); void apply(next);
-      }}><option value="program">Mirror Program</option><option value="independent">Independent Layout</option></select>
+      }}>{individual && <option value="individual" disabled>Individual screen layouts</option>}<option value="program">Mirror Program · all screens</option><option value="independent">Independent Layout · all screens</option></select>
     </label>
     {draft.mode === "program" ? <p className="field-help">The sanctuary screens receive the same picture as Program. Select Independent Layout to style their background and text separately.</p> : <>
       <label className="field">Sanctuary text

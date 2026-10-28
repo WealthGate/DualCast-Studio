@@ -1,4 +1,5 @@
 import { useCanvasBackground } from "../hooks/useCanvasBackground";
+import { modeForDisplay } from "../../shared/displayBackgroundState";
 import { setProgramChannelMode } from "../utils/audioChannels";
 import { createProgramAudioBus, ProgramAudioSource } from "../utils/programAudioBus";
 import { attachAudioPluginBridge } from "../utils/audioPluginBridge";
@@ -109,6 +110,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     displayTextMode,
     settings,
     isProjecting,
+    projectionTargetIds,
     isLowerThirdProjecting,
     updateSourceRect,
     updateSource,
@@ -139,6 +141,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     displayTextMode: state.displayTextMode,
     settings: state.settings,
     isProjecting: state.isProjecting,
+    projectionTargetIds: state.projectionTargetIds,
     isLowerThirdProjecting: state.isLowerThirdProjecting,
     updateSourceRect: state.updateSourceRect,
     updateSource: state.updateSource,
@@ -232,7 +235,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
   const profile = getOutputProfile(settings.qualityPreset, settings.outputResolution);
   const programSize = { width: profile.maxWidth, height: profile.maxHeight };
-  const projectionVideoConnected = useProjectionVideo(programCanvasRef, settings.frameRate, settings.sanctuaryDisplay?.mode !== "independent", settings.displayResolution);
+  const hasMirroredScreens = projectionTargetIds.some(id => modeForDisplay(settings.sanctuaryDisplay, settings.displayBackgrounds, id) === "program");
+  const projectionVideoConnected = useProjectionVideo(programCanvasRef, settings.frameRate, isProjecting && hasMirroredScreens, settings.displayResolution);
   const previewCanvasSize = fitToBounds(programSize.width, programSize.height, previewSize.width, previewSize.height);
   const previewBitmapSize = fitToBounds(programSize.width, programSize.height, Math.max(2, previewCanvasSize.width * window.devicePixelRatio), Math.max(2, previewCanvasSize.height * window.devicePixelRatio));
 
@@ -1243,7 +1247,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   });
 
   useEffect(() => {
-    const mirror = isProjecting && settings.sanctuaryDisplay?.mode !== "independent" && !projectionVideoConnected;
+    const mirror = isProjecting && hasMirroredScreens && !projectionVideoConnected;
     if (!mirror && !settings.networkOutput.enabled) {
       return;
     }
@@ -1266,7 +1270,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       publishProgramFrameRef.current = () => undefined;
       encoder.stop();
     };
-  }, [isCutToBlack, isFrozen, isProjecting, settings.frameRate, settings.networkOutput.enabled, settings.sanctuaryDisplay?.mode, projectionVideoConnected]);
+  }, [isCutToBlack, isFrozen, isProjecting, settings.frameRate, settings.networkOutput.enabled, hasMirroredScreens, projectionVideoConnected]);
 
   useEffect(() => {
     if (!isLowerThirdProjecting) {

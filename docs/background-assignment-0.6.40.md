@@ -1,5 +1,7 @@
 # Display backgrounds · v0.6.40
 
+For the current mode routing, slide animations, expanded designs and file deletion, see [the v0.6.41 guide](display-workflow-0.6.41.md). This page documents the original v0.6.40 behavior.
+
 Open **Controls → Backgrounds** or **Tools → Background Library & Display Backgrounds**.
 
 1. **Choose a screen or output.** Connected screen cards show their OpenChurch number, monitor name, resolution, primary/operator status, output role, whether the output is open and its current background. **Identify screens · show numbers** briefly displays matching numbers on each physical screen. These are OpenChurch's screen numbers; operating-system display settings can use different numbers. The editor initially selects an external screen when available.

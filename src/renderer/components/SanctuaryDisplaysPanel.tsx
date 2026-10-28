@@ -1,7 +1,8 @@
 import SanctuaryLayoutEditor from "./SanctuaryLayoutEditor";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { ProjectionDisplay } from "../../shared/types";
+import { useConnectedDisplays } from "../store/useConnectedDisplays";
+import { modeForDisplay } from "../../shared/displayBackgroundState";
 
 const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenBackgrounds }) => {
   const {
@@ -15,44 +16,23 @@ const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ 
     setProjectionTargetIds,
     updateSettings
   } = useAppStore();
-  const [projectionDisplays, setProjectionDisplays] = useState<ProjectionDisplay[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(true);
+  const { displays: projectionDisplays, loading: isRefreshing, error: detectionError, refresh: refreshProjectionDisplays } = useConnectedDisplays();
+  const initializedSelection = useRef(false);
   const [displayError, setDisplayError] = useState<string | null>(null);
-
-  const refreshProjectionDisplays = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      setProjectionDisplays(await window.dualcast.listProjectionDisplays());
-      setDisplayError(null);
-    } catch (error) {
-      setDisplayError(error instanceof Error ? error.message : "Displays could not be detected.");
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshProjectionDisplays();
-    const unsubscribe = window.dualcast.onProjectionDisplaysChanged(() => void refreshProjectionDisplays());
-    const handleFocus = () => void refreshProjectionDisplays();
-    window.addEventListener("focus", handleFocus);
-    return () => {
-      unsubscribe();
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [refreshProjectionDisplays]);
 
   const displayIds = useMemo(() => new Set(projectionDisplays.map((display) => display.id)), [projectionDisplays]);
 
   useEffect(() => {
+    if (isRefreshing || detectionError) return;
     const validTargets = projectionTargetIds.filter((displayId) => displayIds.has(displayId));
     if (validTargets.length !== projectionTargetIds.length) {
       setProjectionTargetIds(validTargets);
-    } else if (validTargets.length === 0 && projectionDisplays.length > 0) {
+    } else if (!initializedSelection.current && validTargets.length === 0 && projectionDisplays.length > 0) {
       const preferred = projectionDisplays.find((display) => !display.isPrimary) ?? projectionDisplays[0];
       setProjectionTargetIds([preferred.id]);
     }
-  }, [displayIds, projectionDisplays, projectionTargetIds, setProjectionTargetIds]);
+    if (projectionDisplays.length) initializedSelection.current = true;
+  }, [displayIds, projectionDisplays, projectionTargetIds, setProjectionTargetIds, isRefreshing, detectionError]);
 
   const handleProjectionToggle = async () => {
     try {
@@ -112,13 +92,14 @@ const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ 
       </div>
       <div className="display-target-grid">
         {!isRefreshing && projectionDisplays.length === 0 ? <div className="empty-hint">No displays detected. Check the Windows display connection, then choose Refresh.</div> : null}
-        {displayError ? <div className="empty-hint">{displayError}</div> : null}
+        {displayError || detectionError ? <div className="empty-hint" role="alert">{displayError || detectionError}</div> : null}
         {projectionDisplays.map((display, index) => {
           const displayId = display.id;
           return (
             <label key={display.id} className="display-target-option">
               <input
                 type="checkbox"
+                value={displayId}
                 checked={projectionTargetIds.includes(displayId)}
                 onChange={(event) => handleProjectionTargetToggle(displayId, event.target.checked)}
                 disabled={isProjecting}
@@ -131,9 +112,9 @@ const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ 
       <button
         className="btn btn-primary"
         onClick={handleProjectionToggle}
-        disabled={!isProjecting && ((settings.sanctuaryDisplay?.mode !== "independent" && !programSceneId && !settings.displayBackgrounds?.sanctuary && !settings.displayBackgrounds?.program && !projectionTargetIds.some(id => settings.displayBackgrounds?.displays[id])) || projectionDisplays.length === 0 || projectionTargetIds.length === 0)}
+        disabled={!isProjecting && ((!projectionTargetIds.some(id => modeForDisplay(settings.sanctuaryDisplay, settings.displayBackgrounds, id) === "independent") && !programSceneId && !settings.displayBackgrounds?.program) || projectionDisplays.length === 0 || projectionTargetIds.length === 0)}
       >
-        {isProjecting ? "Stop Projection" : settings.sanctuaryDisplay?.mode === "independent" ? "Project Sanctuary Layout" : "Project Program"}
+        {isProjecting ? "Stop Projection" : "Show selected screens"}
       </button>
       <SanctuaryLayoutEditor onOpenBackgrounds={onOpenBackgrounds} />
       <div className="lower-third-dock-section">

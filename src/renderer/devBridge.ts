@@ -2,6 +2,7 @@ import { useAppStore } from "./store/useAppStore";
 import packageJson from "../../package.json";
 
 const noopUnsubscribe = () => undefined;
+const unavailableVirtualCamera = async () => ({ supported: false, installed: false, state: "stopped" as const, name: "OpenChurch Virtual Camera", message: "Virtual Camera requires the Windows x64 desktop app." });
 const emptyNetworkStatus = {
   running: false,
   port: 8787,
@@ -20,8 +21,9 @@ export const installDevelopmentBridge = () => {
   window.dualcast = {
     listBackgroundMedia: async () => [],
     importBackgroundMedia: async () => { throw Error("Upload backgrounds in the desktop app."); },
-    getVirtualCameraStatus: async () => ({ supported: false, installed: false, state: "stopped", name: "OpenChurch Virtual Camera", message: "Virtual Camera requires the Windows x64 desktop app." }),
-    configureVirtualCamera: async () => ({ supported: false, installed: false, state: "stopped", name: "OpenChurch Virtual Camera", message: "Virtual Camera requires the Windows x64 desktop app." }),
+    deleteBackgroundMedia: async () => { throw Error("Delete uploaded backgrounds in the desktop app."); },
+    getVirtualCameraStatus: unavailableVirtualCamera,
+    configureVirtualCamera: unavailableVirtualCamera,
     sendVirtualCameraFrame: async () => false,
     onVirtualCameraStatus: () => noopUnsubscribe,
     getAudioPluginStatus: async () => ({ supported: false, plugins: [], activeId: null, running: false, session: null, message: "Native VST2 plugins require the Windows x64 desktop app." }),
