@@ -1,0 +1,75 @@
+// Executed inside the isolated Electron renderer by verify-live-output.cjs.
+module.exports = async function verifyScrollingText(sharedModuleUrl) {
+  const { ScrollingTextRenderer } = await import('/utils/scrollingText.ts');
+  const { store, wait } = window.__transitionCheck;
+  const defaults = (await import(sharedModuleUrl)).defaultScrollingText;
+  const assert = (value, message) => { if (!value) throw Error(message); };
+  const solid = fill => { const c = document.createElement('canvas'); c.width = c.height = 20; const x = c.getContext('2d'); x.fillStyle = fill; x.fillRect(0, 0, 20, 20); return c.toDataURL(); };
+  const canvas = document.createElement('canvas'); canvas.width = 1920; canvas.height = 1080;
+  const ctx = canvas.getContext('2d');
+  const source = { id: 'ticker', name: 'Scrolling welcome', type: 'scrolling-text', enabled: true, audioEnabled: false, rect: { x: 10, y: 60, width: 80, height: 15 }, data: { ...defaults, text: 'Welcome to our service! Upcoming events and announcements', logoUrl: solid('#00ff00'), backgroundImageUrl: solid('#ff0000'), backgroundOpacity: 0.5, logoWidthPercent: 10 } };
+  const renderer = new ScrollingTextRenderer();
+  const draw = now => { ctx.clearRect(0, 0, 1920, 1080); renderer.draw(ctx, source, 1920, 1080, now); return canvas.toDataURL(); };
+  const pixel = (x, y) => [...ctx.getImageData(x, y, 1, 1).data];
+  draw(0); await wait(100);
+  const checks = [];
+  let time = 100;
+  for (const direction of ['left', 'right', 'up', 'down']) {
+    source.data.direction = direction;
+    const before = draw(time), after = draw(time += 400);
+    assert(before !== after, direction + ' ticker did not animate');
+    assert(pixel(285, 729)[1] > 245 && pixel(285, 729)[0] < 10, 'Scrolling text overlapped fixed logo');
+    assert(pixel(10, 10)[3] === 0, 'Ticker painted outside its rectangle');
+    source.media = { paused: true };
+    assert(draw(time += 400) === after, 'Paused ticker moved');
+    source.media = { paused: false };
+    assert(draw(time += 400) !== after, 'Resumed ticker did not move');
+    checks.push(direction);
+  }
+  source.data.direction = 'left'; source.media = { restartToken: 1 };
+  const initial = draw(time += 400); draw(time += 400);
+  source.media.restartToken++;
+  assert(draw(time += 400) === initial, 'Restart did not reset scrolling position');
+  source.data.logoPosition = 'right'; draw(time += 400);
+  assert(pixel(1635, 729)[1] > 245, 'Right-side logo missing');
+  const background = pixel(195, 650);
+  assert(background[0] > 245 && Math.abs(background[3] - 128) <= 1, 'Background image opacity is incorrect: ' + background);
+
+  // Verify the actual Program pipeline, staging and scene-driven source list.
+  source.data.logoPosition = 'left'; source.data.backgroundOpacity = 1;
+  const other = { id: 'other', name: 'Other scene source', type: 'image', enabled: true, audioEnabled: false, rect: { x: 0, y: 0, width: 100, height: 100 }, data: { url: solid('blue') } };
+  store.setState({ transitionType: 'cut', manualBlend: 0, isFrozen: false, isCutToBlack: false, displayTextMode: 'show' });
+  store.getState().setStudioState({ scenes: [{ id: 'ticker-scene', name: 'Ticker scene', sourceIds: ['ticker'] }, { id: 'other-scene', name: 'Other scene', sourceIds: ['other'] }], sources: { ticker: source, other }, groups: [], previewSceneId: 'ticker-scene', programSceneId: 'ticker-scene' });
+  await wait(350);
+  const program = document.querySelector('.program-pane canvas');
+  const bitmap = () => program.toDataURL();
+  const first = bitmap(); await wait(250);
+  assert(first !== bitmap(), 'Program ticker is not animated');
+  const liveBefore = Object.values(store.getState().programSources).find(s => s.type === 'scrolling-text');
+  store.getState().updateSource('ticker', { data: { ...source.data, text: 'Staged message', logoPosition: 'right' } });
+  assert(Object.values(store.getState().programSources).find(s => s.type === 'scrolling-text').data.text === liveBefore.data.text, 'Preview ticker edit leaked live');
+  store.getState().takeToProgram();
+  assert(Object.values(store.getState().programSources).find(s => s.type === 'scrolling-text').data.text === 'Staged message', 'TAKE did not commit ticker');
+  const names = () => [...document.querySelectorAll('.sources-list .source-labels strong')].map(node => node.textContent);
+  const selectScene = async name => { const button = [...document.querySelectorAll('.scene-select')].find(node => node.textContent === name); assert(button, 'Scene button missing'); button.click(); await wait(100); };
+  await selectScene('Other scene'); assert(JSON.stringify(names()) === JSON.stringify(['Other scene source']), 'Studio source list did not follow scene');
+  await selectScene('Ticker scene'); assert(JSON.stringify(names()) === JSON.stringify(['Scrolling welcome']), 'Ticker source missing after selecting scene');
+  document.querySelector('.source-row button[aria-label="Edit Source"]').click(); await wait(100);
+  assert(document.querySelector('#scroll-logoSide') && document.querySelector('#scroll-speed'), 'Ticker editing controls are missing');
+  document.querySelectorAll('.scene-list-item')[1].click(); await wait(100);
+  assert(!document.querySelector('#scroll-text') && JSON.stringify(names()) === JSON.stringify(['Other scene source']), 'Scene row click left stale source properties');
+  await selectScene('Ticker scene');
+  document.querySelector('.control-studio').click(); await wait(150);
+  await selectScene('Other scene'); assert(JSON.stringify(names()) === JSON.stringify(['Other scene source']), 'Program Focus source list did not follow scene');
+  await selectScene('Ticker scene'); assert(JSON.stringify(names()) === JSON.stringify(['Scrolling welcome']), 'Program Focus ticker source missing');
+  document.querySelector('.control-studio').click(); await wait(100);
+  document.querySelector('.source-row button[aria-label="Edit Source"]').click(); await wait(100);
+  document.querySelector('.selected-source-panel button').click(); await wait(50);
+  const tickerShortcut = [...document.querySelectorAll('.sources-list button')].find(button => button.textContent === 'Add Scrolling Text');
+  assert(tickerShortcut, 'Scrolling text shortcut is missing');
+  tickerShortcut.click(); await wait(50);
+  assert(document.querySelector('#sourceType').value === 'scrolling-text', 'Scrolling text shortcut did not open ticker creation');
+  document.querySelector('.panel-tool-overlay .btn-primary').click(); await wait(100);
+  assert(document.querySelector('#scroll-text') && document.querySelector('#scroll-logoSide'), 'New ticker did not open its editing controls');
+  return { directions: checks, fixedLogoBothSides: true, backgroundOpacity: true, pauseResumeRestart: true, programAnimation: true, stagedUntilTake: true, sceneSourcesBothModes: true };
+};

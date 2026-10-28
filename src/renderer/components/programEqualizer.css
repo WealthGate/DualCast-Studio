@@ -1,0 +1,33 @@
+.program-equalizer {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.program-equalizer-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.program-equalizer-heading strong { margin-right: auto; }
+
+.program-equalizer-bands {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.program-equalizer-bands label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.program-equalizer-bands input { width: 100%; min-width: 0; }
+.program-equalizer-bands small { opacity: 0.7; margin-left: 4px; }
+.program-equalizer-bands output { font-variant-numeric: tabular-nums; font-size: 12px; }
+.program-equalizer .field-help { margin-bottom: 0; }

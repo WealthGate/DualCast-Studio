@@ -1,0 +1,76 @@
+import { EventEmitter } from "events";
+import { PassThrough } from "stream";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({ spawn: vi.fn(), getSources: vi.fn(), getAllDisplays: vi.fn(), dipToScreenRect: vi.fn() }));
+vi.mock("electron", () => ({ desktopCapturer: { getSources: mocks.getSources }, screen: { getAllDisplays: mocks.getAllDisplays, dipToScreenRect: mocks.dipToScreenRect } }));
+vi.mock("child_process", () => ({ spawn: mocks.spawn }));
+vi.mock("../ffmpegPathService", () => ({ resolveFfmpegExecutablePath: () => "ffmpeg.exe" }));
+vi.mock("../windowsCapturePathService", () => ({ getWindowsCaptureExecutable: () => "window-capture.exe" }));
+import { acknowledgeCursorFreeFrame, startCursorFreeCapture, stopCursorFreeCapture, stopAllCursorFreeCaptures } from "../cursorFreeCaptureService";
+import type { WebContents } from "electron";
+
+describe("cursor-free capture", () => {
+  let child: EventEmitter & { stdout: PassThrough; stderr: PassThrough; kill: ReturnType<typeof vi.fn> };
+  let owner: WebContents;
+  beforeEach(() => {
+    vi.stubGlobal("process", { ...process, platform: "win32" });
+    vi.clearAllMocks();
+    child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn() });
+    mocks.spawn.mockReturnValue(child);
+    owner = Object.assign(new EventEmitter(), { id: 7, isDestroyed: () => false, send: vi.fn() }) as unknown as WebContents;
+    mocks.getSources.mockResolvedValue([{ id: "screen:0:0", display_id: "10" }, { id: "window:42:0", name: "Slides" }]);
+    mocks.getAllDisplays.mockReturnValue([{ id: 10, bounds: { x: -1280, y: 0, width: 1280, height: 720 } }]);
+    mocks.dipToScreenRect.mockReturnValue({ x: -1920, y: 0, width: 1920, height: 1080 });
+  });
+  afterEach(() => { stopAllCursorFreeCaptures(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it("excludes the pointer at capture and uses physical monitor coordinates", async () => {
+    await startCursorFreeCapture(owner, "screen:0:0");
+    const args = mocks.spawn.mock.calls[0][1];
+    expect(args).toEqual(expect.arrayContaining(["-draw_mouse", "0", "-offset_x", "-1920", "-video_size", "1920x1080"]));
+    expect(mocks.spawn.mock.calls[0][2]).toEqual({ windowsHide: true });
+  });
+  it("captures windows by id even when titles change or are duplicated", async () => {
+    const id = await startCursorFreeCapture(owner, "window:42:0");
+    expect(mocks.spawn.mock.calls[0][0]).toBe("window-capture.exe");
+    expect(mocks.spawn.mock.calls[0][1]).toEqual(expect.arrayContaining(["-fps_mode", "passthrough"]));
+    expect(mocks.spawn.mock.calls[0][1]).toContain("gfxcapture=hwnd=42:capture_cursor=0:capture_border=0:display_border=0:max_framerate=30:width=-2:height=-2:resize_mode=scale_aspect,hwdownload,format=bgra,scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuvj420p");
+    stopCursorFreeCapture(id!, owner.id);
+    expect(child.kill).toHaveBeenCalledOnce();
+  });
+  it("rejects stale source ids without starting a capture", async () => {
+    await expect(startCursorFreeCapture(owner, "window:99:0")).rejects.toThrow("unavailable");
+    expect(mocks.spawn).not.toHaveBeenCalled();
+  });
+  it("uses the requested 60fps capture cadence while keeping the cursor excluded", async () => {
+    await startCursorFreeCapture(owner, "window:42:0", 60);
+    expect(mocks.spawn.mock.calls[0][1].join(" ")).toContain("capture_cursor=0:capture_border=0:display_border=0:max_framerate=60");
+  });
+  it("assembles split JPEG frames and restricts stopping to the owning renderer", async () => {
+    const id = await startCursorFreeCapture(owner, "screen:0:0");
+    child.stdout.write(Buffer.from([0xff, 0xd8, 1, 0xff]));
+    expect(owner.send).not.toHaveBeenCalled();
+    child.stdout.write(Buffer.from([0xd9]));
+    expect(owner.send).toHaveBeenCalledWith(expect.any(String), { id, dataUrl: "data:image/jpeg;base64,/9gB/9k=", sequence: 1 });
+    stopCursorFreeCapture(id!, 8);
+    expect(child.kill).not.toHaveBeenCalled();
+    stopCursorFreeCapture(id!, 7);
+    expect(child.kill).toHaveBeenCalledOnce();
+  });
+  it("stops native capture when its renderer closes", async () => {
+    await startCursorFreeCapture(owner, "screen:0:0");
+    owner.emit("destroyed");
+    expect(child.kill).toHaveBeenCalledOnce();
+  });
+  it("keeps only the latest native frame while the owning renderer decodes", async () => {
+    const id = await startCursorFreeCapture(owner, "screen:0:0");
+    for (const value of [1, 2, 3]) child.stdout.write(Buffer.from([0xff, 0xd8, value, 0xff, 0xd9]));
+    expect(owner.send).toHaveBeenCalledTimes(1);
+    acknowledgeCursorFreeFrame(8, id!, 1);
+    expect(owner.send).toHaveBeenCalledTimes(1);
+    acknowledgeCursorFreeFrame(7, id!, 1);
+    expect(owner.send).toHaveBeenCalledTimes(2);
+    expect(owner.send).toHaveBeenLastCalledWith(expect.any(String), { id, sequence: 2, dataUrl: `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 3, 0xff, 0xd9]).toString("base64")}` });
+  });
+});

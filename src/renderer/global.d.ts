@@ -1,45 +1,160 @@
 import {
+  ProjectionSignal,
+  NativeCaptureFrame,
+  NativeCaptureOptions,
+  HardwareCapabilities,
   DisplaySource,
+  ProjectionDisplay,
   SaveRecordingPayload,
+  RecordingChunkPayload,
+  RecordingSessionPayload,
   SaveRecordingResult,
+  MediaFileResult,
+  MultiviewAction,
+  MultiviewPayload,
+  UpdateStatusPayload,
   Settings,
   SettingsUpdate,
   HotkeyAction,
   ProgramState,
+  BrowserFramePayload,
+  BrowserSourcePayload,
   StreamStartPayload,
   StreamStartResult,
   StreamStopResult,
   StreamStatusPayload,
-  StreamingEncoder
+  StreamingEncoder,
+  ExportClipPayload,
+  ExportClipResult,
+  NetworkOutputStatus,
+  RemoteOperatorAction,
+  ScriptureFetchPayload,
+  ScriptureFetchResult,
+  ScriptureLibraryDownloadPayload,
+  ScriptureLibraryLookupPayload,
+  ScriptureLibraryRemovePayload,
+  ScriptureLibraryCatalog,
+  ScriptureLibrarySummary,
+  SongDownloadPayload,
+  SongLibraryEntry,
+  SongRemovePayload,
+  StreamingAuthorizationPayload,
+  StreamingAuthorizationResult,
+  StreamingCredentialInput,
+  StreamingCredentialProvider,
+  StreamingCredentialStatus,
+  AppCommand
 } from "../shared/types";
 
 declare global {
   interface Window {
     dualcast: {
+      listBackgroundMedia: () => Promise<import("../shared/backgrounds").BackgroundMedia[]>;
+      importBackgroundMedia: (kind: "image" | "video") => Promise<import("../shared/backgrounds").BackgroundImportResult>;
+      deleteBackgroundMedia: (id: string) => Promise<import("../shared/backgrounds").BackgroundDeleteResult>;
+      getVirtualCameraStatus: () => Promise<import("../shared/virtualCamera").VirtualCameraStatus>;
+      configureVirtualCamera: (action: "install" | "uninstall" | "start" | "stop") => Promise<import("../shared/virtualCamera").VirtualCameraStatus>;
+      sendVirtualCameraFrame: (frame: import("../shared/virtualCamera").VirtualCameraFrame) => Promise<boolean>;
+      onVirtualCameraStatus: (callback: (status: import("../shared/virtualCamera").VirtualCameraStatus) => void) => () => void;
+      getAudioPluginStatus: () => Promise<import("../shared/audioPlugins").AudioPluginStatus>;
+      configureAudioPlugin: (action: import("../shared/audioPlugins").AudioPluginAction) => Promise<import("../shared/audioPlugins").AudioPluginStatus>;
+      sendAudioPluginBlock: (block: import("../shared/audioPlugins").AudioPluginBlock) => void;
+      onAudioPluginBlock: (callback: (block: import("../shared/audioPlugins").AudioPluginBlock) => void) => () => void;
+      onAudioPluginStatus: (callback: (status: import("../shared/audioPlugins").AudioPluginStatus) => void) => () => void;
+      sendProgramVideoFrame: (frame: NativeCaptureFrame) => void;
+      onProgramVideoFrame: (callback:(frame:NativeCaptureFrame)=>void)=>()=>void;
+      getHardwareCapabilities: () => Promise<HardwareCapabilities>;
+      startCursorFreeCapture: (sourceId: string, fps?: number, options?: NativeCaptureOptions) => Promise<string | null>;
+      stopCursorFreeCapture: (id: string) => Promise<void>;
+      onCursorFreeFrame: (callback: (frame: NativeCaptureFrame) => void | Promise<void>) => () => void;
+      getProgramState: () => Promise<ProgramState | null>;
       listDisplays: () => Promise<DisplaySource[]>;
+      listProjectionDisplays: () => Promise<ProjectionDisplay[]>;
+      identifyProjectionDisplays: () => Promise<void>;
       getSettings: () => Promise<Settings>;
       updateSettings: (update: SettingsUpdate) => Promise<Settings>;
       selectSaveDirectory: () => Promise<string | null>;
       saveRecording: (payload: SaveRecordingPayload) => Promise<SaveRecordingResult>;
+      beginRecording: () => Promise<{ sessionId: string }>;
+      appendRecordingChunk: (payload: RecordingChunkPayload) => Promise<boolean>;
+      finishRecording: (payload: RecordingSessionPayload) => Promise<SaveRecordingResult>;
+      cancelRecording: (payload: RecordingSessionPayload) => Promise<boolean>;
       openFolder: (filePath: string) => Promise<boolean>;
-      openProjection: (displayId?: string | null) => Promise<boolean>;
+      openProjection: (displayIds: string[]) => Promise<boolean>;
       closeProjection: () => Promise<boolean>;
+      openLowerThird: (displayId: string) => Promise<boolean>;
+      closeLowerThird: () => Promise<boolean>;
+      openMultiview: () => Promise<boolean>;
+      closeMultiview: () => Promise<boolean>;
+      getUpdateStatus: () => Promise<UpdateStatusPayload>;
+      checkForUpdates: () => Promise<UpdateStatusPayload>;
+      downloadUpdate: () => Promise<boolean>;
+      installUpdate: () => Promise<boolean>;
+      openReleasePage: () => Promise<boolean>;
       startStream: (payload: StreamStartPayload) => Promise<StreamStartResult>;
       stopStream: () => Promise<StreamStopResult>;
-      sendStreamChunk: (payload: Uint8Array) => void;
+      sendStreamChunk: (payload: Uint8Array) => Promise<boolean>;
       getStreamLogPath: () => Promise<string | null>;
-      getStreamingCapabilities: () => Promise<{ encoders: StreamingEncoder[] }>;
-      getStoredStreamKey: () => Promise<string | null>;
-      setStoredStreamKey: (payload: { streamKey: string }) => Promise<boolean>;
-      clearStoredStreamKey: () => Promise<boolean>;
+      getStreamLogContent: (payload: { maxLines?: number }) => Promise<string>;
+      getStreamingCapabilities: () => Promise<{ encoders: StreamingEncoder[]; secureStorageAvailable: boolean }>;
+      getStoredStreamKey: (payload?: { destinationId?: string }) => Promise<string | null>;
+      setStoredStreamKey: (payload: { destinationId?: string; streamKey: string }) => Promise<boolean>;
+      clearStoredStreamKey: (payload?: { destinationId?: string }) => Promise<boolean>;
+      startNetworkOutput: (payload: { port: number; operatorPin: string }) => Promise<NetworkOutputStatus>;
+      stopNetworkOutput: () => Promise<NetworkOutputStatus>;
+      getNetworkOutputStatus: () => Promise<NetworkOutputStatus>;
+      exportClip: (payload: ExportClipPayload) => Promise<ExportClipResult>;
+      selectMediaFile: (payload: { kind: "image" | "video" | "audio" }) => Promise<MediaFileResult | null>;
+      createBrowserSource: (payload: BrowserSourcePayload) => Promise<boolean>;
+      updateBrowserSource: (payload: BrowserSourcePayload) => Promise<boolean>;
+      destroyBrowserSource: (payload: { sourceId: string }) => Promise<boolean>;
+      fetchScripture: (payload: ScriptureFetchPayload) => Promise<ScriptureFetchResult>;
+      listScriptureLibraries: () => Promise<ScriptureLibrarySummary[]>;
+      lookupScriptureLibrary: (payload: ScriptureLibraryLookupPayload) => Promise<ScriptureFetchResult>;
+      importScriptureLibrary: () => Promise<ScriptureLibrarySummary | null>;
+      downloadScriptureLibrary: (payload: ScriptureLibraryDownloadPayload) => Promise<ScriptureLibrarySummary>;
+      saveScripturePassage: (payload: ScriptureFetchResult) => Promise<ScriptureLibrarySummary>;
+      removeScriptureLibrary: (payload: ScriptureLibraryRemovePayload) => Promise<boolean>;
+      getScriptureLibraryCatalog: (libraryId: string) => Promise<ScriptureLibraryCatalog>;
+      listSongs: () => Promise<SongLibraryEntry[]>;
+      importSong: () => Promise<SongLibraryEntry | null>;
+      downloadSong: (payload: SongDownloadPayload) => Promise<SongLibraryEntry>;
+      removeSong: (payload: SongRemovePayload) => Promise<boolean>;
+      authorizeStreaming: (payload: StreamingAuthorizationPayload) => Promise<StreamingAuthorizationResult>;
+      getYouTubeBroadcastStatus: (id: string) => Promise<import("../shared/types").YouTubeBroadcastStatus>;
+      openYouTubeBroadcast: (id: string) => Promise<void>;
+      readYouTubeChat: (id: string, pageToken?: string) => Promise<import("../shared/types").YouTubeChatResult>;
+      sendYouTubeChat: (id: string, text: string) => Promise<import("../shared/types").YouTubeChatResult>;
+      getStreamingCredentialStatus: (provider: StreamingCredentialProvider) => Promise<StreamingCredentialStatus>;
+      setStreamingCredentials: (payload: StreamingCredentialInput) => Promise<StreamingCredentialStatus>;
+      clearStreamingCredentials: (provider: StreamingCredentialProvider) => Promise<StreamingCredentialStatus>;
+      disconnectStreamingAccount: (provider: StreamingCredentialProvider) => Promise<StreamingCredentialStatus>;
+      downloadUserGuide: () => Promise<string | null>;
       onStreamStatus: (handler: (payload: StreamStatusPayload) => void) => () => void;
       updateProgramState: (state: ProgramState) => void;
+      sendProjectionSignal: (signal: ProjectionSignal) => void;
+      onProjectionSignal: (handler: (signal: ProjectionSignal) => void) => () => void;
       sendProgramFrame: (dataUrl: string) => void;
-      onProgramFrame: (handler: (dataUrl: string) => void) => () => void;
+      sendLowerThirdFrame: (dataUrl: string) => void;
+      sendMultiviewData: (payload: MultiviewPayload) => void;
+      sendMultiviewAction: (action: MultiviewAction) => void;
+      onBrowserFrame: (handler: (payload: BrowserFramePayload) => void) => () => void;
+      onProgramFrame: (handler: (dataUrl: string) => void | Promise<void>) => () => void;
+      onLowerThirdFrame: (handler: (dataUrl: string) => void | Promise<void>) => () => void;
       onProgramState: (handler: (state: ProgramState) => void) => () => void;
       onProjectionOpened: (handler: () => void) => () => void;
+      onProjectionDisplaysChanged: (handler: () => void) => () => void;
       onProjectionClosed: (handler: () => void) => () => void;
+      onLowerThirdOpened: (handler: () => void) => () => void;
+      onLowerThirdClosed: (handler: () => void) => () => void;
+      onMultiviewOpened: (handler: () => void) => () => void;
+      onMultiviewClosed: (handler: () => void) => () => void;
+      onMultiviewData: (handler: (payload: MultiviewPayload) => void) => () => void;
+      onMultiviewAction: (handler: (action: MultiviewAction) => void) => () => void;
+      onUpdateStatus: (handler: (status: UpdateStatusPayload) => void) => () => void;
       onHotkey: (handler: (action: HotkeyAction) => void) => () => void;
+      onRemoteOperatorAction: (handler: (action: RemoteOperatorAction) => void) => () => void;
+      onAppCommand: (handler: (command: AppCommand) => void) => () => void;
     };
   }
 }
