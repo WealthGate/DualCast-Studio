@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.41**.
+Current release: **v0.6.42**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,7 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.41
+### What's new in v0.6.42
 
 - Keep connected screen choices visible in Mirror Program and Independent Layout, including startup, switching modes and connecting displays. Share one display inventory across panels. Open **Display screens** in Controls or **Tools → Display Screens & Mode…**.
 - Make **Mirror Program · all screens** authoritative: saved backgrounds no longer silently force independent output. Preserve backgrounds for reuse, show **Individual screen layouts** when screens differ, and route video consistently through a shared resolver.
@@ -29,7 +29,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Th
 - Add **Delete** to every uploaded background, including unavailable files. Confirm the filename, delete the managed copy, preserve originals and other files, clear its current/saved-profile background references to their base colors, and recover from canceled or failed deletion.
 - Consolidate repeated screen detection, output routing, frame subscription handling, resolution choices and development camera status without removing the separate output capabilities.
 
-See [display routing, animations, designs and deletion](docs/display-workflow-0.6.41.md).
+See [display routing, animations, designs and deletion](docs/display-workflow-0.6.42.md).
 
 ### Included from v0.6.40
 

@@ -101,7 +101,7 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
       await Promise.race([congested,ended,wait(Math.min(seconds+4,40)*1000)]);
       source.kill('SIGKILL');await wait(300);
       const transportLog=fs.readFileSync(service.getStreamLogPath(),'utf8');
-      if(!congestion||fatal||congestion>40000||uploadedBytes<16000)throw Error('Insufficient upload did not request a bounded lower-bandwidth recovery over a working local transport.');
+      if(!congestion||fatal||congestion>40000||uploadedBytes<16000)throw Error('Insufficient upload did not request a bounded lower-bandwidth recovery over a working local transport. '+JSON.stringify({seconds,uploadKbps,uploadedBytes,congestionRecoveryMs:congestion,firstLiveMs:firstLive,error:fatal,statuses:[...new Set(states)]}));
       if(/FIFO queue full|queue overflow|FIFO queue flushed/i.test(transportLog))throw Error('Congestion discarded packets before adapting.');
       console.log(JSON.stringify({encoder,copyVideo,uploadKbps,uploadedBytes,congestionRecoveryMs:congestion,lowerBandwidthRequested:true,discardedPackets:false,statuses:[...new Set(states)],error:fatal}));
       return;

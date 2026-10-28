@@ -83,7 +83,8 @@ jobs:
 
       - name: Verify bounded recovery over a throttled RTMP connection
         timeout-minutes: 2
-        run: node scripts/verify-stream-startup.cjs --encoder=x264 --ci --seconds=20 --upload-kbps=250 --expect-congestion
+        # Keep media flowing for the existing 40-second recovery bound; socket buffers vary by platform.
+        run: node scripts/verify-stream-startup.cjs --encoder=x264 --ci --seconds=40 --upload-kbps=250 --expect-congestion
 
       - name: Build application
         run: npm run build

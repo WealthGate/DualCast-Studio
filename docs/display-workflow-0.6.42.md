@@ -1,4 +1,6 @@
-# Display workflow, animations and uploaded files · v0.6.41
+# Display workflow, animations and uploaded files · v0.6.42
+
+The release recovery fixture runs for the full existing 40-second recovery deadline rather than ending input early at 20 seconds. Recovery timing and packet-preservation limits remain unchanged. Failure diagnostics now include upload progress and recovery status.
 
 Open **Controls → Display screens** or **Tools → Display Screens & Mode…**. Connected screens appear at the top in every display mode. The previous fixed-height flex layout let the Independent Layout controls shrink that list to zero height. The panel now scrolls its contents without collapsing screen choices, and Backgrounds and Sanctuary Displays read one shared inventory. Screen detection starts independently of capture-source discovery and layout settings; stale refresh responses cannot replace a newer inventory.
 
