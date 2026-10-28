@@ -5,6 +5,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 import { IpcChannels } from "../../src/shared/ipc";
 import { listDisplays, listProjectionDisplays } from "./displayService";
+import { identifyProjectionDisplays } from "./displayIdentificationService";
 import { acknowledgeCursorFreeFrame, startCursorFreeCapture, stopCursorFreeCapture } from "./cursorFreeCaptureService";
 import { acknowledgeProjectionFrame, routeProjectionSignal, forwardProgramVideo, acknowledgeProgramVideo } from "./projectionService";
 import { getSettings, updateSettings } from "./settingsService";
@@ -99,6 +100,7 @@ export const registerIpcHandlers = () => {
 
   ipcMain.handle(IpcChannels.listDisplays, async () => listDisplays());
   ipcMain.handle(IpcChannels.listProjectionDisplays, () => listProjectionDisplays());
+  ipcMain.handle(IpcChannels.identifyProjectionDisplays, () => identifyProjectionDisplays());
 
   ipcMain.handle(IpcChannels.getSettings, () => getSettings());
 

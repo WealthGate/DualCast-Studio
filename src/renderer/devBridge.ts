@@ -45,6 +45,7 @@ export const installDevelopmentBridge = () => {
       { id: "demo-primary", name: "Primary display", isPrimary: true, size: { width: 1920, height: 1080 } },
       { id: "demo-sanctuary", name: "Sanctuary projector", isPrimary: false, size: { width: 1920, height: 1080 } }
     ],
+    identifyProjectionDisplays: async () => { throw Error("Identify screens in the desktop app."); },
     getSettings: async () => useAppStore.getState().settings,
     updateSettings: async (update) => ({ ...useAppStore.getState().settings, ...update }),
     selectSaveDirectory: async () => null,

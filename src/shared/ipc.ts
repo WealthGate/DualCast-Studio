@@ -20,6 +20,7 @@ export const IpcChannels = {
   cursorFreeFramePresented: "dualcast:cursor-free-frame-presented",
   listDisplays: "dualcast:list-displays",
   listProjectionDisplays: "dualcast:list-projection-displays",
+  identifyProjectionDisplays: "dualcast:identify-projection-displays",
   projectionDisplaysChanged: "dualcast:projection-displays-changed",
   getSettings: "dualcast:get-settings",
   updateSettings: "dualcast:update-settings",

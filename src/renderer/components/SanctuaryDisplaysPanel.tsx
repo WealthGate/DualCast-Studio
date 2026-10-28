@@ -113,7 +113,7 @@ const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ 
       <div className="display-target-grid">
         {!isRefreshing && projectionDisplays.length === 0 ? <div className="empty-hint">No displays detected. Check the Windows display connection, then choose Refresh.</div> : null}
         {displayError ? <div className="empty-hint">{displayError}</div> : null}
-        {projectionDisplays.map((display) => {
+        {projectionDisplays.map((display, index) => {
           const displayId = display.id;
           return (
             <label key={display.id} className="display-target-option">
@@ -123,7 +123,7 @@ const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ 
                 onChange={(event) => handleProjectionTargetToggle(displayId, event.target.checked)}
                 disabled={isProjecting}
               />
-              <span>{display.name}{display.isPrimary ? " (Primary)" : ""} · {display.size.width} × {display.size.height}</span>
+              <span>Screen {index + 1} · {display.name}{display.isPrimary ? " (Primary / operator)" : ""} · {display.size.width} × {display.size.height}</span>
             </label>
           );
         })}
@@ -131,7 +131,7 @@ const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ 
       <button
         className="btn btn-primary"
         onClick={handleProjectionToggle}
-        disabled={!isProjecting && ((settings.sanctuaryDisplay?.mode !== "independent" && !programSceneId) || projectionDisplays.length === 0 || projectionTargetIds.length === 0)}
+        disabled={!isProjecting && ((settings.sanctuaryDisplay?.mode !== "independent" && !programSceneId && !settings.displayBackgrounds?.sanctuary && !settings.displayBackgrounds?.program && !projectionTargetIds.some(id => settings.displayBackgrounds?.displays[id])) || projectionDisplays.length === 0 || projectionTargetIds.length === 0)}
       >
         {isProjecting ? "Stop Projection" : settings.sanctuaryDisplay?.mode === "independent" ? "Project Sanctuary Layout" : "Project Program"}
       </button>
@@ -147,9 +147,9 @@ const SanctuaryDisplaysPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ 
           disabled={isLowerThirdProjecting}
         >
           <option value="">Choose display...</option>
-          {projectionDisplays.map((display) => (
+          {projectionDisplays.map((display, index) => (
             <option key={`lower-${display.id}`} value={display.id}>
-              {display.name}{display.isPrimary ? " (Primary)" : ""}
+              Screen {index + 1} · {display.name}{display.isPrimary ? " (Primary / operator)" : ""}
             </option>
           ))}
         </select>

@@ -332,6 +332,34 @@ describe("Whole lower-third visibility", () => {
 });
 
 describe("settings persistence ordering", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("restores the previous background when persistence fails", async () => {
+    const previous = useAppStore.getState().settings;
+    vi.stubGlobal("window", { dualcast: { updateSettings: vi.fn().mockRejectedValue(Error("Disk full")) } });
+    await expect(useAppStore.getState().updateSettings({ displayBackgrounds: { displays: {} } })).rejects.toThrow("Disk full");
+    expect(useAppStore.getState().settings.displayBackgrounds).toBe(previous.displayBackgrounds);
+  });
+  it.each([false, true])("restores saved values when overlapping writes both fail (newest first: %s)", async newestFirst => {
+    const original = useAppStore.getState().settings.masterAudioGain;
+    const failures: ((error: Error) => void)[] = [];
+    vi.stubGlobal("window", { dualcast: { updateSettings: vi.fn(() => new Promise((_resolve, reject) => failures.push(reject))) } });
+    const first = expect(useAppStore.getState().updateSettings({ masterAudioGain: 0.3 })).rejects.toThrow("Disk full");
+    const second = expect(useAppStore.getState().updateSettings({ masterAudioGain: 0.6 })).rejects.toThrow("Disk full");
+    const order = newestFirst ? [1, 0] : [0, 1];
+    failures[order[0]](Error("Disk full")); await (newestFirst ? second : first);
+    failures[order[1]](Error("Disk full")); await (newestFirst ? first : second);
+    expect(useAppStore.getState().settings.masterAudioGain).toBe(original);
+  });
+  it.each([0.2, 0.8])("keeps a newer saved value %s when an older settings save fails", async gain => {
+    let reject: (error: Error) => void = () => undefined;
+    vi.stubGlobal("window", { dualcast: { updateSettings: vi.fn().mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }))
+      .mockImplementationOnce(async (update: SettingsUpdate) => ({ ...useAppStore.getState().settings, ...update })) } });
+    const first = useAppStore.getState().updateSettings({ masterAudioGain: 0.2 });
+    const failed = expect(first).rejects.toThrow("Disk full");
+    await useAppStore.getState().updateSettings({ masterAudioGain: gain });
+    reject(Error("Disk full")); await failed;
+    expect(useAppStore.getState().settings.masterAudioGain).toBe(gain);
+  });
   it("does not let an old save restore an older cue or fader value", async () => {
     const original = useAppStore.getState().settings;
     const replies: ((settings: Settings) => void)[] = [];

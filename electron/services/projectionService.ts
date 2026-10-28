@@ -154,6 +154,8 @@ const createOutputWindow = async (
 
 export const openProjectionWindows = async (displayIds: string[]) => {
   const targets = Array.from(new Set(displayIds.filter(Boolean)));
+  const connected = new Set(screen.getAllDisplays().map(display => String(display.id)));
+  if (!targets.length || targets.some(id => !connected.has(id))) throw Error("Choose a connected screen. Refresh displays and try again.");
   await Promise.all(targets.map((displayId) => createOutputWindow(displayId, "program", programWindows)));
 
   await Promise.all(Array.from(programWindows.entries()).map(async ([displayId, window]) => {
@@ -172,6 +174,7 @@ export const closeProjectionWindows = async () => {
 };
 
 export const openLowerThirdWindow = async (displayId: string) => {
+  if (!screen.getAllDisplays().some(display => String(display.id) === displayId)) throw Error("The lower-third screen is disconnected. Choose a connected screen.");
   await Promise.all(Array.from(lowerThirdWindows.entries()).map(async ([currentId, window]) => {
     if (currentId !== displayId && !window.isDestroyed()) {
       await outputExit.close(window, lastProgramState?.outputExitDurationMs);

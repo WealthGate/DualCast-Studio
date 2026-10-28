@@ -95,6 +95,7 @@ const api = {
   getProgramState: (): Promise<ProgramState | null> => ipcRenderer.invoke(IpcChannels.getProgramState),
   listDisplays: (): Promise<DisplaySource[]> => ipcRenderer.invoke(IpcChannels.listDisplays),
   listProjectionDisplays: (): Promise<ProjectionDisplay[]> => ipcRenderer.invoke(IpcChannels.listProjectionDisplays),
+  identifyProjectionDisplays: (): Promise<void> => ipcRenderer.invoke(IpcChannels.identifyProjectionDisplays),
   getSettings: (): Promise<Settings> => ipcRenderer.invoke(IpcChannels.getSettings),
   updateSettings: (update: SettingsUpdate): Promise<Settings> => ipcRenderer.invoke(IpcChannels.updateSettings, update),
   selectSaveDirectory: (): Promise<string | null> => ipcRenderer.invoke(IpcChannels.selectSaveDirectory),

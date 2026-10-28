@@ -105,6 +105,8 @@ const defaultSettings: Settings = {
 };
 
 let settingsWriteRevision = 0;
+const settingsKeyRevisions = new Map<keyof Settings, number>();
+const pendingSettingsWrites = new Map<number, { previous: Settings; previousRevisions: Map<keyof Settings, number | undefined> }>();
 
 const getId = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
@@ -724,8 +726,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSettings: (settings) => set({ settings }),
   updateSettings: async (update) => {
     const revision = ++settingsWriteRevision;
+    const previous = { ...get().settings };
+    const keys = Object.keys(update) as (keyof Settings)[];
+    const previousRevisions = new Map(keys.map(key => [key, settingsKeyRevisions.get(key)]));
+    pendingSettingsWrites.set(revision, { previous, previousRevisions });
+    for (const key of keys) settingsKeyRevisions.set(key, revision);
     set((state) => ({ settings: { ...state.settings, ...update } }));
-    const updated = await window.dualcast.updateSettings(update);
-    if (revision === settingsWriteRevision) set({ settings: updated });
+    try {
+      const updated = await window.dualcast.updateSettings(update);
+      if (revision === settingsWriteRevision) set({ settings: updated });
+    } catch (error) {
+      // Later pending edits must not roll back to another failed optimistic value.
+      for (const [newerRevision, pending] of pendingSettingsWrites) if (newerRevision > revision) {
+        for (const key of keys) if (pending.previousRevisions.get(key) === revision) {
+          Object.assign(pending.previous, { [key]: previous[key] });
+          pending.previousRevisions.set(key, previousRevisions.get(key));
+        }
+      }
+      // Roll back only this failed patch's values. Preserve newer fader/cue edits.
+      set(state => {
+        const settings = { ...state.settings };
+        for (const key of keys) {
+          if (settingsKeyRevisions.get(key) === revision && settings[key] === update[key]) {
+            Object.assign(settings, { [key]: previous[key] });
+            const previousRevision = previousRevisions.get(key);
+            if (previousRevision === undefined) settingsKeyRevisions.delete(key); else settingsKeyRevisions.set(key, previousRevision);
+          }
+        }
+        return { settings };
+      });
+      throw error;
+    } finally { pendingSettingsWrites.delete(revision); }
   }
 }));

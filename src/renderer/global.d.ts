@@ -69,6 +69,7 @@ declare global {
       getProgramState: () => Promise<ProgramState | null>;
       listDisplays: () => Promise<DisplaySource[]>;
       listProjectionDisplays: () => Promise<ProjectionDisplay[]>;
+      identifyProjectionDisplays: () => Promise<void>;
       getSettings: () => Promise<Settings>;
       updateSettings: (update: SettingsUpdate) => Promise<Settings>;
       selectSaveDirectory: () => Promise<string | null>;

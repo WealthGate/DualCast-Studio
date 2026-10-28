@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.39**.
+Current release: **v0.6.40**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,15 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.39
+### What's new in v0.6.40
+
+- Set backgrounds in three steps: choose a numbered screen/output, choose an uploaded file, then apply. Screen cards show names, resolution, output role, open status and the current background. **Identify screens** briefly shows matching OpenChurch numbers on the physical displays.
+- Browse **Your uploaded files** with image/video thumbnails, search and type filters. Successful uploads remain visible and reusable after reopening the studio, including when other files in the same upload fail. The first new file is selected for preview; applying remains explicit.
+- Use **Apply & show** to save the background and open the chosen screen directly. The lower-third screen edits the band background; sanctuary choices keep their own assignments. Disconnected screens report an error instead of opening on the primary screen. Failed settings saves roll back their changes while preserving newer edits.
+
+See [background assignment and uploaded files](docs/background-assignment-0.6.40.md).
+
+### Included from v0.6.39
 
 - Choose **Lower Third Studio → Designer · Title + Content** for six original styles: **Prism, Aurora, Editorial, Glassline, Momentum and Sanctuary**. Customize title and content colors, panels, fonts, sizes, alignment, letter spacing and emphasis separately; choose shapes, placement, gradient, border, shadow and logo framing. The existing **Classic lower third** remains available and stays selected on upgrade.
 - Reuse the existing standard lower-third logo. Show a new card live, cue a private Preview copy, update a loaded card, or opt into **Update live while typing**. Live text edits retain the cue ID and do not replay entrances. Song titles and Scripture references supply the title automatically. Add layered reveal, soft spring and downward slide to entrance/exit choices.

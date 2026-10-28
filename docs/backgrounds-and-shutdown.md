@@ -1,5 +1,7 @@
 # Background library and shutdown fix · v0.6.37
 
+For the current numbered-screen editor, **Apply & show**, and searchable uploaded-file library, see [the v0.6.40 background guide](background-assignment-0.6.40.md). The workflow below describes the original v0.6.37 editor.
+
 Open **Controls → Backgrounds** or **Tools → Background Library & Display Backgrounds**.
 Use **Upload images** or **Upload videos** to add one or several files to the shared
 local library. OpenChurch copies files into its application data directory, so moving
