@@ -82,6 +82,9 @@ export const installDevelopmentBridge = () => {
     startNetworkOutput: async () => emptyNetworkStatus,
     stopNetworkOutput: async () => emptyNetworkStatus,
     getNetworkOutputStatus: async () => emptyNetworkStatus,
+    publishRemoteState: () => undefined,
+    replyRemoteCommand: () => undefined,
+    onRemoteCommand: () => noopUnsubscribe,
     exportClip: async () => {
       throw new Error("Clip export is available in the Electron desktop app.");
     },

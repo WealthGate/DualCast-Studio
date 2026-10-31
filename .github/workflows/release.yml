@@ -89,6 +89,11 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Verify mobile controls, authentication and phone/tablet layouts
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: npm run verify:mobile
+
       - name: Verify background library, display routing and application shutdown
         if: runner.os == 'Windows'
         timeout-minutes: 3

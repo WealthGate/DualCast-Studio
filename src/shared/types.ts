@@ -234,6 +234,7 @@ export type NetworkOutputSettings = {
   enabled: boolean;
   port: number;
   operatorPin: string;
+  remoteUrl?: string;
 };
 
 export type ChurchIntegrationSettings = {

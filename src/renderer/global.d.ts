@@ -100,7 +100,10 @@ declare global {
       getStoredStreamKey: (payload?: { destinationId?: string }) => Promise<string | null>;
       setStoredStreamKey: (payload: { destinationId?: string; streamKey: string }) => Promise<boolean>;
       clearStoredStreamKey: (payload?: { destinationId?: string }) => Promise<boolean>;
-      startNetworkOutput: (payload: { port: number; operatorPin: string }) => Promise<NetworkOutputStatus>;
+      startNetworkOutput: (payload: { port: number; operatorPin: string; remoteUrl?: string }) => Promise<NetworkOutputStatus>;
+      publishRemoteState: (state: import("../shared/remoteControl").RemoteControlState) => void;
+      replyRemoteCommand: (reply: import("../shared/remoteControl").RemoteCommandReply) => void;
+      onRemoteCommand: (handler: (request: import("../shared/remoteControl").RemoteCommandRequest & { expiresAt: number }) => void) => () => void;
       stopNetworkOutput: () => Promise<NetworkOutputStatus>;
       getNetworkOutputStatus: () => Promise<NetworkOutputStatus>;
       exportClip: (payload: ExportClipPayload) => Promise<ExportClipResult>;

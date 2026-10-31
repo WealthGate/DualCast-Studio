@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { NetworkOutputStatus, OperatorRole } from "../../shared/types";
 import { useAppStore } from "../store/useAppStore";
+import { normalizeRemoteUrl } from "../../shared/remoteControl";
 
 const emptyNetworkStatus: NetworkOutputStatus = {
   running: false,
@@ -13,12 +14,18 @@ const VenuePanel: React.FC = () => {
   const { settings, updateSettings } = useAppStore();
   const [networkStatus, setNetworkStatus] = useState<NetworkOutputStatus>(emptyNetworkStatus);
   const [networkMessage, setNetworkMessage] = useState<string | null>(null);
+  const [networkBusy, setNetworkBusy] = useState(false);
+  const [remoteUrlDraft, setRemoteUrlDraft] = useState(settings.networkOutput.remoteUrl ?? "");
+
+  useEffect(() => setRemoteUrlDraft(settings.networkOutput.remoteUrl ?? ""), [settings.networkOutput.remoteUrl]);
 
   useEffect(() => {
     window.dualcast.getNetworkOutputStatus().then(setNetworkStatus).catch(() => undefined);
   }, []);
 
   const handleNetworkToggle = async () => {
+    if (networkBusy) return;
+    setNetworkBusy(true);
     setNetworkMessage(null);
     try {
       if (networkStatus.running) {
@@ -28,18 +35,21 @@ const VenuePanel: React.FC = () => {
           networkOutput: { ...settings.networkOutput, enabled: false }
         });
       } else {
+        const remoteUrl = normalizeRemoteUrl(remoteUrlDraft);
+        if (remoteUrlDraft.trim() && !remoteUrl) throw new Error("Enter a valid HTTPS remote address, such as https://studio.example.ts.net.");
         const status = await window.dualcast.startNetworkOutput({
           port: settings.networkOutput.port,
-          operatorPin: settings.networkOutput.operatorPin
+          operatorPin: settings.networkOutput.operatorPin,
+          remoteUrl
         });
         setNetworkStatus(status);
         await updateSettings({
-          networkOutput: { ...settings.networkOutput, enabled: true }
+          networkOutput: { ...settings.networkOutput, enabled: true, remoteUrl }
         });
       }
     } catch (error) {
-      setNetworkMessage(error instanceof Error ? error.message : "Unable to change LAN output.");
-    }
+      setNetworkMessage(error instanceof Error ? error.message : "Unable to change Mobile Control.");
+    } finally { setNetworkBusy(false); }
   };
 
   const handleSongLibraryFolder = async () => {
@@ -52,8 +62,8 @@ const VenuePanel: React.FC = () => {
   };
 
   const copyUrl = async (url: string) => {
-    await navigator.clipboard.writeText(url);
-    setNetworkMessage("Address copied.");
+    try { await navigator.clipboard.writeText(url); setNetworkMessage("Address copied. Share the PIN separately."); }
+    catch { setNetworkMessage(`Copy this address: ${url}`); }
   };
 
   return (
@@ -85,13 +95,13 @@ const VenuePanel: React.FC = () => {
           </select>
         </div>
         <p className="panel-note">
-          Additional operators can use the LAN remote address from a phone, tablet, or laptop.
+          Use Mobile Control from Android, iPhone, iPad, or a laptop. The remote PIN grants production control; the station role labels this desktop workspace.
         </p>
       </section>
 
       <section className="panel">
         <div className="panel-header">
-          <h2>Wireless LAN Output</h2>
+          <h2>Mobile Control & LAN Output</h2>
           <span className={`status-badge ${networkStatus.running ? "success" : ""}`}>
             {networkStatus.running ? "Running" : "Stopped"}
           </span>
@@ -110,25 +120,41 @@ const VenuePanel: React.FC = () => {
                   networkOutput: { ...settings.networkOutput, port: Number(event.target.value) }
                 })
               }
-              disabled={networkStatus.running}
+              disabled={networkStatus.running || networkBusy}
             />
           </div>
           <div className="field">
-            <label htmlFor="operatorPin">Operator PIN</label>
+            <label htmlFor="operatorPin">Operator PIN (6–16 digits)</label>
             <input
               id="operatorPin"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={16}
               value={settings.networkOutput.operatorPin}
               onChange={(event) =>
                 updateSettings({
                   networkOutput: { ...settings.networkOutput, operatorPin: event.target.value }
                 })
               }
-              disabled={networkStatus.running}
+              disabled={networkStatus.running || networkBusy}
             />
           </div>
         </div>
-        <button className={networkStatus.running ? "btn btn-danger" : "btn btn-primary"} onClick={handleNetworkToggle}>
-          {networkStatus.running ? "Stop LAN Hub" : "Start LAN Hub"}
+        <div className="field">
+          <label htmlFor="remoteUrl">Private HTTPS remote address (optional)</label>
+          <input id="remoteUrl" type="url" placeholder="https://studio.your-tailnet.ts.net" value={remoteUrlDraft}
+            onChange={event => setRemoteUrlDraft(event.target.value)} disabled={networkStatus.running || networkBusy} />
+        </div>
+        <p className="panel-note">Same Wi-Fi: open a non-loopback operator address below and enter the PIN. Stop the hub to change its PIN or address. Restarting revokes all mobile sessions.</p>
+        <details>
+          <summary>Control from mobile data or another Wi-Fi network</summary>
+          <p className="panel-note">Install Tailscale on the studio computer and mobile device, and connect both to the same private Tailscale network. On the studio computer, run:</p>
+          <code>tailscale serve --bg http://127.0.0.1:{settings.networkOutput.port}</code>
+          <p className="panel-note">Copy the HTTPS address it prints into the field above, then start the hub. Open that address with /operator on your phone. Keep Tailscale connected. The address must proxy the entire hub at its root. Use Tailscale Serve for private access; do not forward the hub port on your router.</p>
+          <p className="panel-note">For an app icon, open the HTTPS remote in Safari and choose Share → Add to Home Screen on iPhone/iPad; choose Install app on Android. Local HTTP access works in the browser.</p>
+        </details>
+        <button disabled={networkBusy} className={networkStatus.running ? "btn btn-danger" : "btn btn-primary"} onClick={handleNetworkToggle}>
+          {networkBusy ? "Please wait…" : networkStatus.running ? "Stop Mobile / LAN Hub" : "Start Mobile / LAN Hub"}
         </button>
         {networkStatus.running ? (
           <div className="network-addresses">
@@ -138,7 +164,7 @@ const VenuePanel: React.FC = () => {
                 {url}
               </button>
             ))}
-            <h3>Remote operator controls</h3>
+            <h3>Phone & tablet remote — tap an address to copy</h3>
             {networkStatus.operatorUrls.map((url) => (
               <button key={url} className="network-url" onClick={() => copyUrl(url)}>
                 {url}

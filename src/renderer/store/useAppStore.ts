@@ -83,7 +83,8 @@ const defaultSettings: Settings = {
   networkOutput: {
     enabled: false,
     port: 8787,
-    operatorPin: "2468"
+    operatorPin: "",
+    remoteUrl: ""
   },
   integrations: {
     songProvider: "local",

@@ -142,10 +142,17 @@ const api = {
     ipcRenderer.invoke(IpcChannels.setStoredStreamKey, payload),
   clearStoredStreamKey: (payload?: { destinationId?: string }): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.clearStoredStreamKey, payload),
-  startNetworkOutput: (payload: { port: number; operatorPin: string }): Promise<NetworkOutputStatus> =>
+  startNetworkOutput: (payload: { port: number; operatorPin: string; remoteUrl?: string }): Promise<NetworkOutputStatus> =>
     ipcRenderer.invoke(IpcChannels.startNetworkOutput, payload),
   stopNetworkOutput: (): Promise<NetworkOutputStatus> => ipcRenderer.invoke(IpcChannels.stopNetworkOutput),
   getNetworkOutputStatus: (): Promise<NetworkOutputStatus> => ipcRenderer.invoke(IpcChannels.getNetworkOutputStatus),
+  publishRemoteState: (state: import("../src/shared/remoteControl").RemoteControlState) => ipcRenderer.send(IpcChannels.remoteControlState, state),
+  replyRemoteCommand: (reply: import("../src/shared/remoteControl").RemoteCommandReply) => ipcRenderer.send(IpcChannels.remoteCommandReply, reply),
+  onRemoteCommand: (handler: (request: import("../src/shared/remoteControl").RemoteCommandRequest & { expiresAt: number }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: import("../src/shared/remoteControl").RemoteCommandRequest & { expiresAt: number }) => handler(request);
+    ipcRenderer.on(IpcChannels.remoteCommand, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.remoteCommand, listener);
+  },
   exportClip: (payload: ExportClipPayload): Promise<ExportClipResult> =>
     ipcRenderer.invoke(IpcChannels.exportClip, payload),
   selectMediaFile: (payload: { kind: "image" | "video" | "audio" }): Promise<MediaFileResult | null> =>

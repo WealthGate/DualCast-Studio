@@ -5,6 +5,8 @@ import { sanitizeScriptureText } from "../../src/shared/scriptureText";
 import { configureHotkeys, defaultHotkeys } from "./hotkeyService";
 import Store from "electron-store";
 import path from "path";
+import { randomInt } from "crypto";
+import { normalizeRemoteUrl } from "../../src/shared/remoteControl";
 import { app } from "electron";
 import {
   AudioMode,
@@ -88,7 +90,8 @@ const defaultLowerThird = {
 const defaultNetworkOutput = {
   enabled: false,
   port: 8787,
-  operatorPin: "2468"
+  operatorPin: randomInt(10_000_000, 100_000_000).toString(),
+  remoteUrl: ""
 };
 
 const defaultIntegrations = {
@@ -192,6 +195,11 @@ const createStore = () => {
 const getStore = () => {
   if (!store) {
     store = createStore();
+    const network = store.get("networkOutput");
+    // Migrate the former four-digit PIN once when opening the settings store.
+    if (!/^\d{6,16}$/.test(network?.operatorPin ?? "")) {
+      store.set("networkOutput", { ...network, operatorPin: defaultNetworkOutput.operatorPin });
+    }
   }
   return store;
 };
@@ -332,7 +340,8 @@ export const getSettings = (): Settings => {
     networkOutput: {
       enabled: stored.networkOutput?.enabled === true,
       port: finiteNumber(stored.networkOutput?.port, defaultNetworkOutput.port, 1024, 65535),
-      operatorPin: String(stored.networkOutput?.operatorPin ?? defaultNetworkOutput.operatorPin).slice(0, 16) || defaultNetworkOutput.operatorPin
+      operatorPin: String(stored.networkOutput?.operatorPin ?? defaultNetworkOutput.operatorPin).slice(0, 16),
+      remoteUrl: normalizeRemoteUrl(stored.networkOutput?.remoteUrl)
     },
     integrations: { ...defaultIntegrations, ...(stored.integrations ?? {}) },
     studioState: normalizeStudioState(stored.studioState),
@@ -441,7 +450,8 @@ export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate =
       ...defaultNetworkOutput,
       ...update.networkOutput,
       port: Math.max(1024, Math.min(65535, update.networkOutput.port ?? defaultNetworkOutput.port)),
-      operatorPin: String(update.networkOutput.operatorPin ?? defaultNetworkOutput.operatorPin).slice(0, 16)
+      operatorPin: String(update.networkOutput.operatorPin ?? defaultNetworkOutput.operatorPin).slice(0, 16),
+      remoteUrl: normalizeRemoteUrl(update.networkOutput.remoteUrl)
     };
   }
 

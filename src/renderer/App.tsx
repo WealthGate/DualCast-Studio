@@ -25,6 +25,7 @@ import { useConnectedDisplays } from "./store/useConnectedDisplays";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
 import { useProgramStreamer } from "./hooks/useProgramStreamer";
 import { useVirtualCamera } from "./hooks/useVirtualCamera";
+import { useRemoteControl } from "./hooks/useRemoteControl";
 import { UpdateStatusPayload, WorkspaceViewMode } from "../shared/types";
 
 const App: React.FC = () => {
@@ -68,6 +69,7 @@ const App: React.FC = () => {
   const recorder = useProgramRecorder(programCanvasRef);
   const streamer = useProgramStreamer(programCanvasRef);
   const virtualCamera = useVirtualCamera(programCanvasRef);
+  useRemoteControl(recorder, streamer.status);
 
   const focusDock = (panelId: string) => setDockFocus({ panelId, token: Date.now() + Math.random() });
 
@@ -122,7 +124,8 @@ const App: React.FC = () => {
         if (settings.networkOutput.enabled) {
           await window.dualcast.startNetworkOutput({
             port: settings.networkOutput.port,
-            operatorPin: settings.networkOutput.operatorPin
+            operatorPin: settings.networkOutput.operatorPin,
+            remoteUrl: settings.networkOutput.remoteUrl
           });
         }
       } catch (error) {

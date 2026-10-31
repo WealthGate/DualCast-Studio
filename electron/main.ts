@@ -7,6 +7,8 @@ import { configureGraphics } from "./services/hardwareService";
 import { app, BrowserWindow, screen } from "electron";
 import path from "path";
 import { registerIpcHandlers } from "./services/ipc";
+import { registerRemoteControlIpc } from "./services/remoteControlIpc";
+import { stopNetworkOutput } from "./services/networkOutputService";
 import { setupLogging } from "./services/logger";
 import { configureHotkeys, registerHotkeys, unregisterHotkeys } from "./services/hotkeyService";
 import { initializeUpdater, stopUpdater } from "./services/updateService";
@@ -61,6 +63,7 @@ const createMainWindow = () => {
   });
 
   const devServerUrl = isDev ? process.env.VITE_DEV_SERVER_URL : null;
+  registerRemoteControlIpc(mainWindow.webContents);
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -126,6 +129,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", () => {
+  void stopNetworkOutput();
   stopVirtualCamera();
   stopAudioPlugins();
   stopAllCursorFreeCaptures();

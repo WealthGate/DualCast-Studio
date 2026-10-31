@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.42**.
+Current release: **v0.6.43**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,16 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.42
+### What's new in v0.6.43
+
+- Add OpenChurch Remote, an installable mobile web app for Android phones/tablets, iPhone, and iPad, with large touch controls and responsive layouts.
+- Switch camera scenes, TAKE Preview, control text/lyrics/Scripture and scrolling announcements, start/stop recording, adjust master audio, and freeze or black out Program.
+- Stage presentation text privately before showing it live; keep slide navigation within the current presentation and retain pending desktop layout edits when changing Program tickers.
+- Connect on the same Wi-Fi, or configure a private HTTPS address through Tailscale Serve for access from mobile data or another network. Secure sessions replace PINs embedded in shared addresses, and disconnected controls never queue commands.
+
+Open **Venue & Outputs → Mobile Control & LAN Output**. See the [mobile setup guide](docs/mobile-control.md) and [release notes](docs/releases/v0.6.43.md).
+
+### Included from v0.6.42
 
 - Keep connected screen choices visible in Mirror Program and Independent Layout, including startup, switching modes and connecting displays. Share one display inventory across panels. Open **Display screens** in Controls or **Tools → Display Screens & Mode…**.
 - Make **Mirror Program · all screens** authoritative: saved backgrounds no longer silently force independent output. Preserve backgrounds for reuse, show **Individual screen layouts** when screens differ, and route video consistently through a shared resolver.
@@ -294,7 +303,8 @@ See [the streaming audit](docs/streaming-stability-audit.md) for reproduction, v
 - Provides a separate lower-third output for confidence monitors, broadcast graphics, or dedicated screens.
 - Configures lower-third position, height, background, and target display.
 - Publishes Program to browser-capable displays and OBS Browser Sources over the local network.
-- Supplies a PIN-protected remote operator page for TAKE, freeze, black, and record controls.
+- Supplies an installable Android/iPhone/iPad remote with PIN sign-in, Program status, scene/camera switching, text/Scripture cues, scrolling text, audio, recording, freeze, and black controls.
+- Supports same-network browser control and private HTTPS access across internet connections through a configured VPN/proxy. See [Mobile Control setup](docs/mobile-control.md).
 - Supports operator station names and Director, Presentation, Streaming, Audio, and Viewer roles.
 
 ### Streaming and Audio

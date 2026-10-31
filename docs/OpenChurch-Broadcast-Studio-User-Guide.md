@@ -1,4 +1,8 @@
-# OpenChurch Broadcast Studio v0.6.39 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.43 - Complete User Guide
+
+## Mobile control for Android, iPhone, and iPad
+
+Open **Venue & Outputs → Mobile Control & LAN Output**, start the hub, and open an operator address on your phone. Enter the PIN shown in Venue. The mobile remote provides camera/scene switching, TAKE, text and Scripture staging, saved presentation cues, scrolling announcements, recording, master audio, black, and freeze controls. Add it to the home screen using the private HTTPS address for app installation. For access through mobile data or another Wi-Fi connection, configure Tailscale Serve as described in the [Mobile Control setup guide](mobile-control.md).
 
 ## Designer lower thirds and verse selection
 
