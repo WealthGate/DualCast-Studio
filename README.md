@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.44**.
+Current release: **v0.6.45**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,7 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.44
+### What's new in v0.6.45
 
 - Add **Text Only (No Logo)** beside All outputs, retaining the logo configuration and showing text in Classic/Designer lower thirds on Program, Preview, and connected outputs.
 - Add **Clear All Slides** with confirmation, retaining saved services and offline content and preventing delayed Scripture lookups from restoring cleared slides.
@@ -28,7 +28,7 @@ Starting with v0.4.0, the installed app checks GitHub Releases automatically. Th
 - Make a schedule-item click display its first slide and open the correct controls; restore frozen/black/hidden output and route scheduled text to sanctuary displays.
 - Refresh saved schedules after settings load, sanitize saved Scripture references, preserve independent layouts, and patch audited dependencies, including Electron 42.11.16.
 
-See [operating instructions and verification](docs/presentation-workflow-0.6.44.md) and [release notes](docs/releases/v0.6.44.md).
+See [operating instructions and verification](docs/presentation-workflow-0.6.45.md) and [release notes](docs/releases/v0.6.45.md).
 
 ### Included from v0.6.43
 

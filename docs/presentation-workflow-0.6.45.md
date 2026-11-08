@@ -1,4 +1,4 @@
-# Presentation and service workflow - v0.6.44
+# Presentation and service workflow - v0.6.45
 
 ## Lower-third text without a logo
 
@@ -37,3 +37,5 @@ Verification includes the full unit suite, TypeScript/production build, `verify:
 `npm audit` reports zero known advisories after the dependency fixes. Electron [42.11.16 release notes](https://github.com/electron/electron/releases/tag/v42.11.16) document the certificate mitigation and window/session fixes; the [Electron 42 migration notes](https://www.electronjs.org/blog/electron-42-0) cover runtime changes.
 
 Automated fixtures use controlled media and local streaming endpoints. They do not prove compatibility with every physical camera, GPU, projector, provider account, or mobile device. Check the actual service equipment before a live broadcast.
+
+The release audit also caught removal of the upstream rolling Windows capture archive. The exact original archive is now mirrored as a project release asset, with the existing SHA-256 pin retained. `npm run prepare:windows-capture -- --verify-download` exercises a fresh download, checksum verification, extraction, and gfxcapture capability check.

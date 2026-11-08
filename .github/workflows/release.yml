@@ -45,6 +45,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit release dependencies
+        run: npm audit --audit-level=high
+
       - name: Prepare native Windows Graphics Capture
         if: runner.os == 'Windows'
         run: npm run prepare:windows-capture
