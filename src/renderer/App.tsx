@@ -267,7 +267,10 @@ const App: React.FC = () => {
   };
 
   const dockPanels: DockPanelDefinition[] = [
-    { id: "schedule", title: "Schedule", content: <ServiceSchedulePanel /> },
+    { id: "schedule", title: "Schedule", content: <ServiceSchedulePanel onOpenItem={item => {
+      if (item.kind === "slides") focusDock(item.slides[0]?.kind === "scripture" ? "scripture" : "lower-third");
+      else if (item.kind === "scene") focusDock("sources");
+    }} /> },
     { id: "scenes", title: "Scenes", content: <ScenesPanel directToProgram={viewMode === "program-focus"} /> },
     { id: "sources", title: "Sources", content: <SceneSourcesPanel followProgram={viewMode === "program-focus"} /> },
     { id: "audio", title: "Audio Mixer", content: <AudioMixerPanel /> },

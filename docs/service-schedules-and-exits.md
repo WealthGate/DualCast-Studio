@@ -1,4 +1,4 @@
-# Service schedules and animated exits — v0.6.33
+# Service schedules and animated exits — updated for v0.6.44
 
 ## Prepare and save a service
 
@@ -6,15 +6,15 @@ Open the **Schedule** tab beside the production docks. Existing workspaces recei
 
 1. Choose **New service**, name it and optionally choose the service date.
 2. Under **Add service item**, choose a scene/media arrangement, a prepared song/slide deck, a Scripture reference, announcement text or an operator note.
-3. For songs, prepare the deck in Lower Third Studio first. Scripture references use the Scripture source currently selected in the app, including an installed offline library. The fetched verses are saved into the service so playback does not fetch them again.
-4. Use the arrows to reorder items. Select an item to edit its title, planned minutes and private operator notes.
+3. Use **Add to Schedule** directly while typing lyrics or creating text, Scripture, Designer cards, scenes, and sources. Choose the destination service beside the button. Scripture uses the source selected in the app, including an installed offline library, and fetched verses are saved into the service for later playback.
+4. Drag an item's grip or use the arrows to reorder it. Choose **Edit** to change its title, planned minutes and private operator notes.
 5. Changes save automatically in this PC's application settings. **Save now** retries a failed save; errors remain visible. Choose a saved service to reopen it. **Duplicate service** creates a reusable copy. Deleting a service offers Undo.
 
 Scene contents and presentation slides are copied into the schedule. Editing or deleting their originals does not remove the saved copies. Media files, camera devices and capture targets referenced by a scene must still be available. Schedules are local to the user's PC; this feature does not synchronize media or schedules between computers.
 
 ## Run the service
 
-Selecting, preparing, editing and reordering items does not change Program. **Show live** displays the selected item. **Next · Live** and **Previous · Live** step through each slide in a presentation before moving between service items; they stop at the ends instead of wrapping. Operator notes are private: selecting one keeps the previous live output running. The current cue is retained while switching tabs during the session.
+Click an item's title to show it live from its first slide and open its editor/controls. **Show live** can replay the selected item. Preparing, adding, editing through **Edit**, and reordering items leave Program unchanged. **Next · Live** and **Previous · Live** step through each slide before moving between service items and stop at the ends instead of wrapping. Operator notes stay private. The current cue is retained while switching tabs. Clearing all slides removes its live marker while preserving the saved service.
 
 Planned minutes are rundown estimates. Items advance only when the operator chooses; this is not an unattended timed playout system. Switching services or restarting the app never starts items automatically.
 

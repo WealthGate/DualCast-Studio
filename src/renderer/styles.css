@@ -1351,6 +1351,13 @@ textarea:focus-visible {
 .schedule-item-actions button { border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; background: var(--panel-soft); color: var(--text); cursor: pointer; }
 .schedule-item-editor, .schedule-add { border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
 .schedule-add { min-width: 0; }
+.schedule-drag-handle { cursor: grab; touch-action: none; border: 1px solid var(--border); background: var(--panel-soft); color: var(--muted); border-radius: 5px; padding: 3px 10px; margin-bottom: 4px; min-height: 30px; }
+.schedule-drag-handle:active { cursor: grabbing; }
+.schedule-items li.dragging { opacity: .55; }
+.schedule-items li.drop-target { border-color: var(--accent); box-shadow: 0 -3px var(--accent); }
+.add-to-schedule { min-width: 0; display: grid; gap: 5px; }
+.add-to-schedule .field-row { flex-wrap: wrap; }
+.add-to-schedule select { min-width: 0; max-width: 100%; flex: 1 1 130px; }
 
 .streaming-status {
   display: flex;

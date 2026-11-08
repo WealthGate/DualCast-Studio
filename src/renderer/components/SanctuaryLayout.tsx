@@ -4,12 +4,13 @@ import ScrollingTextOverlay from "./ScrollingTextOverlay";
 import BackgroundLayer from "./BackgroundLayer";
 import { emptyLowerThirdCue, updateLowerThirdCue } from "../utils/lowerThirdCue";
 import { sanctuaryTextKeyframes } from "../utils/sanctuaryAnimation";
+import { showsPresentationText } from "../../shared/displayText";
 
 type Props = { state: SanctuaryDisplayState; black?: boolean; preview?: boolean; frameRate?: number; frozen?: boolean };
 const SanctuaryLayout: React.FC<Props> = ({ state, black = false, preview = false, frameRate = 30, frozen = false }) => {
   const config = state.settings;
   const logoOnly = state.textMode === "logo";
-  const visible = !black && state.textMode === "show" && Boolean(state.text || state.reference);
+  const visible = !black && showsPresentationText(state.textMode) && Boolean(state.text || state.reference);
   const duration = Math.max(100, Math.min(3000, state.exitDurationMs ?? 450));
   const [cue, setCue] = useState(emptyLowerThirdCue);
   const incoming = useRef<HTMLDivElement>(null), outgoing = useRef<HTMLDivElement>(null);
@@ -51,7 +52,7 @@ const SanctuaryLayout: React.FC<Props> = ({ state, black = false, preview = fals
       {!black && logoOnly && state.logoUrl && <img className="sanctuary-logo" src={state.logoUrl} alt="" />}
       {cue.previous && textLayer(cue.previous, true)}
       {cue.current && textLayer(cue.current, false)}
-      {!black && !logoOnly && Boolean(state.scrollingSources?.length) && <ScrollingTextOverlay sources={state.scrollingSources!} showText={state.textMode === "show"} frameRate={frameRate} />}
+      {!black && !logoOnly && Boolean(state.scrollingSources?.length) && <ScrollingTextOverlay sources={state.scrollingSources!} showText={showsPresentationText(state.textMode)} frameRate={frameRate} />}
     </div>
   );
 };

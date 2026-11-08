@@ -46,6 +46,7 @@ if (!process.versions.electron) {
       await window.loadURL("http://127.0.0.1:5174");
       window.showInactive();
       let result = {};
+      if(process.argv.includes("--presentation-only")){console.log(JSON.stringify(await require('./verify-presentation-controls.cjs')(window,root)));app.exit(0);return;}
       if(process.argv.includes("--designer-only")){console.log(JSON.stringify(await require('./verify-designer-lower-thirds.cjs')(window,root)));window.destroy();app.quit();return;}
       if(process.argv.includes("--service-features-only")){console.log(JSON.stringify(await require('./verify-service-features.cjs')(window,root)));app.exit(0);return;}
       if(process.argv.includes("--continuity-only")){console.log(JSON.stringify(await require('./verify-broadcast-continuity.cjs')(window,root)));app.exit(0);return;}

@@ -7,6 +7,8 @@ import CaptureRegionPicker from "./CaptureRegionPicker";
 import { getSourceCapturePreview } from "../utils/sourceMedia";
 import ScrollingTextControls from "./ScrollingTextControls";
 import { defaultScrollingText, normalizeScrollingText } from "../../shared/scrollingText";
+import AddToScheduleButton from "./AddToScheduleButton";
+import { sourceScheduleDraft } from "../utils/serviceScheduleActions";
 
 type CameraDevice = {
   deviceId: string;
@@ -245,6 +247,7 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
       setSourceText("Edit this live text");
     }
     await persistStudioState();
+    return addedId ? useAppStore.getState().sources[addedId] : undefined;
   };
 
   const handleMove = async (sourceId: string, direction: -1 | 1) => {
@@ -561,6 +564,11 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
               disabled={activeSceneLocked}
             />
           </div>
+          <AddToScheduleButton label="selected source" getItem={() => {
+            const source = useAppStore.getState().sources[selectedSource.id];
+            if (!source) throw Error("This source is no longer available.");
+            return sourceScheduleDraft(source);
+          }} />
           {(selectedSource.type === "image" ||
             selectedSource.type === "video" ||
             selectedSource.type === "audio" ||
@@ -1014,6 +1022,11 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
         <button className="btn btn-primary" onClick={handleAddSource} disabled={!activeScene || activeSceneLocked}>
           Add Source
         </button>
+        <AddToScheduleButton label="new source" disabled={!activeScene || activeSceneLocked} getItem={async () => {
+          const source = await handleAddSource();
+          if (!source) throw Error("Complete the source details first.");
+          return sourceScheduleDraft(source);
+        }} />
       </div>
       ) : null}
 

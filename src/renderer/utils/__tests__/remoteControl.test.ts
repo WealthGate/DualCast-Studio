@@ -22,6 +22,24 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); useAppStore.setState(initial); });
 describe("mobile production controls", () => {
+  it("preserves text-only mode when showing a new presentation and can restore logos explicitly", async () => {
+    await executeRemoteCommand({ action: "text-mode", mode: "text-only" }, recorder);
+    expect(useAppStore.getState().displayTextMode).toBe("text-only");
+    await executeRemoteCommand({ action: "text-stage", title: "Welcome", text: "New service", lines: 2 }, recorder);
+    await executeRemoteCommand({ action: "text-live" }, recorder);
+    expect(useAppStore.getState().displayTextMode).toBe("text-only");
+    await executeRemoteCommand({ action: "text-mode", mode: "show" }, recorder);
+    expect(useAppStore.getState().displayTextMode).toBe("show");
+  });
+  it("does not repopulate a cleared queue from a slow remote Scripture lookup", async () => {
+    let finish: (result: { reference: string; text: string }) => void = () => undefined;
+    window.dualcast.fetchScripture = vi.fn(() => new Promise<{ reference: string; text: string }>(resolve => { finish = resolve; }));
+    const pending = executeRemoteCommand({ action: "scripture-stage", reference: "John 3:16" }, recorder);
+    await useAppStore.getState().clearLowerThirdSlides();
+    finish({ reference: "John 3:16", text: "For God so loved" });
+    await expect(pending).rejects.toThrow("queue was cleared");
+    expect(useAppStore.getState().settings.lowerThird.slides).toEqual([]);
+  });
   it("stages camera scenes independently of Program and rejects disabled scenes", async () => {
     await executeRemoteCommand({ action: "scene-preview", sceneId: "a" }, recorder);
     expect(useAppStore.getState().programSceneId).toBe("a");

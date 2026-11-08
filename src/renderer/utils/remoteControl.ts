@@ -3,6 +3,7 @@ import { isRemoteCommand } from "../../shared/remoteControl";
 import { useAppStore } from "../store/useAppStore";
 import { createScriptureSlides, splitTextIntoSlides } from "./presentationSlides";
 import { sanitizeScriptureText } from "../../shared/scriptureText";
+import { presentationTextMode } from "../../shared/displayText";
 
 export const getRemoteControlState = (streamStatus: string): RemoteControlState => {
   const s = useAppStore.getState();
@@ -36,7 +37,7 @@ export const executeRemoteCommand = async (command: RemoteCommand, recorder: Rec
   if (!isRemoteCommand(command)) throw new Error("Invalid mobile command.");
   const s = useAppStore.getState();
   const showText = () => {
-    useAppStore.getState().setDisplayTextMode("show");
+    useAppStore.getState().setDisplayTextMode(presentationTextMode(useAppStore.getState().displayTextMode));
     if (useAppStore.getState().isLowerThirdHidden) useAppStore.getState().toggleLowerThirdHidden();
   };
   const cue = async (slideId: string, live: boolean) => {
@@ -83,6 +84,7 @@ export const executeRemoteCommand = async (command: RemoteCommand, recorder: Rec
         ? await window.dualcast.lookupScriptureLibrary({ libraryId, reference: command.reference.trim() })
         : await window.dualcast.fetchScripture({ reference: command.reference.trim() });
       assertCurrent();
+      if (s.presentationGeneration !== useAppStore.getState().presentationGeneration) throw new Error("The slide queue was cleared. Load Scripture again when ready.");
       const slides = createScriptureSlides(result, { mode: "verse", linesPerSlide: 2, deckId: crypto.randomUUID(), deckTitle: sanitizeScriptureText(result.reference), createId: () => crypto.randomUUID() });
       if (!slides.length) throw new Error("No Scripture text was returned.");
       const current = useAppStore.getState();

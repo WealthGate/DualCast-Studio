@@ -1,6 +1,6 @@
 import type { LowerThirdSlide } from "../../shared/types";
 
-export type TextMode = "show" | "hide" | "theme" | "logo";
+export type TextMode = import("../../shared/displayText").DisplayTextMode;
 export type LowerThirdCue = {
   previous: LowerThirdSlide | null; current: LowerThirdSlide | null;
   previousMode: TextMode; mode: TextMode; changedAt: number;

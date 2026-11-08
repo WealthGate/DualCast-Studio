@@ -1,4 +1,12 @@
-# OpenChurch Broadcast Studio v0.6.43 - Complete User Guide
+# OpenChurch Broadcast Studio v0.6.44 - Complete User Guide
+
+## Text-only lower thirds and faster service schedules
+
+Choose **All outputs → Text Only (No Logo)** to display lower-third text without the configured standard/Bible logo. **Show Text** restores it. Both Classic and Designer modes support this, including connected Program and separate lower-third outputs. In **Lower Third Studio**, choose **Clear All Slides**, then confirm to clear the queue and its live/staged text while retaining saved services, songs, and Bible libraries.
+
+Use **Add to Schedule** directly beside typed lyrics, songs, announcements, Designer cards, Scripture, scenes, and sources. Choose the destination service beside the button. Adding an item leaves the live output unchanged. In Schedule, drag the grip or use the arrows to reorder items. Click an item's title to display it from slide one and open its controls; choose **Edit** to change its details privately. Scripture opens in its editor and on the lower third; hymn/text decks open Lower Third Studio and reach connected displays. Private operator notes remain private.
+
+See [complete presentation and schedule instructions](presentation-workflow-0.6.44.md).
 
 ## Mobile control for Android, iPhone, and iPad
 
@@ -108,7 +116,7 @@ Do not begin a live service until the test recording contains both picture and c
 1. Open the project's GitHub Releases page.
 2. Download the newest Windows installer, or download the portable ZIP if installation is not permitted.
 3. Run the installer. If using the ZIP, extract it before running the app.
-4. Confirm the version beside the product name is **v0.6.10**.
+4. Confirm the version beside the product name is **v0.6.44**.
 5. Find the always-visible update button in the top header. It reads **Check for Updates** and shows the installed version below it.
 6. Select **Check for Updates**. The button is disabled while checking, and the banner confirms the installed version.
 7. If the app is current, dismiss the confirmation. If a newer release exists, select **Update to v[version]** to download that exact version.

@@ -94,6 +94,16 @@ jobs:
         timeout-minutes: 3
         run: npm run verify:mobile
 
+      - name: Verify presentation controls, direct scheduling and drag ordering
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: npm run verify:presentation
+
+      - name: Verify service playback, saved schedules and output exits
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: npm run verify:service-features
+
       - name: Verify background library, display routing and application shutdown
         if: runner.os == 'Windows'
         timeout-minutes: 3

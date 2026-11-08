@@ -5,6 +5,7 @@ import { createProgramAudioBus, ProgramAudioSource } from "../utils/programAudio
 import { attachAudioPluginBridge } from "../utils/audioPluginBridge";
 import { createVisibilityTransition, emptyLowerThirdCue, updateLowerThirdCue, LowerThirdCue } from "../utils/lowerThirdCue";
 import { drawDesignerLowerThird } from "../utils/designerLowerThird";
+import { showsPresentationText } from "../../shared/displayText";
 import DisplayTextControls from "./DisplayTextControls";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { resizeCanvas, useCanvasRenderer } from "../hooks/useCanvasRenderer";
@@ -750,7 +751,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     if (useAppStore.getState().displayTextMode === "logo") return;
     if (source.type === "scrolling-text") {
       if (!scrollingTextRef.current) scrollingTextRef.current = new ScrollingTextRenderer();
-      scrollingTextRef.current.draw(ctx, source, canvasWidth, canvasHeight, performance.now(), useAppStore.getState().displayTextMode === "show");
+      scrollingTextRef.current.draw(ctx, source, canvasWidth, canvasHeight, performance.now(), showsPresentationText(useAppStore.getState().displayTextMode));
       return;
     }
     let drawable: CanvasImageSource | null = null;
@@ -810,7 +811,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       const textX =
         source.data.align === "left" ? -width / 2 + padding : source.data.align === "right" ? width / 2 - padding : 0;
       const startY = -Math.min(lines.length * lineHeight, height - padding * 2) / 2;
-      if (useAppStore.getState().displayTextMode === "show") lines.forEach((line, index) => {
+      if (showsPresentationText(useAppStore.getState().displayTextMode)) lines.forEach((line, index) => {
         const textY = startY + index * lineHeight;
         if (textY + lineHeight <= height / 2) {
           ctx.fillText(line, textX, textY, maxTextWidth);
@@ -905,8 +906,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       const visible = phase === "enter" ? amount : 1 - amount;
       ctx.save();
       if (config.mode === "designer" && mode !== "logo") {
-        drawDesignerLowerThird(ctx, canvasWidth, canvasHeight, config, slide, mode === "theme" ? null : lowerThirdImageRef.current ?? bibleImageRef.current,
-          animation, phase, amount, mode === "show", settings.displayBackgrounds?.lowerThird ? (context, x, y, w, h) => bandBackground.draw(context, x, y, w, h) : undefined);
+        drawDesignerLowerThird(ctx, canvasWidth, canvasHeight, config, slide, mode === "theme" || mode === "text-only" ? null : lowerThirdImageRef.current ?? bibleImageRef.current,
+          animation, phase, amount, showsPresentationText(mode), settings.displayBackgrounds?.lowerThird ? (context, x, y, w, h) => bandBackground.draw(context, x, y, w, h) : undefined);
         ctx.restore(); return;
       }
       if (animation === "fade") ctx.globalAlpha = visible;
@@ -957,7 +958,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       const imagePosition = useBibleBranding ? config.bibleImagePosition : config.imagePosition;
       let textLeft = canvasWidth * 0.055;
       let textRight = canvasWidth * 0.945;
-      if (image && mode !== "theme" && !(imagePosition === "background" && settings.displayBackgrounds?.lowerThird?.kind === "none")) {
+      if (image && mode !== "theme" && mode !== "text-only" && !(imagePosition === "background" && settings.displayBackgrounds?.lowerThird?.kind === "none")) {
         if (imagePosition === "background") {
           ctx.save();
           ctx.globalAlpha *= 0.25;
@@ -972,7 +973,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         }
       }
 
-      if (mode !== "show") { ctx.restore(); return; }
+      if (!showsPresentationText(mode)) { ctx.restore(); return; }
       const availableWidth = Math.max(100, textRight - textLeft);
       const wordsToLines = (fontSize: number) => {
         const fontStyle = `${config.italic ? "italic " : ""}${config.bold ? "700 " : "400 "}${fontSize}px ${config.fontFamily}`;

@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { useAppStore } from "../store/useAppStore";
 import ContextMenu from "./ContextMenu";
 import RowAction from "./RowAction";
+import AddToScheduleButton from "./AddToScheduleButton";
+import { sceneScheduleDraft } from "../utils/serviceScheduleActions";
 
 type ScenesPanelProps = {
   directToProgram?: boolean;
@@ -87,6 +89,11 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
       }}
     >
       <RowAction icon="+" label="Add Scene" onClick={handleAdd} />
+      <AddToScheduleButton label="selected scene" disabled={!selectedSceneId} getItem={() => {
+        const state = useAppStore.getState(), scene = state.scenes.find(item => item.id === selectedSceneId);
+        if (!scene) throw Error("Choose a scene first.");
+        return sceneScheduleDraft(scene, state.sources);
+      }} />
       <div className="scene-list" aria-label="Scenes">
         {scenes.map((scene) => (
           <div

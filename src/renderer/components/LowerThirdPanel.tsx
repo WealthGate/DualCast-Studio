@@ -5,6 +5,7 @@ import { insertSlideAfter, replaceSlideWithLines, splitSlideLines } from "../uti
 import { splitTextIntoSlides } from "../utils/presentationSlides";
 import LowerThirdDesigner, { lowerThirdAnimationOptions } from "./LowerThirdDesigner";
 import { lowerThirdTitle } from "../../shared/lowerThirdDesign";
+import AddToScheduleButton from "./AddToScheduleButton";
 
 const createId = () => crypto.randomUUID?.() ?? `lower-third-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -16,7 +17,8 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
     updateSettings,
     stageLowerThird,
     takeLowerThirdToProgram,
-    clearProgramText
+    clearProgramText,
+    clearLowerThirdSlides
   } = useAppStore();
   const lowerThird = settings.lowerThird;
   const [manualText, setManualText] = useState("");
@@ -28,6 +30,9 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
   const [editingText, setEditingText] = useState("");
   const [editingTitle, setEditingTitle] = useState("");
   const [draftSlideId, setDraftSlideId] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearingSlides, setClearingSlides] = useState(false);
+  const [queueMessage, setQueueMessage] = useState("");
   const [songs, setSongs] = useState<SongLibraryEntry[]>([]);
   const [selectedSongId, setSelectedSongId] = useState("");
   const [songUrl, setSongUrl] = useState("");
@@ -92,10 +97,13 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
     setManualText("");
   };
 
-  const splitBulkText = () => {
+  const createBulkSlides = () => {
     const deckId = createId();
-    const slides = splitTextIntoSlides(bulkText, { linesPerSlide, maxCharactersPerLine })
+    return splitTextIntoSlides(bulkText, { linesPerSlide, maxCharactersPerLine })
       .map<LowerThirdSlide>((text) => ({ id: createId(), text, kind: "song", deckId, deckTitle: bulkTitle.trim() || "Lyrics" }));
+  };
+  const splitBulkText = () => {
+    const slides = createBulkSlides();
     if (slides.length === 0) {
       return;
     }
@@ -174,6 +182,20 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
     const nextActive = lowerThird.activeSlideId === slideId ? null : lowerThird.activeSlideId;
     if (lowerThird.activeSlideId === slideId) void stageLowerThird(slides, nextActive);
     else void saveLowerThird({ slides });
+  };
+
+  const clearAllSlides = async () => {
+    if (clearingSlides) return;
+    setClearingSlides(true);
+    setQueueMessage("");
+    try {
+      await clearLowerThirdSlides();
+      setManualText(""); setBulkText(""); setBulkTitle("Lyrics");
+      setEditingSlideId(null); setEditingText(""); setEditingTitle(""); setDraftSlideId(null);
+      setConfirmClear(false);
+      setQueueMessage("All queued slides cleared. Ready for the next service.");
+    } catch (error) { setQueueMessage(error instanceof Error ? error.message : "Unable to save the cleared slide queue. Try again."); }
+    finally { setClearingSlides(false); }
   };
 
   const beginEditSlide = (slide: LowerThirdSlide) => {
@@ -334,6 +356,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
           <button className="btn btn-primary" onClick={() => addManualSlide(true)} disabled={!manualText.trim()}>Show Live (Enter)</button>
           <button className="btn btn-outline" onClick={() => addManualSlide()} disabled={!manualText.trim()}>Add to Queue</button>
         </div>
+        <AddToScheduleButton label="manual text" disabled={!manualText.trim()} getItem={() => ({ kind: "slides", title: manualText.trim().split("\n")[0].slice(0, 120), slides: [{ id: createId(), kind: "text", text: manualText.trim() }] })} />
         <span className="field-help">Enter shows text in Preview and Program. Shift+Enter adds a new line. Add to Queue saves it for later.</span>
       </div>}
 
@@ -360,6 +383,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
           </label>
         </div>
         <button className="btn btn-outline" onClick={splitBulkText} disabled={!bulkText.trim()}>Auto-Separate Text into Slides</button>
+        <AddToScheduleButton label="song or lyrics" disabled={!bulkText.trim()} getItem={() => ({ kind: "slides", title: bulkTitle.trim() || "Lyrics", slides: createBulkSlides() })} />
         <span className="field-help">The app wraps long lines, then groups one or more lines into each slide using your selection.</span>
       </div>
 
@@ -375,6 +399,12 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
             <button className="btn btn-outline" onClick={loadSelectedSong} disabled={!selectedSongId}>Load Song</button>
             <button className="btn btn-danger" onClick={() => void removeSelectedSong()} disabled={!selectedSongId || songLibraryLoading}>Remove</button>
           </div>
+          <AddToScheduleButton label="saved song" disabled={!selectedSongId} getItem={() => {
+            const song = songs.find(candidate => candidate.id === selectedSongId);
+            if (!song) throw Error("Select a saved song first.");
+            const deckId = createId();
+            return { kind: "slides", title: song.title, slides: splitTextIntoSlides(song.lyrics, { linesPerSlide, maxCharactersPerLine }).map(text => ({ id: createId(), text, kind: "song", deckId, deckTitle: song.title })) };
+          }} />
         </div>
         <div className="field">
           <label htmlFor="songDownloadUrl">HTTPS lyrics or song JSON address</label>
@@ -394,7 +424,16 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
       <div className="lower-third-navigation lower-third-live-actions">
         <button className="btn btn-primary" onClick={() => void takeLowerThirdToProgram()} disabled={lowerThird.activeSlideId === lowerThird.programSlideId}>Take Text Live</button>
         <button className="btn btn-danger" onClick={() => void clearProgramText()} disabled={!lowerThird.programSlideId}>Clear Program Text</button>
+        <button className="btn btn-danger" onClick={() => setConfirmClear(true)} disabled={!lowerThird.slides.length || clearingSlides}>Clear All Slides</button>
       </div>
+      {confirmClear && <div className="panel-note" role="alertdialog" aria-labelledby="clear-slides-title" aria-describedby="clear-slides-description">
+        <strong id="clear-slides-title">Clear all queued slides?</strong>
+        <p id="clear-slides-description">This removes every slide from the queue and clears its live lower third on all outputs. Saved services, songs, and Bible libraries stay available.</p>
+        <div className="field-row"><button className="btn btn-outline" disabled={clearingSlides} onClick={() => setConfirmClear(false)}>Cancel</button>
+          <button className="btn btn-danger" disabled={clearingSlides} onClick={() => void clearAllSlides()}>{clearingSlides ? "Clearing…" : "Confirm Clear All Slides"}</button></div>
+      </div>}
+      {queueMessage && <p className="panel-note" role="status">{queueMessage}</p>}
+      <AddToScheduleButton label="selected presentation" disabled={!navigationSlides.length} getItem={() => ({ kind: "slides", title: activeSlide?.deckTitle || activeSlide?.reference || activeSlide?.title || "Presentation", slides: navigationSlides })} />
       <div className="field-help">Click a slide to cue it, then Enter to show it in Preview and Program. Arrow keys move within the selected deck. Program text reaches connected projection and streaming outputs.</div>
 
       <div className="lower-third-slide-list">
@@ -414,6 +453,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
                   <button className="btn btn-primary btn-compact" onClick={() => saveEditedSlide(true)} disabled={!editingText.trim()}>Show Live (Enter)</button>
                   <button className="btn btn-outline btn-compact" onClick={addSlideAfterEditing} disabled={!editingText.trim()}>Add Slide After</button>
                   <button className="btn btn-outline btn-compact" onClick={splitEditedSlide} disabled={splitSlideLines(editingText).length < 2}>Each Line → Slide</button>
+                  <AddToScheduleButton label="edited slide" disabled={!editingText.trim()} getItem={() => ({ kind: "slides", title: editingTitle.trim() || slide.deckTitle || "Presentation", slides: [{ ...slide, title: editingTitle.trim(), text: editingText.trim() }] })} />
                   <button className="btn btn-outline btn-compact" onClick={cancelSlideEdit}>Cancel</button>
                 </div>
                 <span className="field-help">Each Line → Slide keeps the first line here and inserts every remaining non-empty line directly after it.</span>

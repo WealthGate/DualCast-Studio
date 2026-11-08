@@ -6,6 +6,7 @@ import { createScriptureSlides } from "../utils/presentationSlides";
 import { adjacentScriptureVerse, scriptureVerseOptions } from "../utils/scriptureNavigation";
 import { lowerThirdAnimationOptions } from "./LowerThirdDesigner";
 import { sanitizeScriptureText } from "../../shared/scriptureText";
+import AddToScheduleButton from "./AddToScheduleButton";
 
 const createId = () => crypto.randomUUID?.() ?? `scripture-${Date.now()}`;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -40,7 +41,8 @@ const ScripturePanel: React.FC = () => {
     hideScripture,
     addPresentationSourceToScene,
     updateSourceRect,
-    persistStudioState
+    persistStudioState,
+    scriptureCueRequest
   } = useAppStore();
   const [reference, setReference] = useState("John 3:16");
   const [verseText, setVerseText] = useState("");
@@ -50,6 +52,7 @@ const ScripturePanel: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const requestInFlight = useRef(false);
+  const requestVersion = useRef(0);
   const [libraries, setLibraries] = useState<ScriptureLibrarySummary[]>([]);
   const scriptureSource = settings.scriptureSourceId ?? "online";
   const [catalog, setCatalog] = useState<ScriptureLibraryCatalog | null>(null);
@@ -63,6 +66,20 @@ const ScripturePanel: React.FC = () => {
   const [libraryUrl, setLibraryUrl] = useState("");
   const [sceneLayout, setSceneLayout] = useState<ScriptureSceneLayout>("full");
   const [customRect, setCustomRect] = useState<SourceRect>({ x: 10, y: 10, width: 80, height: 80 });
+
+  useEffect(() => {
+    if (!scriptureCueRequest) return;
+    requestVersion.current++; requestInFlight.current = false; setLoading(false);
+    setReference(scriptureCueRequest.reference); setResolvedReference(scriptureCueRequest.reference);
+    setVerseText(scriptureCueRequest.text); setLoadedVerses(scriptureCueRequest.verses ?? []);
+    setTranslation(scriptureCueRequest.translation);
+    const position = scriptureCueRequest.reference.match(/^(.+) (\d+):(\d+)(?:-(\d+))?$/);
+    if (position) {
+      setSelectedBook(position[1]); setSelectedChapter(Number(position[2]));
+      setStartVerse(Number(position[3])); setEndVerse(Number(position[4] ?? position[3])); setJumpVerse(position[3]);
+    }
+    setMessage("Schedule Scripture is live on the lower third and connected outputs.");
+  }, [scriptureCueRequest]);
 
   const activeScene = useMemo(
     () => scenes.find((scene) => scene.id === previewSceneId) ?? null,
@@ -130,12 +147,15 @@ const ScripturePanel: React.FC = () => {
     const query = requestedReference.trim();
     if (!query || loading || requestInFlight.current) return;
     requestInFlight.current = true;
+    const version = ++requestVersion.current;
+    const generation = useAppStore.getState().presentationGeneration;
     setLoading(true);
     setMessage(null);
     try {
       const result = scriptureSource === "online"
         ? await window.dualcast.fetchScripture({ reference: query })
         : await window.dualcast.lookupScriptureLibrary({ libraryId: scriptureSource, reference: query });
+      if (version !== requestVersion.current || generation !== useAppStore.getState().presentationGeneration) return;
       setReference(query);
       const position = query.match(/^(.+) (\d+):(\d+)(?:-(\d+))?$/);
       if (position) {
@@ -157,10 +177,9 @@ const ScripturePanel: React.FC = () => {
         ? result.translation ? `Loaded ${result.translation} from the configured online provider.` : "Complete passage loaded from the configured online provider."
         : result.translation ? `Loaded ${result.translation} from the offline library.` : "Complete passage loaded from the offline library.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to load Scripture.");
+      if (version === requestVersion.current) setMessage(error instanceof Error ? error.message : "Unable to load Scripture.");
     } finally {
-      requestInFlight.current = false;
-      setLoading(false);
+      if (version === requestVersion.current) { requestInFlight.current = false; setLoading(false); }
     }
   };
 
@@ -180,6 +199,15 @@ const ScripturePanel: React.FC = () => {
   };
 
   const showSelectedVerses = () => fetchVerse(`${selectedBook} ${selectedChapter}:${startVerse}${endVerse > startVerse ? `-${endVerse}` : ""}`, true);
+
+  const scheduleScripture = async (query: string, displayed = false) => {
+    const result: ScriptureFetchResult = displayed || (resolvedReference === query && verseText.trim())
+      ? { reference: resolvedReference || query, text: verseText, verses: loadedVerses, translation }
+      : scriptureSource === "online" ? await window.dualcast.fetchScripture({ reference: query })
+        : await window.dualcast.lookupScriptureLibrary({ libraryId: scriptureSource, reference: query });
+    const deckTitle = sanitizeScriptureText(result.reference);
+    return { kind: "slides" as const, title: deckTitle, slides: createScriptureSlides(result, { mode: splitMode, linesPerSlide, deckId: createId(), deckTitle, createId }) };
+  };
 
   const sendToLowerThird = async () => {
     const text = sanitizeScriptureText(verseText);
@@ -416,6 +444,7 @@ const ScripturePanel: React.FC = () => {
           <button className="btn btn-outline" onClick={() => void navigateVerse(1)} disabled={loading || startVerse >= verseOptions[verseOptions.length - 1]}>Next Verse</button>
           <button className="btn btn-primary" onClick={() => void sendToLowerThird()} disabled={loading || !verseText.trim()}>Create Slides in Preview</button>
           <button className="btn btn-outline" onClick={() => void savePassageOffline()} disabled={loading || !verseText.trim()}>Save Passage Offline</button>
+          <AddToScheduleButton label="selected Scripture" disabled={loading || !verseOptions.length} getItem={() => scheduleScripture(`${selectedBook} ${selectedChapter}:${startVerse}${endVerse > startVerse ? `-${endVerse}` : ""}`)} />
         </div>
         <span className="field-help">Select Verse and optional Through verse, then Show Live or Enter. Jump live (or Enter in Jump to verse) displays one verse immediately. Previous and Next move beyond the selected range. Offline lists follow the selected library; online lists use standard KJV verse numbering and the provider validates the passage.</span>
       </div>
@@ -429,6 +458,7 @@ const ScripturePanel: React.FC = () => {
             }
           }} placeholder="John 3:16-18" />
           <button className="btn btn-outline" onClick={() => void fetchVerse(reference, true)} disabled={loading || !reference.trim()}>Show Live (Enter)</button>
+          <AddToScheduleButton label="typed Scripture reference" disabled={loading || !reference.trim()} getItem={() => scheduleScripture(reference.trim())} />
         </div>
       </details>
       <div className="field"><label htmlFor="resolvedReference">Displayed Reference</label><input id="resolvedReference" value={resolvedReference} onChange={(event) => setResolvedReference(event.target.value)} placeholder="Reference appears with the verse" /></div>
@@ -442,6 +472,7 @@ const ScripturePanel: React.FC = () => {
         }}
         onDoubleClick={() => void showScriptureLive()} placeholder="Fetched, offline, or manually pasted Scripture text appears here." />
         <span className="field-help">Enter shows this text in Preview and Program. Shift+Enter adds a line break.</span></div>
+      <AddToScheduleButton label="displayed Scripture" disabled={loading || !verseText.trim()} getItem={() => scheduleScripture(resolvedReference || reference, true)} />
       <div className="field">
         <label htmlFor="scriptureLines">Lower-Third Line Limit</label>
         <input id="scriptureLines" type="number" min={0} max={20} value={settings.lowerThird.maxLines} onChange={(event) => updateSettings({ lowerThird: { ...settings.lowerThird, maxLines: Number(event.target.value) } })} />

@@ -1,6 +1,6 @@
 {
   "name": "openchurch-broadcast-studio",
-  "version": "0.6.43",
+  "version": "0.6.44",
   "private": true,
   "description": "Open church production, presentation, recording, and multi-destination streaming studio",
   "author": {
@@ -27,6 +27,7 @@
     "test": "vitest run",
     "verify:streaming": "node scripts/verify-streaming.cjs",
     "verify:mobile": "node scripts/verify-mobile-control.cjs",
+    "verify:presentation": "node scripts/verify-live-output.cjs --presentation-only",
     "verify:stream-startup": "node scripts/verify-stream-startup.cjs --encoder=x264 --ci && node scripts/verify-stream-startup.cjs --encoder=x264 --ci --copy-video",
     "prepare:windows-capture": "node scripts/prepare-windows-capture.cjs",
     "prepare:audio-host": "node scripts/build-audio-host.cjs",
@@ -60,13 +61,16 @@
     "@vitejs/plugin-react": "^6.0.5",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "41.10.6",
+    "electron": "42.11.16",
     "electron-builder": "^26.15.3",
     "nodemon": "^3.1.0",
     "tsup": "^8.0.2",
     "typescript": "^5.4.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
   },
   "build": {
     "appId": "com.dualcast.studio",

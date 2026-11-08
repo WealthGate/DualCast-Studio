@@ -4,7 +4,7 @@ export type RemoteCommand =
   | { action: "scene-preview" | "scene-live"; sceneId: string }
   | { action: "take"; transition: "cut" | "fade" | "crossfade" }
   | { action: "black" | "freeze" | "record" | "lower-third"; enabled: boolean }
-  | { action: "text-mode"; mode: "show" | "hide" | "theme" | "logo" }
+  | { action: "text-mode"; mode: import("./displayText").DisplayTextMode }
   | { action: "text-stage"; text: string; title: string; lines: number }
   | { action: "scripture-stage"; reference: string }
   | { action: "text-live" | "text-clear" }
@@ -29,7 +29,7 @@ export type RemoteControlState = {
   isRecording: boolean;
   recordingSeconds: number;
   streamStatus: string;
-  textMode: "show" | "hide" | "theme" | "logo";
+  textMode: import("./displayText").DisplayTextMode;
   lowerThirdHidden: boolean;
   hasLogo: boolean;
   masterGain: number;
@@ -51,7 +51,7 @@ export const isRemoteCommand = (value: unknown): value is RemoteCommand => {
     case "scene-preview": case "scene-live": return string(c.sceneId, 200);
     case "take": return choice(c.transition, ["cut", "fade", "crossfade"]);
     case "black": case "freeze": case "record": case "lower-third": return typeof c.enabled === "boolean";
-    case "text-mode": return choice(c.mode, ["show", "hide", "theme", "logo"]);
+    case "text-mode": return choice(c.mode, ["show", "text-only", "hide", "theme", "logo"]);
     case "text-stage": return string(c.text, 10_000) && typeof c.title === "string" && c.title.length <= 120 && number(c.lines, 1, 6) && Number.isInteger(c.lines);
     case "scripture-stage": return string(c.reference, 160);
     case "text-live": case "text-clear": return true;

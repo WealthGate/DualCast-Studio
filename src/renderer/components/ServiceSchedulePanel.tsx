@@ -5,20 +5,36 @@ import type { ServiceSchedule, ServiceScheduleItem } from "../../shared/types";
 import { adjacentScheduleCue, normalizeServiceSchedules } from "../../shared/serviceSchedules";
 import { playScheduleItem } from "../utils/playScheduleItem";
 import { sanitizeScriptureText } from "../../shared/scriptureText";
+import { reorderScheduleItems } from "../utils/serviceScheduleActions";
 
 const id = () => crypto.randomUUID();
 let session: { scheduleId: string; selected: string; live: { id: string; slide: number } | null } = { scheduleId: "", selected: "", live: null };
-const ServiceSchedulePanel: React.FC = () => {
-  const { scenes, sources, lowerThird } = useAppStore(useShallow(state => ({ scenes: state.scenes, sources: state.sources, lowerThird: state.settings.lowerThird })));
+const ServiceSchedulePanel: React.FC<{ onOpenItem?: (item: ServiceScheduleItem) => void }> = ({ onOpenItem }) => {
+  const { scenes, sources, lowerThird, savedSchedules, activeScheduleId } = useAppStore(useShallow(state => ({ scenes: state.scenes, sources: state.sources, lowerThird: state.settings.lowerThird, savedSchedules: state.settings.serviceSchedules, activeScheduleId: state.activeScheduleId })));
   const [library, setLibrary] = useState(() => normalizeServiceSchedules(useAppStore.getState().settings.serviceSchedules));
   const latest = useRef(library), saving = useRef(false), revision = useRef(0);
-  const [scheduleId, setScheduleId] = useState(library.some(item => item.id === session.scheduleId) ? session.scheduleId : library[0]?.id ?? "");
+  const [scheduleId, setScheduleId] = useState(library.some(item => item.id === activeScheduleId) ? activeScheduleId : library.some(item => item.id === session.scheduleId) ? session.scheduleId : library[0]?.id ?? "");
   const [selected, setSelected] = useState(session.selected);
   const [live, setLive] = useState<{ id: string; slide: number } | null>(session.live);
   const [deleted, setDeleted] = useState<ServiceSchedule | null>(null);
   useEffect(() => { session = { scheduleId, selected, live }; }, [scheduleId, selected, live]);
   const [status, setStatus] = useState("Schedules are saved on this PC.");
   const [busy, setBusy] = useState(false);
+  const running = useRef(false);
+  const dragged = useRef(""), dropTarget = useRef("");
+  const [draggingId, setDraggingId] = useState(""), [dropId, setDropId] = useState("");
+  useEffect(() => {
+    if (saving.current) return;
+    const next = normalizeServiceSchedules(savedSchedules);
+    latest.current = next; setLibrary(next);
+    setScheduleId(current => next.some(item => item.id === activeScheduleId) ? activeScheduleId : next.some(item => item.id === current) ? current : next[0]?.id ?? "");
+  }, [savedSchedules, activeScheduleId]);
+  useEffect(() => { if (scheduleId) useAppStore.setState({ activeScheduleId: scheduleId }); }, [scheduleId]);
+  useEffect(() => {
+    if (live && !lowerThird.programSlideId && library.find(service => service.id === scheduleId)?.items.find(item => item.id === live.id)?.kind === "slides") {
+      setLive(null); session.live = null;
+    }
+  }, [lowerThird.programSlideId, library, scheduleId, live]);
   const [kind, setKind] = useState("scene"), [target, setTarget] = useState(""), [content, setContent] = useState("");
   const schedule = library.find(item => item.id === scheduleId);
   const selectedItem = schedule?.items.find(item => item.id === selected);
@@ -31,9 +47,9 @@ const ServiceSchedulePanel: React.FC = () => {
       let savedRevision;
       do {
         savedRevision = revision.current;
-        const result = await window.dualcast.updateSettings({ serviceSchedules: latest.current });
-        useAppStore.setState({ settings: { ...useAppStore.getState().settings, serviceSchedules: result.serviceSchedules ?? latest.current } });
+        await useAppStore.getState().updateSettings({ serviceSchedules: latest.current });
       } while (savedRevision !== revision.current);
+      latest.current = normalizeServiceSchedules(useAppStore.getState().settings.serviceSchedules); setLibrary(latest.current);
       setStatus("Saved on this PC.");
     } catch (error) { setStatus(`Not saved: ${error instanceof Error ? error.message : String(error)}. Use Save now to retry.`); }
     finally { saving.current = false; }
@@ -84,14 +100,17 @@ const ServiceSchedulePanel: React.FC = () => {
   };
   const run = async (index: number, slide = 0) => {
     const item = schedule?.items[index];
-    if (!schedule || !item || busy) return;
+    if (!schedule || !item || busy || running.current) return;
+    running.current = true;
     setBusy(true);
     try {
       await playScheduleItem(schedule.id, item, slide);
       setSelected(item.id); setLive({ id: item.id, slide });
+      session = { scheduleId: schedule.id, selected: item.id, live: { id: item.id, slide } };
       setStatus(item.kind === "note" ? "Operator note selected. The live output continues unchanged." : `Showing ${item.title}${item.kind === "slides" ? ` · slide ${slide + 1}/${item.slides.length}` : ""}`);
+      onOpenItem?.(item);
     } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
-    finally { setBusy(false); }
+    finally { running.current = false; setBusy(false); }
   };
   const move = (direction: -1 | 1) => {
     if (!schedule) return;
@@ -103,8 +122,15 @@ const ServiceSchedulePanel: React.FC = () => {
     const items = [...schedule.items]; [items[index], items[index + direction]] = [items[index + direction], items[index]];
     change({ ...schedule, items });
   };
+  const endDrag = (apply = false) => {
+    const current = latest.current.find(item => item.id === scheduleId);
+    if (apply && current && dragged.current && dropTarget.current) change({ ...current, items: reorderScheduleItems(current.items, dragged.current, dropTarget.current) });
+    dragged.current = ""; dropTarget.current = ""; setDraggingId(""); setDropId("");
+  };
+  const beginDrag = (itemId: string) => { dragged.current = itemId; setDraggingId(itemId); };
+  const targetDrag = (itemId: string) => { dropTarget.current = itemId; setDropId(itemId); };
   return <section className="service-schedule-panel" aria-label="Service schedule">
-    <p className="field-help">Prepare your service in order. Selecting or editing an item does not change the live output. Use Show live or the live navigation buttons.</p>
+    <p className="field-help">Click a service item to show it live from its first slide and open its controls. Use Edit to change its details without changing the live output. Operator notes stay private.</p>
     <div className="schedule-actions">
       <label className="field">Saved service<select aria-label="Saved service" value={scheduleId} disabled={busy} onChange={event => { setScheduleId(event.target.value); setSelected(""); setLive(null); }}><option value="">Choose a service…</option>{library.map(item => <option key={item.id} value={item.id}>{item.name}{item.date ? ` · ${item.date}` : ""}</option>)}</select></label>
       <button className="btn btn-outline" onClick={newSchedule} disabled={busy || library.length >= 100}>New service</button>
@@ -114,9 +140,24 @@ const ServiceSchedulePanel: React.FC = () => {
       <div className="field"><label>Service date<input aria-label="Service date" type="date" value={schedule.date} onChange={event => change({ ...schedule, date: event.target.value })} /></label></div>
       <div className="schedule-actions"><button className="btn btn-outline" onClick={() => void save(latest.current)}>Save now</button><button className="btn btn-outline" disabled={busy || library.length >= 100} onClick={() => { const copy = structuredClone(schedule); copy.id = id(); copy.name += " (copy)"; void save([...latest.current, copy]); setScheduleId(copy.id); setSelected(""); setLive(null); }}>Duplicate service</button><button className="btn btn-outline" disabled={busy} onClick={() => { setDeleted(schedule); void save(latest.current.filter(item => item.id !== schedule.id)); setScheduleId(""); setSelected(""); setLive(null); }}>Delete service</button></div>
       <strong>{schedule.items.length} items · {schedule.items.reduce((total, item) => total + item.minutes, 0)} planned minutes</strong>
-      <ol className="schedule-items">{schedule.items.map((item, index) => <li key={item.id} className={`${selected === item.id ? "selected" : ""} ${live?.id === item.id ? "current" : ""}`}>
-        <button className="schedule-item-select" aria-pressed={selected === item.id} onClick={() => setSelected(item.id)}><strong>{item.title}</strong><small>{item.kind === "slides" ? `${item.slides.length} slide${item.slides.length === 1 ? "" : "s"}` : item.kind === "scene" ? "Scene snapshot" : "Operator note"}{item.minutes ? ` · ${item.minutes} min` : ""}{live?.id === item.id ? " · Current" : ""}</small></button>
-        <div className="schedule-item-actions"><button aria-label={`Move ${item.title} up`} disabled={index === 0 || busy} onClick={() => reorder(index, -1)}>↑</button><button aria-label={`Move ${item.title} down`} disabled={index === schedule.items.length - 1 || busy} onClick={() => reorder(index, 1)}>↓</button><button aria-label={`Remove ${item.title}`} disabled={busy} onClick={() => { change({ ...schedule, items: schedule.items.filter(candidate => candidate.id !== item.id) }); if (selected === item.id) setSelected(""); }}>Remove</button></div>
+      <p className="field-help">Drag the grip to reorder items, or use the up/down buttons. Reordering does not change the live output.</p>
+      <ol className="schedule-items">{schedule.items.map((item, index) => <li key={item.id} data-schedule-item-id={item.id}
+        className={`${selected === item.id ? "selected" : ""} ${live?.id === item.id ? "current" : ""} ${draggingId === item.id ? "dragging" : ""} ${dropId === item.id && draggingId !== item.id ? "drop-target" : ""}`}
+        onDragOver={event => { if (dragged.current && !busy) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; targetDrag(item.id); } }}
+        onDrop={event => { if (dragged.current && !busy) { event.preventDefault(); targetDrag(item.id); endDrag(true); } }}>
+        <button className="schedule-drag-handle" type="button" aria-label={`Drag ${item.title} to reorder`} disabled={busy} draggable={!busy}
+          onClick={event => { event.preventDefault(); event.stopPropagation(); }}
+          onDragStart={event => { beginDrag(item.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-openchurch-schedule-item", item.id); }} onDragEnd={() => endDrag()}
+          onPointerDown={event => { if (event.pointerType !== "mouse" && !busy) { event.preventDefault(); beginDrag(item.id); event.currentTarget.setPointerCapture(event.pointerId); } }}
+          onPointerMove={event => {
+            if (event.pointerType === "mouse" || !dragged.current) return;
+            const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-schedule-item-id]");
+            const list = event.currentTarget.closest(".schedule-items");
+            if (target && list?.contains(target)) targetDrag(target.dataset.scheduleItemId ?? "");
+            if (list) { const bounds = list.getBoundingClientRect(); if (event.clientY < bounds.top + 30) list.scrollBy(0, -15); else if (event.clientY > bounds.bottom - 30) list.scrollBy(0, 15); }
+          }} onPointerUp={event => { if (event.pointerType !== "mouse" && dragged.current) endDrag(true); }} onPointerCancel={() => endDrag()}>⠿</button>
+        <button className="schedule-item-select" aria-pressed={selected === item.id} disabled={busy} onClick={() => void run(index)}><strong>{item.title}</strong><small>{item.kind === "slides" ? `${item.slides.length} slide${item.slides.length === 1 ? "" : "s"}` : item.kind === "scene" ? "Scene snapshot" : "Operator note"}{item.minutes ? ` · ${item.minutes} min` : ""}{live?.id === item.id ? " · Current" : ""}</small></button>
+        <div className="schedule-item-actions"><button aria-label={`Edit ${item.title}`} disabled={busy} onClick={() => setSelected(item.id)}>Edit</button><button aria-label={`Move ${item.title} up`} disabled={index === 0 || busy} onClick={() => reorder(index, -1)}>↑</button><button aria-label={`Move ${item.title} down`} disabled={index === schedule.items.length - 1 || busy} onClick={() => reorder(index, 1)}>↓</button><button aria-label={`Remove ${item.title}`} disabled={busy} onClick={() => { change({ ...schedule, items: schedule.items.filter(candidate => candidate.id !== item.id) }); if (selected === item.id) setSelected(""); }}>Remove</button></div>
       </li>)}</ol>
       {!schedule.items.length && <p className="field-help">Add scenes, songs, Scripture, announcements or operator notes below.</p>}
       {selectedItem && <div className="schedule-item-editor field"><label>Item title<input aria-label="Item title" value={selectedItem.title} onChange={event => change({ ...schedule, items: schedule.items.map(item => item.id === selected ? { ...item, title: event.target.value } : item) })} /></label><label>Planned minutes<input aria-label="Planned minutes" type="number" min={0} max={600} value={selectedItem.minutes} onChange={event => change({ ...schedule, items: schedule.items.map(item => item.id === selected ? { ...item, minutes: Math.max(0, Math.min(600, Number(event.target.value) || 0)) } : item) })} /></label><label>Operator notes<textarea aria-label="Operator notes" rows={2} value={selectedItem.notes} onChange={event => change({ ...schedule, items: schedule.items.map(item => item.id === selected ? { ...item, notes: event.target.value } : item) })} /></label></div>}

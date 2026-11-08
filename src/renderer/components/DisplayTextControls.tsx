@@ -9,7 +9,7 @@ const DisplayTextControls: React.FC = () => {
       <span className="display-controls-label">All outputs</span>
       <div className="display-text-actions">
         {([
-          ["show", "Show Text"], ["hide", "Hide Text"],
+          ["show", "Show Text"], ["text-only", "Text Only (No Logo)"], ["hide", "Hide Text"],
           ["theme", "Theme Only"], ["logo", "Logo Only"]
         ] as const).map(([mode, label]) => (
           <button
@@ -17,7 +17,7 @@ const DisplayTextControls: React.FC = () => {
             type="button"
             className="btn btn-outline"
             disabled={mode === "logo" && !hasLogo}
-            title={mode === "logo" ? (hasLogo ? "Use the image configured in Lower Third Studio as the output logo" : "Add an image in Lower Third Studio to enable Logo Only") : undefined}
+            title={mode === "text-only" ? "Show lower-third text without its logo on all outputs. Your configured logo is kept." : mode === "logo" ? (hasLogo ? "Use the image configured in Lower Third Studio as the output logo" : "Add an image in Lower Third Studio to enable Logo Only") : undefined}
             aria-pressed={displayTextMode === mode}
             onClick={() => setDisplayTextMode(mode)}
           >{label}</button>

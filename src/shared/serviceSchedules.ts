@@ -25,7 +25,7 @@ export const normalizeServiceSchedules = (value: unknown): ServiceSchedule[] => 
           return [{ id: text(slide.id) || `slide-${Math.random().toString(36).slice(2)}`, text: slide.kind === "scripture" ? sanitizeScriptureText(content) : content,
             title: typeof slide.title === "string" ? (slide.kind === "scripture" ? sanitizeScriptureText(slide.title) : slide.title).slice(0, 500) : undefined,
             deckTitle: text(slide.deckTitle, 300) || undefined, deckId: text(slide.deckId, 200) || undefined,
-            reference: text(slide.reference), kind: ["text", "song", "scripture"].includes(String(slide.kind)) ? slide.kind as LowerThirdSlide["kind"] : "text" }];
+            reference: slide.kind === "scripture" ? sanitizeScriptureText(text(slide.reference)) : text(slide.reference), kind: ["text", "song", "scripture"].includes(String(slide.kind)) ? slide.kind as LowerThirdSlide["kind"] : "text" }];
         });
         return slides.length ? [{ ...base, kind: "slides", slides }] : [];
       }

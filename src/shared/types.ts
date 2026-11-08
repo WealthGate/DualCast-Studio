@@ -284,7 +284,7 @@ export type SanctuaryDisplayState = {
   settings: SanctuaryDisplaySettings;
   text: string;
   reference: string;
-  textMode: "show" | "hide" | "theme" | "logo";
+  textMode: import("./displayText").DisplayTextMode;
   logoUrl: string;
 };
 

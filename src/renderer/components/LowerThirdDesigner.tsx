@@ -5,6 +5,7 @@ import { drawDesignerLowerThird } from "../utils/designerLowerThird";
 import { useAppStore } from "../store/useAppStore";
 import { sanitizeScriptureText } from "../../shared/scriptureText";
 import "./LowerThirdDesigner.css";
+import AddToScheduleButton from "./AddToScheduleButton";
 
 export const lowerThirdAnimationOptions: Array<{ value: LowerThirdAnimation; label: string }> = [
   { value: "none", label: "None" }, { value: "fade", label: "Fade" }, { value: "reveal", label: "Layered reveal" },
@@ -56,6 +57,7 @@ const TextStyleEditor: React.FC<{ label: string; value: LowerThirdTextStyle; cha
 
 const LowerThirdDesigner: React.FC = () => {
   const config = useAppStore(state => state.settings.lowerThird);
+  const generation = useAppStore(state => state.presentationGeneration);
   const design = normalizeLowerThirdDesign(config.design);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -65,6 +67,7 @@ const LowerThirdDesigner: React.FC = () => {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const published = useRef("");
+  useEffect(() => { setEditingId(null); setTitle(""); setContent(""); setLiveTyping(false); published.current = ""; }, [generation]);
   const active = config.slides.find(slide => slide.id === config.activeSlideId);
   const save = (patch: Partial<LowerThirdSettings>) => useAppStore.getState().updateSettings({ lowerThird: { ...useAppStore.getState().settings.lowerThird, ...patch } }).catch(error => setMessage(String(error)));
   const saveDesign = (patch: Partial<LowerThirdDesign>) => void save({ design: { ...normalizeLowerThirdDesign(useAppStore.getState().settings.lowerThird.design), ...patch } });
@@ -104,6 +107,7 @@ const LowerThirdDesigner: React.FC = () => {
     <label className="field">Title<input aria-label="Designer title" value={title} maxLength={500} onChange={e => setTitle(e.target.value)} placeholder="Name, song title, reference or announcement" /></label>
     <label className="field">Content / description<textarea aria-label="Designer content" value={content} maxLength={100000} onChange={e => setContent(e.target.value)} placeholder="Description, lyrics or message" /></label>
     <div className="designer-button-grid"><button type="button" className="btn btn-outline" disabled={busy || !active} onClick={() => load(active)}>Load selected slide</button><button type="button" className="btn btn-outline" disabled={busy} onClick={() => { setEditingId(null); setTitle(""); setContent(""); setLiveTyping(false); }}>New card</button><button type="button" className="btn btn-outline" disabled={busy || !content.trim()} onClick={() => void commit(false)}>Cue in Preview</button><button type="button" className="btn btn-primary" disabled={busy || !content.trim()} onClick={() => void commit(true)}>{editingId && editingId === config.programSlideId ? "Update live" : "Show card live"}</button></div>
+    <AddToScheduleButton label="designer card" disabled={busy || !content.trim()} getItem={() => ({ kind: "slides", title: title.trim() || "Lower third", slides: [{ id: newId(), kind: "text", title: title.trim(), text: content.trim() }] })} />
     <label className="feature-toggle designer-live-toggle"><input type="checkbox" checked={liveTyping} disabled={busy || !editingId || editingId !== config.programSlideId} onChange={e => setLiveTyping(e.target.checked)} />Update live while typing</label>
     <span className="field-help">Live typing edits only the loaded live card. Cue in Preview keeps Program intact. Song titles and Scripture references appear in the title panel; each slide supplies the content. Style changes apply immediately.</span>
     <TextStyleEditor label="Title" value={design.title} change={value => saveDesign({ title: value })} />

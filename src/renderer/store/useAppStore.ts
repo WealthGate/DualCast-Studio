@@ -164,8 +164,11 @@ type AppState = {
   projectionTargetIds: string[];
   isLowerThirdHidden: boolean;
   toggleLowerThirdHidden: () => void;
-  displayTextMode: "show" | "hide" | "theme" | "logo";
-  setDisplayTextMode: (mode: "show" | "hide" | "theme" | "logo") => void;
+  displayTextMode: import("../../shared/displayText").DisplayTextMode;
+  setDisplayTextMode: (mode: import("../../shared/displayText").DisplayTextMode) => void;
+  scriptureCueRequest: (import("../../shared/types").ScriptureFetchResult & { requestId: string }) | null;
+  presentationGeneration: number;
+  activeScheduleId: string;
   isCutToBlack: boolean;
   isFrozen: boolean;
   transitionType: SceneTransitionType;
@@ -192,6 +195,7 @@ type AppState = {
   stageLowerThird: (slides: LowerThirdSlide[], activeSlideId: string | null, live?: boolean) => Promise<void>;
   takeLowerThirdToProgram: () => Promise<void>;
   clearProgramText: () => Promise<void>;
+  clearLowerThirdSlides: () => Promise<void>;
   hideScripture: () => Promise<void>;
   addPresentationSourceToScene: (sceneId: string, source: Omit<Source, "id">) => Promise<void>;
   addSourceToScene: (sceneId: string, source: Omit<Source, "id">) => void;
@@ -251,7 +255,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLowerThirdHidden: false,
   toggleLowerThirdHidden: () => set((state) => ({ isLowerThirdHidden: !state.isLowerThirdHidden })),
   displayTextMode: "show",
-  setDisplayTextMode: (displayTextMode) => set({ displayTextMode }),
+  setDisplayTextMode: (displayTextMode) => set({ displayTextMode, ...(displayTextMode === "text-only" ? { isLowerThirdHidden: false } : {}) }),
+  scriptureCueRequest: null,
+  presentationGeneration: 0,
+  activeScheduleId: "",
   isCutToBlack: false,
   isFrozen: false,
   transitionType: "cut",
@@ -427,6 +434,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const lowerThird = { ...state.settings.lowerThird, programSlideId: null };
     set({ settings: { ...state.settings, lowerThird } });
     if (typeof window === "undefined" || !window.dualcast) return;
+    await get().updateSettings({ lowerThird });
+  },
+  clearLowerThirdSlides: async () => {
+    const state = get();
+    const lowerThird = { ...state.settings.lowerThird, slides: [], activeSlideId: null, programSlideId: null };
+    // Clear both buses together, keeping schedules and offline content libraries.
+    set({ scriptureCueRequest: null, presentationGeneration: state.presentationGeneration + 1 });
     await get().updateSettings({ lowerThird });
   },
   addPresentationSourceToScene: async (sceneId, source) => {

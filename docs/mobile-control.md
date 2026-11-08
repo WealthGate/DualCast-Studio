@@ -49,7 +49,7 @@ The app adapts to portrait phones, landscape tablets, and larger iPads. More inc
 | Text | Announcements or pasted lyrics, lines per slide, private staging, saved slides, show staged text, previous/next live slide, lower-third visibility |
 | Scripture | Load a reference using the desktop’s selected online provider or offline Bible library, review sanitized text, then show it live and navigate its slides |
 | Ticker | Edit scrolling text already on Program: message, speed, four directions, show/hide, pause/resume |
-| More | Start/stop recording, master Program volume from 0–100%, show/hide text, theme/logo only, clear presentation text, installation, wake lock, share address |
+| More | Start/stop recording, master Program volume from 0–100%, show/hide text, text only without the lower-third logo, theme/logo only, clear presentation text, installation, wake lock, share address |
 
 Scene buttons switch configured desktop scenes. Create scenes containing the desired cameras on the desktop first. This version does not add camera devices from the phone or provide PTZ camera movement.
 
