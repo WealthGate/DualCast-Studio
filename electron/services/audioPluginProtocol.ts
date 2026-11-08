@@ -1,3 +1,5 @@
+import { StringDecoder } from "string_decoder";
+
 export const AUDIO_PLUGIN_MAGIC = 0x4f434156;
 export const MAX_PLUGIN_PAYLOAD = 8192 * 2 * 4;
 
@@ -32,6 +34,33 @@ export class AudioPluginPacketReader {
       }
       receive(id, samples);
       this.pending = this.pending.subarray(16 + size);
+    }
+  }
+}
+// stderr also carries diagnostics from plug-ins and their dependencies. Keep
+// those bounded without mistaking log text (or split UTF-8) for a host failure.
+export class AudioPluginStatusReader {
+  private decoder = new StringDecoder("utf8");
+  private pending = "";
+  private dropping = false;
+  push(chunk: Buffer, receive: (event: Record<string, unknown>) => void) {
+    const text = this.decoder.write(chunk);
+    let start = 0;
+    while (start < text.length) {
+      const end = text.indexOf("\n", start);
+      const part = text.slice(start, end < 0 ? text.length : end);
+      if (!this.dropping) {
+        if (this.pending.length + part.length > 65536) { this.pending = ""; this.dropping = true; }
+        else this.pending += part;
+      }
+      if (end < 0) break;
+      let event: unknown;
+      if (!this.dropping) {
+        try { event = JSON.parse(this.pending); } catch { /* Third-party diagnostic line. */ }
+      }
+      this.pending = ""; this.dropping = false;
+      if (event && typeof event === "object" && !Array.isArray(event)) receive(event as Record<string, unknown>);
+      start = end + 1;
     }
   }
 }

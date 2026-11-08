@@ -38,6 +38,10 @@ if (!process.versions.electron) {
   const installed = process.argv.includes('--installed');
   const folder = installed ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'VSTPlugins/ReaPlugs') : path.join(temp, 'fixtures');
   if (!installed) {
+    // Validate the production scanner/bridge against a noisy legacy effect,
+    // not just a modern effect that keeps stdout clean.
+    process.env.OPENCHURCH_TEST_PLUGIN_DIAGNOSTICS = '1';
+    process.env.OPENCHURCH_TEST_PLUGIN_LEGACY = '1';
     fs.mkdirSync(folder, { recursive: true });
     fs.copyFileSync(path.join(root, 'tmp/native-audio-host/test-plugin.dll'), path.join(folder, 'test-plugin.dll'));
     fs.writeFileSync(path.join(folder, 'bad.dll'), 'MZ');
@@ -80,6 +84,18 @@ if (!process.versions.electron) {
         testAudio.detach();testAudio.bus.stop();
         return {name:target.name,nativeBlocks:testAudio.blocks,scanned:status.scan.checked,existing:status.scan.existing,issues:status.scan.issues};
       })()`, true);
+      if (!installed) {
+        process.env.OPENCHURCH_TEST_PLUGIN_CRASH_RESTORE = '1';
+        const failure = await window.webContents.executeJavaScript(`(async()=>{
+          const status=await window.dualcast.getAudioPluginStatus();
+          try {await window.dualcast.configureAudioPlugin({action:'start',id:status.plugins[0].id});throw Error('Expected preset restore failure');}
+          catch(error){return {message:String(error),running:(await window.dualcast.getAudioPluginStatus()).running};}
+        })()`);
+        delete process.env.OPENCHURCH_TEST_PLUGIN_CRASH_RESTORE;
+        assert.ok(failure.message.includes('saved settings'), failure.message);
+        assert.equal(failure.running, false);
+        result.presetCrashDiagnosed = true;
+      }
       assert.deepEqual(errors, []); assert.equal(service.getAudioPluginStatus().running, false);
       const saved = JSON.parse(fs.readFileSync(path.join(profile, 'audio-plugins.json'), 'utf8'));
       assert.ok(saved.folders.includes(folder), 'Custom scan folder saved');

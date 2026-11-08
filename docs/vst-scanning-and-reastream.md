@@ -1,4 +1,10 @@
-# VST scanning and ReaStream in v0.6.38
+# VST scanning and ReaStream
+
+## VST validation fixes in v0.6.46
+
+Plugin/dependency diagnostics can no longer enter the native PCM stream and cause a false **invalid audio** bypass. The host also accepts effects that finish initializing during Open and older VST2 effects using an accumulating float32 callback. Diagnostic text on stderr is bounded and ignored without corrupting plugin metadata. Probe exit handling waits for pending status output.
+
+Scan details can still include DLLs that are support libraries rather than VST2 effects, 32-bit plugins, missing dependencies, or license/activation failures. These do not invalidate successfully registered effects. MIDI instruments such as UVI Workstation require MIDI input and are not supported in the Program audio effect slot; ReaStream is supported.
 
 ## Find and enable plugins
 
@@ -27,6 +33,11 @@ Use the installed **64-bit ReaPlugs** VST2 DLL, commonly `C:\Program Files\VSTPl
 - **Audio host missing:** reinstall the latest Windows x64 app. Development checkouts must run `npm run prepare:audio-host`. Previously this condition incorrectly displayed only the generic Windows x64 requirement.
 - **32-bit, VST3 or wrong architecture:** install/select the 64-bit Windows VST2 DLL. Native hosting on macOS/Linux is not included.
 - **Dependency/load error:** retain the original installation folder and repair the plugin installation if needed. The app shows the native host's load error. A failed or stalled plugin is bypassed; Program source audio continues.
+- **Could not initialize / timeout:** check the plugin's license/activation manager and required dependencies, complete any plugin activation dialog, and retry. This describes an initialization failure rather than declaring the DLL invalid.
+- **MIDI instrument:** choose an audio effect. This slot does not supply MIDI notes to instruments.
+- **Failed while restoring saved settings:** the plugin crashed or stalled while loading its previous preset. Remove its entry and add the DLL again to create a fresh registration; the previous preset stays on disk. The installed ReaControlMIDI DLL reproduced this failure with its own saved chunk. ReaControlMIDI is intended for MIDI processing; use ReaStream to receive network audio.
+
+The local installed-plugin audit also found initialization timeouts for Virtual Mix Rack and SSL DeEss. A timeout alone does not identify the cause; check the vendor's activation manager and installation. These third-party failures do not establish that their DLLs are invalid and do not stop other effects from being scanned.
 
 ## Verification
 
@@ -37,3 +48,5 @@ Use the installed **64-bit ReaPlugs** VST2 DLL, commonly `C:\Program Files\VSTPl
 `node scripts/verify-audio-host.cjs --installed` checks real installed ReaEQ/ReaStream DLL loading and synthetic PCM processing. `npm run verify:audio-plugin-bridge` measures the actual AudioWorklet/preload/native PCM round trip, dry fallback after a crashed helper, silent-input generation, master/mute and preservation of the Program output track. Release CI runs the fixture UI and bridge checks on Windows before packaging.
 
 These local checks do not establish that a particular live network sender, firewall or remote receiver is configured correctly. Rehearse using the actual sender and network.
+
+The native fixture also verifies third-party stdout isolation, unterminated diagnostic lines, late interface initialization, legacy float32 processing, and explicit initialization/instrument errors. The fixture UI check exercises a noisy legacy effect through the production scanner, preload and audio bridge.

@@ -20,7 +20,17 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.45
+### VST fixes prepared for v0.6.46
+
+- Keep plugin diagnostic output out of the native audio protocol, preventing false **invalid audio** failures.
+- Accept VST2 effects that finish initializing during Open and effects using the older float32 processing callback.
+- Preserve split UTF-8 plugin names, tolerate bounded diagnostic logs, and drain probe status before reporting process-exit failures.
+- Explain initialization/license failures and unsupported MIDI instruments. ReaStream remains supported as an audio effect.
+- Identify preset restoration crashes and explain recovery while retaining the previous preset on disk.
+
+See [VST scanning and ReaStream setup](docs/vst-scanning-and-reastream.md) and [v0.6.46 notes](docs/releases/v0.6.46.md).
+
+### Included from v0.6.45
 
 - Add **Text Only (No Logo)** beside All outputs, retaining the logo configuration and showing text in Classic/Designer lower thirds on Program, Preview, and connected outputs.
 - Add **Clear All Slides** with confirmation, retaining saved services and offline content and preventing delayed Scripture lookups from restoring cleared slides.

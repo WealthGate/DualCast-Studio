@@ -9,7 +9,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { AudioPluginAction, AudioPluginBlock, AudioPluginInfo, AudioPluginStatus, AUDIO_PLUGIN_BLOCK_FRAMES, AUDIO_PLUGIN_SAMPLE_RATE } from "../../src/shared/audioPlugins";
 import { IpcChannels } from "../../src/shared/ipc";
-import { AudioPluginPacketReader, pluginPacket } from "./audioPluginProtocol";
+import { AudioPluginPacketReader, AudioPluginStatusReader, pluginPacket } from "./audioPluginProtocol";
 import { defaultVstFolders, findVstDlls, pluginPathKey, validateVstDll } from "./audioPluginDiscovery";
 
 type RegisteredPlugin = AudioPluginInfo & { filePath: string };
@@ -49,29 +49,27 @@ const launch = (pluginPath: string, statePath?: string) => spawn(hostPath(), [
 ], { windowsHide: true, cwd: path.dirname(pluginPath), stdio: ["pipe", "pipe", "pipe"] });
 
 const waitForReady = (child: ChildProcessWithoutNullStreams, onEvent: (event: HostEvent) => void) => new Promise<HostEvent>((resolve, reject) => {
-  let pending = "";
+  const reader = new AudioPluginStatusReader();
   let done = false;
-  const timer = setTimeout(() => finish(new Error("The plugin did not respond within 10 seconds.")), 10_000);
+  let restoring = false;
+  const restoreError = "The plugin failed while restoring its saved settings. Remove its entry and add the DLL again to start with fresh settings. The previous preset is retained on disk.";
+  const timer = setTimeout(() => finish(new Error(restoring ? restoreError : "The plugin did not respond within 10 seconds. Check for a plugin license/activation dialog or repair its installation, then retry.")), 10_000);
   const finish = (error?: Error, ready?: HostEvent) => {
     if (done) return;
     done = true; clearTimeout(timer);
     error ? reject(error) : resolve(ready!);
   };
   child.once("error", error => finish(error));
-  child.once("exit", code => finish(new Error(`The plugin host exited (${code ?? "unknown"}).`)));
+  // A short-lived probe can exit before its final stderr data is delivered.
+  child.once("close", code => finish(new Error(restoring ? restoreError : `The plugin host exited (${code ?? "unknown"}). Check the plugin installation and license activation.`)));
   child.stderr.on("data", (data: Buffer) => {
-    pending += data.toString();
-    if (pending.length > 65536) { finish(new Error("The plugin produced invalid status data.")); child.kill(); return; }
-    let end: number;
-    while ((end = pending.indexOf("\n")) >= 0) {
-      const line = pending.slice(0, end); pending = pending.slice(end + 1);
-      try {
-        const event = JSON.parse(line) as HostEvent;
-        if (event.event === "ready" && event.protocol === 1) finish(undefined, event);
-        else if (event.event === "error") finish(new Error(event.message ?? event.error ?? "Plugin failed to load."));
-        onEvent(event);
-      } catch { /* Native libraries sometimes write diagnostics to stderr. */ }
-    }
+    reader.push(data, value => {
+      const event = value as HostEvent;
+      if (event.event === "restoring") restoring = true;
+      if (event.event === "ready" && event.protocol === 1) finish(undefined, event);
+      else if (event.event === "error") finish(new Error(event.message ?? event.error ?? "Plugin failed to load."));
+      onEvent(event);
+    });
   });
 });
 

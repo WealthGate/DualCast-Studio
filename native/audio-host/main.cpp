@@ -34,6 +34,7 @@ std::mutex eventMutex;
 std::atomic<bool> running{true}, bypass{false};
 std::atomic<uint64_t> samplePosition{0};
 int sampleRate = 48000, blockSize = 512;
+int audioOutput = -1;
 bool editorOpen = false, initialized = false;
 std::wstring statePath;
 TimeInfo timeInfo{};
@@ -54,7 +55,8 @@ std::string escaped(const std::string& s) {
 }
 void event(const std::string& value) {
   std::lock_guard<std::mutex> guard(eventMutex);
-  fprintf(stderr, "%s\n", value.c_str()); fflush(stderr);
+  // A dependency may leave an unfinished diagnostic line on stderr.
+  fprintf(stderr, "\n%s\n", value.c_str()); fflush(stderr);
 }
 void fail(const std::string& reason) { event("{\"event\":\"error\",\"message\":\"" + escaped(reason) + "\"}"); }
 intptr_t dispatch(int32_t op, int32_t index = 0, intptr_t value = 0, void* ptr = nullptr, float opt = 0) {
@@ -114,9 +116,12 @@ void restoreState() {
   if (header[0] != 0x3156434f || header[1] != (uint32_t)plugin->id || header[3] != bytes.size() - 16) {
     event("{\"event\":\"warning\",\"message\":\"Saved plug-in settings did not match this effect.\"}"); return;
   }
-  if (header[2] == 1 && (plugin->flags & ProgramChunks))
+  if (header[2] == 1 && (plugin->flags & ProgramChunks)) {
+    event("{\"event\":\"restoring\"}");
     dispatch(SetChunk, 1, header[3], bytes.data() + 16);
+  }
   else if (header[2] == 2 && plugin->setParameter && header[3] == (uint32_t)plugin->parameters * 4) {
+    event("{\"event\":\"restoring\"}");
     for (int p = 0; p < plugin->parameters; ++p) {
       float value; memcpy(&value, bytes.data() + 16 + p * 4, 4);
       if (std::isfinite(value)) plugin->setParameter(plugin, p, std::clamp(value, 0.0f, 1.0f));
@@ -190,7 +195,7 @@ bool readExact(void* target, size_t size) {
 bool writeExact(const void* source, size_t size) {
   auto src = (const char*)source;
   while (size) {
-    const int count = _write(_fileno(stdout), src, (unsigned int)size);
+    const int count = _write(audioOutput, src, (unsigned int)size);
     if (count <= 0) return false;
     size -= count; src += count;
   }
@@ -236,7 +241,9 @@ void audioLoop() {
             fail("The plug-in changed its processing latency. Settings were saved; reload the plug-in to align its new delay.");
             running.store(false); SetEvent(doneEvent); return;
           }
-          plugin->replace(plugin, inputPointers.data(), outputPointers.data(), count);
+          // Older VST2 effects accumulate into the already-cleared outputs.
+          const auto process = (plugin->flags & Replacing) && plugin->replace ? plugin->replace : plugin->process;
+          process(plugin, inputPointers.data(), outputPointers.data(), count);
           if (std::max(plugin->latency, 0) != pluginLatency) {
             fail("The plug-in changed its processing latency. Settings were saved; reload the plug-in to align its new delay.");
             running.store(false); SetEvent(doneEvent); return;
@@ -279,6 +286,15 @@ int wmain(int argc, wchar_t** argv) {
     fail("An absolute plug-in path and supported audio format are required."); return 2;
   }
   SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+  // Only our framed PCM writer may use the original stdout pipe. Effects and
+  // their dependencies can log through either the CRT or Win32, even in DLL
+  // initialization. Redirect both before loading any third-party code.
+  audioOutput = _dup(_fileno(stdout));
+  if (audioOutput == -1 || _setmode(audioOutput, _O_BINARY) == -1 ||
+      _dup2(_fileno(stderr), _fileno(stdout)) == -1 ||
+      !SetStdHandle(STD_OUTPUT_HANDLE, GetStdHandle(STD_ERROR_HANDLE))) {
+    fail("Could not initialize the isolated audio output pipe."); return 3;
+  }
   SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   module = LoadLibraryExW(pluginPath.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
@@ -287,14 +303,28 @@ int wmain(int argc, wchar_t** argv) {
   if (!entry) entry = (Effect* (*)(HostCallback))GetProcAddress(module, "main");
   if (!entry) { fail("This file is not a VST2 effect; select its 64-bit VST2 .dll version."); FreeLibrary(module); return 3; }
   plugin = entry(callback);
-  if (!plugin || plugin->magic != Magic || !plugin->dispatch || !plugin->replace || !(plugin->flags & Replacing)
-      || plugin->inputs < 0 || plugin->inputs > 64 || plugin->outputs < 1 || plugin->outputs > 64
-      || plugin->parameters < 0 || plugin->parameters > 65536) {
-    fail("The plug-in does not provide a supported float32 audio effect interface."); FreeLibrary(module); return 3;
+  if (!plugin) {
+    fail("The plug-in could not initialize. Check its installation, required dependencies and license activation, then retry.");
+    FreeLibrary(module); return 3;
+  }
+  if (plugin->magic != Magic || !plugin->dispatch) {
+    fail("This DLL does not provide a valid VST2 interface. Select the installed 64-bit VST2 effect DLL.");
+    FreeLibrary(module); return 3;
   }
   dispatch(Open); initialized = true;
   dispatch(SetSampleRate, 0, 0, nullptr, (float)sampleRate);
   dispatch(SetBlockSize, 0, blockSize);
+  if (plugin->flags & IsSynth) {
+    fail("This plug-in is a MIDI instrument. Program audio supports VST2 audio effects, including ReaStream, but does not send MIDI notes.");
+    dispatch(Close); FreeLibrary(module); CoUninitialize(); return 3;
+  }
+  // Some valid effects do not finish populating the interface until Open.
+  if ((!((plugin->flags & Replacing) && plugin->replace) && !plugin->process)
+      || plugin->inputs < 0 || plugin->inputs > 64 || plugin->outputs < 1 || plugin->outputs > 64
+      || plugin->parameters < 0 || plugin->parameters > 65536) {
+    fail("The plug-in does not provide a supported float32 audio effect interface after initialization.");
+    dispatch(Close); FreeLibrary(module); CoUninitialize(); return 3;
+  }
   if (!probe) restoreState();
   char name[256]{}, vendor[256]{};
   dispatch(GetName, 0, 0, name); dispatch(GetVendor, 0, 0, vendor);
@@ -318,7 +348,7 @@ int wmain(int argc, wchar_t** argv) {
     DestroyWindow(window); CloseHandle(doneEvent); FreeLibrary(module); CoUninitialize(); return 3;
   }
   emitReady();
-  _setmode(_fileno(stdin), _O_BINARY); _setmode(_fileno(stdout), _O_BINARY);
+  _setmode(_fileno(stdin), _O_BINARY);
   if (openEditor) showEditor();
   std::thread audio(audioLoop);
   while (running.load()) {

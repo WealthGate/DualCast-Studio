@@ -38,7 +38,7 @@ struct TimeInfo {
 };
 constexpr int32_t Magic = 0x56737450;
 constexpr uint32_t PacketMagic = 0x4f434156;
-constexpr int32_t HasEditor = 1, Replacing = 16, ProgramChunks = 32;
+constexpr int32_t HasEditor = 1, Replacing = 16, ProgramChunks = 32, IsSynth = 256;
 enum EffectOpcode : int32_t {
   Open = 0, Close = 1, SetSampleRate = 10, SetBlockSize = 11,
   MainsChanged = 12, EditorGetRect = 13, EditorOpen = 14, EditorClose = 15,

@@ -22,7 +22,7 @@ function packet(type, id = 0, data = Buffer.alloc(0)) {
   [0x4f434156, type, id, data.length].forEach((n, index) => header.writeUInt32LE(n, index * 4));
   return Buffer.concat([header, data]);
 }
-function events(run) { return run.stderr.toString().trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line)); }
+function events(run) { return run.stderr.toString().trim().split(/\r?\n/).filter(line => line.startsWith('{')).map(line => JSON.parse(line)); }
 function run(plugin, input = Buffer.alloc(0), args = [], extraEnv = {}) {
   return spawnSync(exe, ["--plugin", plugin, ...args], { input, windowsHide: true, timeout: 10000, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, ...extraEnv } });
 }
@@ -89,6 +89,28 @@ const excessiveLatency = run(fixture, Buffer.alloc(0), [], { OPENCHURCH_TEST_PLU
 assert.equal(excessiveLatency.status, 3);
 assert.ok(events(excessiveLatency).some(item => item.event === "error" && item.message.includes("8192 frames")));
 console.log("PASS: float32 stereo identity/order, unclipped samples, bypass, preset restore, silent-input generation, NaN sanitation, bounded packets, process crash isolation and activated/stable/bounded latency.");
+const noisy = run(fixture, packet(1, 12, pcm), [], { OPENCHURCH_TEST_PLUGIN_DIAGNOSTICS: "1" });
+assert.equal(noisy.status, 0, noisy.stderr.toString());
+assert.equal(responses(noisy.stdout).length, 1, "plugin diagnostics must not enter the PCM protocol");
+assert.ok(noisy.stderr.includes('Plugin Win32 diagnostic'), 'Win32 diagnostics redirected');
+for (const mode of ['OPENCHURCH_TEST_PLUGIN_LEGACY', 'OPENCHURCH_TEST_PLUGIN_LATE_INTERFACE']) {
+  const compatible = run(fixture, packet(1, 13, pcm), [], { [mode]: '1' });
+  assert.equal(compatible.status, 0, mode + ': ' + compatible.stderr.toString());
+  const blocks = responses(compatible.stdout);
+  assert.equal(blocks.length, 1);
+  for (let offset = 0; offset < pcm.length; offset += 4)
+    assert.equal(blocks[0].data.readFloatLE(offset), Math.fround(pcm.readFloatLE(offset) * .5), mode);
+}
+console.log('PASS: third-party stdout isolation, legacy float32 processing and interfaces initialized during Open.');
+for (const [mode, message] of [['OPENCHURCH_TEST_PLUGIN_INIT_FAILURE', 'license activation'], ['OPENCHURCH_TEST_PLUGIN_INSTRUMENT', 'MIDI instrument']]) {
+  const rejected = run(fixture, Buffer.alloc(0), ['--probe'], { [mode]: '1' });
+  assert.equal(rejected.status, 3);
+  assert.ok(events(rejected).some(item => item.event === 'error' && item.message.includes(message)), mode);
+}
+console.log('PASS: actionable initialization and unsupported MIDI instrument diagnostics.');
+const restoreCrash = run(fixture, Buffer.alloc(0), ['--state', state], { OPENCHURCH_TEST_PLUGIN_CRASH_RESTORE: '1' });
+assert.notEqual(restoreCrash.status, 0);
+assert.ok(events(restoreCrash).some(item => item.event === 'restoring'), 'Identify a preset restore crash before the effect takes down its host');
 if (process.argv.includes("--installed")) {
   for (const name of ["reaeq-standalone.dll", "reastream-standalone.dll"]) {
     const plugin = path.join(process.env.ProgramFiles || "C:\\Program Files", "VSTPlugins/ReaPlugs", name);
