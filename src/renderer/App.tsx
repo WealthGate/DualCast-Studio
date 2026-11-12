@@ -59,6 +59,7 @@ const App: React.FC = () => {
     programSceneId,
     programSceneSnapshot,
     programSources,
+    presentedProgram,
     displayTextMode,
     isLowerThirdHidden,
     isCutToBlack,
@@ -147,17 +148,24 @@ const App: React.FC = () => {
   }, [refreshDisplays, setSettings, setStudioState]);
 
   useEffect(() => {
+    const state = useAppStore.getState();
+    const output = presentedProgram ? {
+      ...state,
+      programSceneSnapshot: presentedProgram.scene,
+      programSources: presentedProgram.sources,
+      settings: { ...settings, lowerThird: { ...settings.lowerThird, programSlideId: presentedProgram.slideId } }
+    } : state;
     window.dualcast.updateProgramState({
       outputExitDurationMs: settings.lowerThird.animationDurationMs,
       frameRate: settings.frameRate,
-      programSceneId,
+      programSceneId: presentedProgram ? presentedProgram.scene?.id ?? null : programSceneId,
       isCutToBlack,
       isFrozen,
       qualityPreset: settings.qualityPreset,
-      sanctuary: getSanctuaryDisplayState(useAppStore.getState()),
+      sanctuary: getSanctuaryDisplayState(output),
       backgrounds: settings.displayBackgrounds
     });
-  }, [programSceneId, programSceneSnapshot, programSources, displayTextMode, isLowerThirdHidden, isCutToBlack, isFrozen, settings.qualityPreset, settings.frameRate, settings.sanctuaryDisplay, settings.lowerThird, settings.displayBackgrounds]);
+  }, [presentedProgram, programSceneId, programSceneSnapshot, programSources, displayTextMode, isLowerThirdHidden, isCutToBlack, isFrozen, settings.qualityPreset, settings.frameRate, settings.sanctuaryDisplay, settings.lowerThird, settings.displayBackgrounds]);
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onHotkey((action) => {

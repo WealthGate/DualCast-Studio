@@ -4,6 +4,7 @@ import ContextMenu from "./ContextMenu";
 import RowAction from "./RowAction";
 import AddToScheduleButton from "./AddToScheduleButton";
 import { sceneScheduleDraft } from "../utils/serviceScheduleActions";
+import type { Scene } from "../../shared/types";
 
 type ScenesPanelProps = {
   directToProgram?: boolean;
@@ -20,6 +21,7 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
     scenes,
     previewSceneId,
     programSceneId,
+    presentedProgram,
     addScene,
     renameScene,
     removeScene,
@@ -41,11 +43,13 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
       setProgramScene(sceneId);
     } else {
       selectPreviewScene(sceneId);
+      persist();
     }
-    persist();
   };
 
   const selectedSceneId = directToProgram ? programSceneId : previewSceneId;
+  const liveSceneId = presentedProgram ? presentedProgram.scene?.id : programSceneId;
+  const canDelete = (scene: Scene) => !scene.locked && scene.id !== programSceneId && scene.id !== liveSceneId && scenes.length > 1;
 
   const handleAdd = () => {
     addScene();
@@ -72,7 +76,7 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
   };
 
   const handleDelete = () => {
-    if (!selectedScene || selectedScene.locked || selectedScene.id === programSceneId || scenes.length <= 1) {
+    if (!selectedScene || !canDelete(selectedScene)) {
       return;
     }
     removeScene(selectedScene.id);
@@ -98,7 +102,7 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
         {scenes.map((scene) => (
           <div
             key={scene.id}
-            className={`scene-list-item ${scene.id === selectedSceneId ? "active" : ""} ${directToProgram && scene.id === programSceneId ? "program-live" : ""}`}
+            className={`scene-list-item ${scene.id === selectedSceneId ? "active" : ""} ${directToProgram && scene.id === liveSceneId ? "program-live" : ""}`}
             onClick={() => handleSelect(scene.id)}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -109,13 +113,13 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
             }}
           >
             <button type="button" className="scene-select" aria-pressed={scene.id === selectedSceneId} onClick={(event) => { event.stopPropagation(); handleSelect(scene.id); }}>{scene.name}</button>
-            {directToProgram && scene.id === programSceneId ? <span className="scene-live-label">LIVE</span> : null}
+            {directToProgram && scene.id === liveSceneId ? <span className="scene-live-label">LIVE</span> : null}
             {scene.locked ? <span className="scene-lock" aria-label="Locked">◆</span> : null}
             <div className="row-actions">
               <RowAction icon={scene.enabled !== false ? "◉" : "⊘"} label={scene.enabled !== false ? "Hide Scene" : "Show Scene"} disabled={scene.locked} onClick={() => { toggleSceneEnabled(scene.id); persist(); }} />
               <RowAction icon={scene.locked ? "🔒" : "🔓"} label={scene.locked ? "Unlock Scene" : "Lock Scene"} onClick={() => { toggleSceneLocked(scene.id); persist(); }} />
               <RowAction icon="✎" label="Rename Scene" disabled={scene.locked} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setRenameValue(scene.name); setMenu({ x: rect.left, y: rect.bottom, sceneId: scene.id }); }} />
-              <RowAction icon="×" label="Delete Scene" disabled={scene.locked || scene.id === programSceneId || scenes.length <= 1} onClick={() => { removeScene(scene.id); persist(); }} />
+              <RowAction icon="×" label="Delete Scene" disabled={!canDelete(scene)} onClick={() => { removeScene(scene.id); persist(); }} />
             </div>
           </div>
         ))}
@@ -141,10 +145,10 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
                 <button onClick={handleRename} disabled={selectedScene.locked || !renameValue.trim()}>Rename</button>
               </div>
               <button onClick={handleToggleLock}>{selectedScene.locked ? "Unlock Scene" : "Lock Scene"}</button>
-              <button className="context-menu-danger" onClick={handleDelete} disabled={selectedScene.locked || selectedScene.id === programSceneId || scenes.length <= 1}>
+              <button className="context-menu-danger" onClick={handleDelete} disabled={!canDelete(selectedScene)}>
                 Delete Scene
               </button>
-              {selectedScene.id === programSceneId ? <div className="context-menu-note">TAKE another scene before deleting the live Program scene.</div> : null}
+              {selectedScene.id === liveSceneId ? <div className="context-menu-note">TAKE another scene before deleting the live Program scene.</div> : null}
               <div className="context-menu-separator" />
             </>
           ) : null}

@@ -12,7 +12,7 @@ export const getRemoteControlState = (streamStatus: string): RemoteControlState 
     stationName: s.settings.operatorStationName,
     scenes: s.scenes.map(scene => ({ id: scene.id, name: scene.name, enabled: scene.enabled !== false,
       cameras: scene.sourceIds.flatMap(id => s.sources[id]?.type === "camera" && s.sources[id].enabled ? [s.sources[id].name] : []) })),
-    previewSceneId: s.previewSceneId, programSceneId: s.programSceneId,
+    previewSceneId: s.previewSceneId, programSceneId: s.presentedProgram ? s.presentedProgram.scene?.id ?? null : s.programSceneId,
     isBlack: s.isCutToBlack, isFrozen: s.isFrozen, isRecording: s.isRecording, recordingSeconds: s.recordingSeconds,
     streamStatus, textMode: s.displayTextMode, lowerThirdHidden: s.isLowerThirdHidden,
     hasLogo: Boolean(lower.imageUrl || lower.bibleImageUrl), masterGain: s.settings.masterAudioGain,

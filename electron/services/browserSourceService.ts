@@ -7,6 +7,8 @@ import log from "./logger";
 type BrowserSourceEntry = {
   window: BrowserWindow;
   url: string;
+  navigation: number;
+  ready: boolean;
 };
 
 const sources = new Map<string, BrowserSourceEntry>();
@@ -60,16 +62,29 @@ const createWindow = (payload: BrowserSourcePayload) => {
     }
   });
 
+  const entry: BrowserSourceEntry = { window, url: payload.url, navigation: 0, ready: false };
   window.webContents.setFrameRate(payload.frameRate ?? 30);
   window.webContents.on("paint", (_event, _rect, image) => {
-    if (!window.isDestroyed()) broadcastFrame({ sourceId: payload.sourceId, dataUrl: `data:image/jpeg;base64,${image.toJPEG(85).toString("base64")}` });
+    if (entry.ready && !window.isDestroyed()) broadcastFrame({ sourceId: payload.sourceId, dataUrl: `data:image/jpeg;base64,${image.toJPEG(85).toString("base64")}` });
   });
   window.webContents.setAudioMuted(true);
-  window.webContents.loadURL(payload.url).catch((error) => {
-    log.warn("Browser source failed to load URL.", error);
-  });
+  return entry;
+};
 
-  return window;
+const navigate = async (entry: BrowserSourceEntry, url: string) => {
+  const navigation = ++entry.navigation;
+  entry.ready = false;
+  entry.url = url;
+  try {
+    await entry.window.webContents.loadURL(url);
+    if (entry.navigation !== navigation || entry.window.isDestroyed()) return false;
+    entry.ready = true;
+    entry.window.webContents.invalidate();
+    return true;
+  } catch (error) {
+    if (entry.navigation === navigation && !entry.window.isDestroyed()) log.warn("Browser source failed to load URL.", error);
+    return false;
+  }
 };
 
 export const createBrowserSource = async (payload: BrowserSourcePayload) => {
@@ -81,24 +96,17 @@ export const createBrowserSource = async (payload: BrowserSourcePayload) => {
 
   const existing = sources.get(payload.sourceId);
   if (existing && !existing.window.isDestroyed()) {
-    existing.url = payload.url;
     existing.window.setSize(Math.max(1, payload.width), Math.max(1, payload.height));
-    existing.window.webContents.loadURL(payload.url).catch((error) => {
-      log.warn("Browser source failed to reload URL.", error);
-    });
     existing.window.webContents.setFrameRate(payload.frameRate ?? 30);
-    return true;
+    return navigate(existing, payload.url);
   }
 
-  const window = createWindow(payload);
-  const entry: BrowserSourceEntry = { window, url: payload.url };
+  const entry = createWindow(payload);
   sources.set(payload.sourceId, entry);
-
-  window.on("closed", () => {
-    sources.delete(payload.sourceId);
+  entry.window.on("closed", () => {
+    if (sources.get(payload.sourceId) === entry) sources.delete(payload.sourceId);
   });
-
-  return true;
+  return navigate(entry, payload.url);
 };
 
 export const updateBrowserSource = async (payload: BrowserSourcePayload) => {
@@ -113,15 +121,8 @@ export const updateBrowserSource = async (payload: BrowserSourcePayload) => {
   }
 
   entry.window.setSize(Math.max(1, payload.width), Math.max(1, payload.height));
-  if (payload.url && payload.url !== entry.url) {
-    entry.url = payload.url;
-    entry.window.webContents.loadURL(payload.url).catch((error) => {
-      log.warn("Browser source failed to update URL.", error);
-    });
-  }
-
   entry.window.webContents.setFrameRate(payload.frameRate ?? 30);
-  return true;
+  return payload.url !== entry.url ? navigate(entry, payload.url) : true;
 };
 
 export const destroyBrowserSource = async (payload: { sourceId: string }) => {

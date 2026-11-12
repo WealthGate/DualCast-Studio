@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Source } from "../../../shared/types";
-import { canShareSourceMedia, compositeSceneBlend, sourceMediaReady, sourceMediaSignature } from "../sourceMedia";
+import { canShareSourceMedia, compositeSceneBlend, sourceMediaHasFrame, sourceMediaSignature } from "../sourceMedia";
 import { resizeCanvas } from "../../hooks/useCanvasRenderer";
 
 const camera: Source = { id: "cam", name: "Camera", type: "camera", rect: { x: 0, y: 0, width: 100, height: 100 }, enabled: true, audioEnabled: false, data: { deviceId: "camera-1" } };
@@ -23,13 +23,12 @@ describe("live canvas continuity", () => {
     expect(sourceMediaSignature({ ...camera, data: { deviceId: "camera-2" } })).not.toBe(sourceMediaSignature(camera));
   });
   it("waits for real video pixels before making a camera live", () => {
-    expect(sourceMediaReady(camera)).toBe(false);
-    expect(sourceMediaReady(camera, { videoEl: { readyState: 1, videoWidth: 1920 } as HTMLVideoElement })).toBe(false);
-    expect(sourceMediaReady(camera, { videoEl: { readyState: 2, videoWidth: 1920 } as HTMLVideoElement })).toBe(true);
+    expect(sourceMediaHasFrame(camera)).toBe(false);
+    expect(sourceMediaHasFrame(camera, { videoEl: { readyState: 1, videoWidth: 1920 } as HTMLVideoElement })).toBe(false);
+    expect(sourceMediaHasFrame(camera, { videoEl: { readyState: 2, videoWidth: 1920 } as HTMLVideoElement })).toBe(true);
   });
-  it("uses native pixels directly and does not hold a scene for a failed source", () => {
-    expect(sourceMediaReady(camera, { canvas: { width: 1920, height: 1080 } as HTMLCanvasElement })).toBe(true);
-    expect(sourceMediaReady(camera, { error: "Window closed" })).toBe(true);
+  it("uses native pixels directly", () => {
+    expect(sourceMediaHasFrame(camera, { canvas: { width: 1920, height: 1080 } as HTMLCanvasElement })).toBe(true);
   });
   it("crossfades over the full outgoing frame rather than dimming both over black", () => {
     const alphas: number[] = [];

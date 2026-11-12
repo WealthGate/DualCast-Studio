@@ -15,4 +15,14 @@ describe("scene warm-up continuity", () => {
     expect(gate(scene, false, 850)).toBe(true);
     expect(gate({}, false, 900)).toBe(false);
   });
+
+  it("keeps waiting after the timeout if no media layer has a picture", () => {
+    const gate = createSceneWarmup();
+    const scene = {};
+    expect(gate(scene, false, 0, false)).toBe(false);
+    expect(gate(scene, true, 1500, false)).toBe(false);
+    expect(gate(scene, true, 2000, true)).toBe(true);
+    expect(gate(scene, false, 2100, false)).toBe(false);
+    expect(gate(scene, false, 2200, true)).toBe(true);
+  });
 });

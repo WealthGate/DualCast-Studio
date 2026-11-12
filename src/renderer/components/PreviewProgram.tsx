@@ -12,8 +12,8 @@ import { resizeCanvas, useCanvasRenderer } from "../hooks/useCanvasRenderer";
 import { drawSceneTransition } from "../utils/transitions";
 import { createFrameCadence } from "../utils/frameCadence";
 import { ScrollingTextRenderer } from "../utils/scrollingText";
-import { canShareSourceMedia, compositeSceneBlend, registerCapturePreviewProvider, sourceMediaReady, sourceMediaSignature } from "../utils/sourceMedia";
-import { useAppStore } from "../store/useAppStore";
+import { canShareSourceMedia, compositeSceneBlend, registerCapturePreviewProvider, sourceMediaHasFrame, sourceMediaSignature } from "../utils/sourceMedia";
+import { ProgramPicture, useAppStore } from "../store/useAppStore";
 import { useShallow } from "zustand/react/shallow";
 import { createFrameEncoder } from "../utils/frameEncoder";
 import { createFrameDecoder, DecodedFrame } from "../utils/frameDecoder";
@@ -104,6 +104,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     programSceneSnapshot,
     programSources,
     programRevision,
+    presentedProgram: onAir,
     selectedSourceId,
     isCutToBlack,
     isFrozen,
@@ -135,6 +136,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     programSceneSnapshot: state.programSceneSnapshot,
     programSources: state.programSources,
     programRevision: state.programRevision,
+    presentedProgram: state.presentedProgram,
     selectedSourceId: state.selectedSourceId,
     isCutToBlack: state.isCutToBlack,
     isFrozen: state.isFrozen,
@@ -181,13 +183,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     type: SceneTransitionType;
     startAt: number | null;
     duration: number;
-    fromFrame: HTMLCanvasElement;
-    toScene: Scene | null;
-    toSources: Record<string, Source>;
+    from: ProgramPicture;
+    fromCue: LowerThirdCue;
+    useLiveOutgoing: boolean;
+    hasOutgoingFrame: boolean;
   } | null>(null);
-  const previousProgramRef = useRef<{ scene: Scene | null; sources: Record<string, Source> } | null>(null);
-  const blendCanvasesRef = useRef<{ from: HTMLCanvasElement; to: HTMLCanvasElement } | null>(null);
+  const renderedManualBlend = useRef(false);
+  const blendCanvasesRef = useRef<Partial<Record<"from" | "to", HTMLCanvasElement>>>({});
   const frozenFrameRef = useRef<HTMLCanvasElement | null>(null);
+  const blackoutFrameRef = useRef<HTMLCanvasElement | null>(null);
   const publishProgramFrameRef = useRef<(canvas: HTMLCanvasElement, now: number) => void>(() => undefined);
   const previewWarmupRef = useRef(createSceneWarmup());
   const programWarmupRef = useRef(createSceneWarmup());
@@ -211,24 +215,25 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const lowerThirdVisibility = useRef(createVisibilityTransition());
 
   const programScene = programSceneSnapshot;
+  const requestedProgram = useMemo(() => ({ scene: programScene, sources: programSources, slideId: settings.lowerThird.programSlideId }),
+    [programScene, programSources, settings.lowerThird.programSlideId]);
   const previewScene = useMemo(() => scenes.find((scene) => scene.id === previewSceneId) ?? null, [previewSceneId, scenes]);
   const allSources = useMemo(
-    () => ({ ...sources, ...programSources }),
-    [programSources, sources]
+    () => ({ ...onAir?.sources, ...sources, ...programSources }),
+    [onAir, programSources, sources]
   );
   const previewSceneLocked = Boolean(previewScene?.locked);
   const needsPreviewMedia = showPreview || manualBlend > 0;
   const activeSourceIds = useMemo(
     () => {
       const ids = collectActiveSourceIds(isMultiviewOpen, scenes, programScene, needsPreviewMedia ? previewScene : null, allSources);
-      Object.values(programSources).forEach((source) => {
-        if (source.type === "audio" && source.audioScope === "persistent") {
-          ids.delete(source.id);
-        }
-      });
+      onAir?.scene?.sourceIds.forEach(id => { if (allSources[id]?.enabled) ids.add(id); });
+      for (const id of ids) {
+        if (id.startsWith("program:") && allSources[id]?.type === "audio" && allSources[id].audioScope === "persistent") ids.delete(id);
+      }
       return ids;
     },
-    [allSources, isMultiviewOpen, needsPreviewMedia, programScene, previewScene, programSources, scenes]
+    [allSources, isMultiviewOpen, needsPreviewMedia, onAir, programScene, previewScene, scenes]
   );
 
   const programBackground = useCanvasBackground(settings.displayBackgrounds?.program);
@@ -252,25 +257,26 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   }, [isFrozen, programCanvasRef]);
 
   useLayoutEffect(() => {
-    const previous = previousProgramRef.current;
     const canvas = programCanvasRef.current;
-    if (previous?.scene && programScene && canvas && transitionType !== "cut" && programTransitionMode === "configured") {
-      const fromFrame = document.createElement("canvas");
-      fromFrame.width = canvas.width;
-      fromFrame.height = canvas.height;
-      fromFrame.getContext("2d")?.drawImage(canvas, 0, 0);
-      transitionRef.current = {
-        type: transitionType,
-        startAt: null,
-        duration: transitionDurationMs,
-        fromFrame,
-        toScene: programScene,
-        toSources: programSources
-      };
-    } else {
-      transitionRef.current = null;
-    }
-    previousProgramRef.current = { scene: programScene, sources: programSources };
+    if (!isCutToBlack || !canvas || blackoutFrameRef.current || !useAppStore.getState().presentedProgram) return;
+    const frame = document.createElement("canvas");
+    resizeCanvas(frame, canvas.width, canvas.height);
+    frame.getContext("2d")?.drawImage(canvas, 0, 0);
+    blackoutFrameRef.current = frame;
+  }, [isCutToBlack, programCanvasRef]);
+
+  useLayoutEffect(() => {
+    const previous = useAppStore.getState().presentedProgram;
+    const interrupted = transitionRef.current?.useLiveOutgoing === false || transitionRef.current?.startAt != null;
+    transitionRef.current = previous?.scene && programScene ? {
+      type: programTransitionMode === "configured" ? transitionType : "cut",
+      startAt: null,
+      duration: transitionDurationMs,
+      from: previous,
+      fromCue: transitionRef.current?.fromCue ?? programLowerThirdCueRef.current,
+      useLiveOutgoing: !interrupted && !renderedManualBlend.current,
+      hasOutgoingFrame: false
+    } : null;
   }, [programRevision]);
 
   useEffect(() => {
@@ -379,6 +385,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     const unsubscribeMultiviewOpen = window.dualcast.onMultiviewOpened(() => setIsMultiviewOpen(true));
     const unsubscribeMultiviewClose = window.dualcast.onMultiviewClosed(() => setIsMultiviewOpen(false));
     const unsubscribeBrowser = window.dualcast.onBrowserFrame((payload) => {
+      if (sourceMediaRef.current.get(payload.sourceId)?.type !== "browser") return;
       let decoder = browserDecodersRef.current.get(payload.sourceId);
       if (!decoder) {
         decoder = createFrameDecoder(img => browserFramesRef.current.set(payload.sourceId, img));
@@ -478,6 +485,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         video.playsInline = true;
         video.autoplay = !source.media?.paused;
         video.crossOrigin = "anonymous";
+        video.addEventListener("error", () => {
+          entry.error = "Video could not be loaded. Check the file or choose another source.";
+          setMediaRevision(revision => revision + 1);
+        });
         video.addEventListener("loadedmetadata", () => {
           if (startAt > 0) video.currentTime = startAt;
           if (!source.media?.paused && video.paused) {
@@ -536,7 +547,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
             width: Math.max(1, Math.round(programSize.width * (source.rect.width / 100))),
             height: Math.max(1, Math.round(programSize.height * (source.rect.height / 100)))
           })
-          .catch(() => undefined);
+          .then(created => { if (!created) throw Error("Browser source could not be opened."); })
+          .catch(() => {
+            if (mediaMap.get(source.id) !== entry) return;
+            entry.error = "Browser source could not be opened. Check the address and retry.";
+            setMediaRevision(revision => revision + 1);
+          });
       }
 
       if (mediaMap.get(source.id) !== entry) {
@@ -564,6 +580,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       if (entry) {
         mediaMap.delete(id);
         if (!Array.from(mediaMap.values()).includes(entry)) cleanupSourceMedia(id, entry);
+        if (entry.type === "browser") {
+          browserFramesRef.current.delete(id);
+          browserDecodersRef.current.get(id)?.stop();
+          browserDecodersRef.current.delete(id);
+          browserSizeRef.current.delete(id);
+        }
       }
       createMedia(source).catch(() => undefined);
     });
@@ -648,15 +670,16 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     };
   }, [setProgramAudioStream]);
 
+  const audioProgram = isFrozen || isCutToBlack ? requestedProgram : onAir ?? requestedProgram;
   useEffect(() => {
     const bus = programAudioBusRef.current;
     if (!bus) return;
     const audioSources: ProgramAudioSource[] = [];
     const includeSceneAudio = settings.audioMode === "system" || settings.audioMode === "both";
     const includeMicrophone = settings.audioMode === "microphone" || settings.audioMode === "both";
-    const sceneAudioSources = includeSceneAudio && programScene?.enabled !== false
-      ? (programScene?.sourceIds ?? [])
-          .map((id) => programSources[id])
+    const sceneAudioSources = includeSceneAudio && audioProgram.scene?.enabled !== false
+      ? (audioProgram.scene?.sourceIds ?? [])
+          .map((id) => audioProgram.sources[id])
           .filter((source): source is Source => Boolean(
             source &&
             source.audioScope !== "persistent" &&
@@ -694,8 +717,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   }, [
     mediaRevision,
     microphoneRevision,
-    programScene,
-    programSources,
+    audioProgram,
     settings.audioMode,
     settings.microphoneGain,
     setProgramAudioStream,
@@ -892,10 +914,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     canvasWidth: number,
     canvasHeight: number,
     now: number,
-    cueRef: React.MutableRefObject<LowerThirdCue>
+    cue: LowerThirdCue
   ) => {
     const config = settings.lowerThird;
-    const cue = cueRef.current;
     if (!cue.current && !cue.previous) return;
     const duration = Math.max(100, config.animationDurationMs);
     const progress = Math.min(1, Math.max(0, (now - cue.changedAt) / duration));
@@ -1145,7 +1166,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
       if (!stopped) {
       window.dualcast.sendMultiviewData({
         previewSceneId,
-        programSceneId,
+        programSceneId: onAir ? onAir.scene?.id ?? null : programSceneId,
         tiles: [...sceneTiles, ...cameraTiles]
       });
       }
@@ -1155,35 +1176,45 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     sendMultiview();
     const interval = window.setInterval(sendMultiview, 500);
     return () => { stopped = true; window.clearInterval(interval); };
-  }, [isMultiviewOpen, previewSceneId, programSceneId, scenes, sources]);
+  }, [isMultiviewOpen, onAir, previewSceneId, programSceneId, scenes, sources]);
 
-  const sceneReady = (scene: Scene | null, sourceMap: Record<string, Source>) =>
-    !scene || scene.enabled === false || scene.sourceIds.every((id) => {
+  const sceneReadiness = ({ scene, sources: sourceMap }: ProgramPicture) => {
+    if (!scene || scene.enabled === false || displayTextMode === "logo") return { ready: true, hasPicture: true, matchingMedia: true };
+    let ready = true;
+    let matchingMedia = true;
+    let hasMediaSources = false;
+    let hasMediaFrame = false;
+    for (const id of scene.sourceIds) {
       const source = sourceMap[id];
-      if (!source || !source.enabled) return true;
-      return source.type === "browser" ? browserFramesRef.current.has(id) : sourceMediaReady(source, sourceMediaRef.current.get(id));
-    });
-
-  const blendScene = (ctx: CanvasRenderingContext2D, outgoing: HTMLCanvasElement | null, progress: number, type: SceneTransitionType = "crossfade") => {
-    const canvas = ctx.canvas;
-    if (!blendCanvasesRef.current) blendCanvasesRef.current = { from: document.createElement("canvas"), to: document.createElement("canvas") };
-    const { from, to } = blendCanvasesRef.current;
-    resizeCanvas(from, canvas.width, canvas.height);
-    resizeCanvas(to, canvas.width, canvas.height);
-    const fromContext = from.getContext("2d")!;
-    const toContext = to.getContext("2d")!;
-    if (!outgoing) {
-      fromContext.fillStyle = "#000";
-      fromContext.fillRect(0, 0, from.width, from.height);
-      drawScene(fromContext, programScene, programSources, from.width, from.height, settings.lowerThird.programSlideId);
+      if (!source?.enabled || source.type === "audio" || source.type === "text" || source.type === "scrolling-text") continue;
+      hasMediaSources = true;
+      const media = sourceMediaRef.current.get(id);
+      const matches = !media || media.signature === getSignature(source);
+      const drawable = matches && (source.type === "browser" ? browserFramesRef.current.has(id) : sourceMediaHasFrame(source, media));
+      if (drawable) hasMediaFrame = true;
+      if (!drawable && !(matches && media?.error)) ready = false;
+      if (!matches) matchingMedia = false;
     }
-    toContext.fillStyle = "#000";
-    toContext.fillRect(0, 0, to.width, to.height);
-    const incoming = outgoing ? programScene : previewScene;
-    const incomingSources = outgoing ? programSources : sources;
-    drawScene(toContext, incoming, incomingSources, to.width, to.height, outgoing ? settings.lowerThird.programSlideId : settings.lowerThird.activeSlideId);
-    if (outgoing) drawSceneTransition(ctx, outgoing, to, type, progress, canvas.width, canvas.height);
-    else compositeSceneBlend(ctx, from, to, progress, canvas.width, canvas.height);
+    return { ready, hasPicture: !hasMediaSources || hasMediaFrame, matchingMedia };
+  };
+  const previewPicture = { scene: previewScene, sources, slideId: settings.lowerThird.activeSlideId };
+
+  const getBlendCanvas = (side: "from" | "to", canvas: HTMLCanvasElement) => {
+    const buffer = blendCanvasesRef.current[side] ??= document.createElement("canvas");
+    resizeCanvas(buffer, canvas.width, canvas.height);
+    return buffer;
+  };
+
+  const paintPicture = (ctx: CanvasRenderingContext2D, picture: ProgramPicture) => {
+    const { width, height } = ctx.canvas;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, width, height);
+    drawScene(ctx, picture.scene, picture.sources, width, height, picture.slideId);
+    syncBrowserSources(picture.scene, picture.sources, width, height);
+  };
+  const paintWithLowerThird = (ctx: CanvasRenderingContext2D, picture: ProgramPicture, now: number, cue = programLowerThirdCueRef.current) => {
+    paintPicture(ctx, picture);
+    drawConfiguredLowerThird(ctx, ctx.canvas.width, ctx.canvas.height, now, cue);
   };
 
   const scenePixels = (scene: Scene | null, sourceMap: Record<string, Source>): unknown[] => (scene?.sourceIds ?? []).flatMap<unknown>(id => {
@@ -1197,7 +1228,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const animatedScene = (scene: Scene | null, sourceMap: Record<string, Source>) => (scene?.sourceIds ?? []).some(id => sourceMap[id]?.enabled && sourceMap[id].type === "scrolling-text" && !sourceMap[id].media?.paused);
 
   useCanvasRenderer(previewCanvasRef, previewBitmapSize.width, previewBitmapSize.height, settings.frameRate, (ctx, now) => {
-    if (!previewWarmupRef.current(previewScene, sceneReady(previewScene, sources), now)) return false;
+    const preview = sceneReadiness(previewPicture);
+    if (!previewWarmupRef.current(previewScene, preview.ready, now, preview.hasPicture)) return false;
     const state = useAppStore.getState();
     if (!previewInvalidationRef.current([previewScene, sources, mediaRevision, settings.lowerThird, settings.displayBackgrounds?.program, settings.displayBackgrounds?.lowerThird, programBackground.revision, bandBackground.revision, state.displayTextMode, state.isLowerThirdHidden, previewBitmapSize.width, previewBitmapSize.height, ...scenePixels(previewScene, sources)], now,
       programBackground.animated || bandBackground.animated || animatedScene(previewScene, sources) || lowerThirdVisibility.current.active(now, 100) || now - previewLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100)) return false;
@@ -1206,44 +1238,91 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, programSize.width, programSize.height);
     drawScene(ctx, previewScene, sources, programSize.width, programSize.height, settings.lowerThird.activeSlideId);
-    drawConfiguredLowerThird(ctx, programSize.width, programSize.height, now, previewLowerThirdCueRef);
+    drawConfiguredLowerThird(ctx, programSize.width, programSize.height, now, previewLowerThirdCueRef.current);
     ctx.restore();
   }, showPreview);
 
   useCanvasRenderer(programCanvasRef, programSize.width, programSize.height, settings.frameRate, (ctx, now) => {
     const canvas = ctx.canvas;
     const state = useAppStore.getState();
-    if (!programInvalidationRef.current([programScene, programSources, mediaRevision, settings.lowerThird, settings.displayBackgrounds?.program, settings.displayBackgrounds?.lowerThird, programBackground.revision, bandBackground.revision, state.displayTextMode, state.isLowerThirdHidden, isFrozen, isCutToBlack, manualBlend, programSize.width, programSize.height, ...(isFrozen || isCutToBlack ? [] : scenePixels(programScene, programSources)), ...(!isFrozen && !isCutToBlack && manualBlend > 0 ? scenePixels(previewScene, sources) : [])], now,
-      !isFrozen && !isCutToBlack && (programBackground.animated || bandBackground.animated || Boolean(transitionRef.current) || manualBlend > 0 || lowerThirdVisibility.current.active(now, 100) || animatedScene(programScene, programSources) || now - programLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100))) return false;
+    const visible = !isFrozen && !isCutToBlack;
+    const transition = transitionRef.current;
+    const incoming = visible ? sceneReadiness(requestedProgram) : null;
+    const waiting = incoming !== null && !programWarmupRef.current(programScene, incoming.ready, now, incoming.hasPicture);
+    const outgoing = state.presentedProgram;
+    const outgoingReadiness = outgoing && (waiting || transition?.useLiveOutgoing) ? sceneReadiness(outgoing) : null;
+    const canDrawOutgoing = Boolean(outgoingReadiness?.hasPicture && outgoingReadiness.matchingMedia);
+    if (waiting && transition?.startAt != null) {
+      // If the new source stalls mid-dissolve, resume from the last visible mix.
+      transition.startAt = null;
+      transition.useLiveOutgoing = false;
+      transition.hasOutgoingFrame = false;
+    }
+    if (waiting && (!outgoing || outgoing === requestedProgram || !canDrawOutgoing || transition?.useLiveOutgoing === false)) {
+      const frame = blackoutFrameRef.current;
+      if (!frame) return false;
+      ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+      blackoutFrameRef.current = null;
+      publishProgramFrameRef.current(canvas, now);
+      return;
+    }
+    if (visible && !waiting && manualBlend > 0) {
+      const preview = sceneReadiness(previewPicture);
+      if (!blendWarmupRef.current(previewScene, preview.ready, now, preview.hasPicture)) return false;
+    }
+    const picture = waiting ? outgoing! : requestedProgram;
+    const animation = visible && !waiting && !manualBlend && transition && transition.type !== "cut" ? transition : null;
+    if (!programInvalidationRef.current([picture, waiting, animation, mediaRevision, settings.lowerThird, settings.displayBackgrounds?.program, settings.displayBackgrounds?.lowerThird, programBackground.revision, bandBackground.revision, state.displayTextMode, state.isLowerThirdHidden, isFrozen, isCutToBlack, manualBlend, programSize.width, programSize.height, ...(visible ? scenePixels(picture.scene, picture.sources) : []), ...(visible && manualBlend > 0 ? scenePixels(previewScene, sources) : [])], now,
+      visible && (programBackground.animated || bandBackground.animated || Boolean(animation) || manualBlend > 0 || lowerThirdVisibility.current.active(now, 100) || animatedScene(picture.scene, picture.sources) || now - programLowerThirdCueRef.current.changedAt < settings.lowerThird.animationDurationMs + 100))) return false;
     if (isFrozen && !isCutToBlack && frozenFrameRef.current) {
       ctx.drawImage(frozenFrameRef.current, 0, 0, canvas.width, canvas.height);
       publishProgramFrameRef.current(canvas, now);
       return;
     }
-    if (!isCutToBlack && !programWarmupRef.current(programScene, sceneReady(programScene, programSources), now)) return;
-    if (!isCutToBlack && manualBlend > 0 && !blendWarmupRef.current(previewScene, sceneReady(previewScene, sources), now)) return;
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    if (!isCutToBlack) {
-      const transition = transitionRef.current;
-      if (manualBlend > 0 && previewScene) {
-        blendScene(ctx, null, manualBlend);
-        syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
-        syncBrowserSources(previewScene, sources, canvas.width, canvas.height);
-      } else if (transition) {
-        if (transition.startAt === null) transition.startAt = now;
-        const progress = Math.min(1, (now - transition.startAt) / transition.duration);
-        blendScene(ctx, transition.fromFrame, progress, transition.type);
-        if (progress >= 1) transitionRef.current = null;
-        syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
-      } else {
-        drawScene(ctx, programScene, programSources, canvas.width, canvas.height, settings.lowerThird.programSlideId);
-        syncBrowserSources(programScene, programSources, canvas.width, canvas.height);
+    let progress = 1;
+    if (animation) {
+      animation.startAt ??= now;
+      progress = Math.min(1, (now - animation.startAt) / animation.duration);
+    }
+    if (isCutToBlack) {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (!waiting && manualBlend > 0 && previewScene) {
+      const from = getBlendCanvas("from", canvas);
+      const to = getBlendCanvas("to", canvas);
+      paintPicture(from.getContext("2d")!, requestedProgram);
+      paintPicture(to.getContext("2d")!, previewPicture);
+      compositeSceneBlend(ctx, from, to, manualBlend, canvas.width, canvas.height);
+      drawConfiguredLowerThird(ctx, canvas.width, canvas.height, now, programLowerThirdCueRef.current);
+      renderedManualBlend.current = true;
+    } else if (animation && progress < 1) {
+      const from = getBlendCanvas("from", canvas);
+      const to = getBlendCanvas("to", canvas);
+      const fromContext = from.getContext("2d")!;
+      if (animation.useLiveOutgoing && canDrawOutgoing) {
+        paintWithLowerThird(fromContext, animation.from, now, animation.fromCue);
+      } else if (!animation.hasOutgoingFrame) {
+        fromContext.drawImage(blackoutFrameRef.current ?? canvas, 0, 0, from.width, from.height);
       }
+      animation.hasOutgoingFrame = true;
+      paintWithLowerThird(to.getContext("2d")!, requestedProgram, now);
+      drawSceneTransition(ctx, from, to, animation.type, progress, canvas.width, canvas.height);
+      renderedManualBlend.current = false;
+    } else {
+      if (!waiting && transition) {
+        const to = getBlendCanvas("to", canvas);
+        paintWithLowerThird(to.getContext("2d")!, picture, now);
+        ctx.drawImage(to, 0, 0);
+      } else {
+        paintWithLowerThird(ctx, picture, now, waiting ? transition?.fromCue : undefined);
+      }
+      if (!waiting) transitionRef.current = null;
+      renderedManualBlend.current = false;
     }
-    if (!isCutToBlack) {
-      drawConfiguredLowerThird(ctx, canvas.width, canvas.height, now, programLowerThirdCueRef);
+    if (visible && !waiting && !transitionRef.current && outgoing !== requestedProgram) {
+      useAppStore.setState({ presentedProgram: requestedProgram });
     }
+    if (!isCutToBlack) blackoutFrameRef.current = null;
     publishProgramFrameRef.current(canvas, now);
   });
 
@@ -1308,7 +1387,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         });
       }
       if (!isCutToBlack) {
-        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), outputLowerThirdCueRef);
+        drawConfiguredLowerThird(ctx, canvas.width, canvas.height, performance.now(), outputLowerThirdCueRef.current);
       }
       encoder.encode(canvas);
     };
@@ -1487,10 +1566,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     window.addEventListener("pointercancel", onUp);
   };
 
+  const incomingReadiness = sceneReadiness(requestedProgram);
+  let preparationMessage: string | undefined;
+  if (!incomingReadiness.hasPicture) preparationMessage = "Waiting for a picture from the selected scene. Program is holding the last picture.";
+  else if (!incomingReadiness.ready) preparationMessage = "A source is preparing or buffering. Other live sources continue playing.";
+
   return (
     <section className="display-workspace" aria-label="Preview and Program displays">
       <div className="display-controls-row"><DisplayTextControls /></div>
-      {!sceneReady(programScene, programSources) && <p role="status" className="field-help">A source is preparing or buffering. Other live sources continue playing.</p>}
+      {preparationMessage && <p role="status" className="field-help">{preparationMessage}</p>}
       {Array.from(sourceMediaRef.current.entries()).filter(([, media], index, entries) => media.error && entries.findIndex(([, entry]) => entry === media) === index).map(([id, media]) => (
         <div key={id} role="alert" className="field-help">
           {allSources[id]?.name ?? "Source"}: {media.error}

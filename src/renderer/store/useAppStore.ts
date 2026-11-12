@@ -116,6 +116,8 @@ type ProgramSnapshot = {
   sources: Record<string, Source>;
 };
 
+export type ProgramPicture = ProgramSnapshot & { slideId: string | null };
+
 const createProgramSnapshot = (scene: Scene | null, sources: Record<string, Source>): ProgramSnapshot => {
   if (!scene) {
     return { scene: null, sources: {} };
@@ -154,6 +156,7 @@ type AppState = {
   programSceneId: string | null;
   programSceneSnapshot: Scene | null;
   programSources: Record<string, Source>;
+  presentedProgram: ProgramPicture | null;
   programRevision: number;
   selectedSourceId: string | null;
   programAudioStream: MediaStream | null;
@@ -245,6 +248,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   programSceneSnapshot: defaultProgramSnapshot.scene,
   programSources: defaultProgramSnapshot.sources,
   programRevision: 0,
+  presentedProgram: null,
   selectedSourceId: null,
   programAudioStream: null,
   isProgramAudioMonitoring: false,
@@ -261,7 +265,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeScheduleId: "",
   isCutToBlack: false,
   isFrozen: false,
-  transitionType: "cut",
+  transitionType: "fade",
   transitionDurationMs: 400,
   manualBlend: 0,
   programTransitionMode: "configured",
@@ -279,7 +283,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const normalized = normalizeStudioState(studioState);
     const programScene = normalized.scenes.find((scene) => scene.id === normalized.programSceneId) ?? null;
     const snapshot = createProgramSnapshot(programScene, normalized.sources);
-    set({ ...normalized, programSceneSnapshot: snapshot.scene, programSources: snapshot.sources, programRevision: 1 });
+    set(state => ({ ...normalized, programSceneSnapshot: snapshot.scene, programSources: snapshot.sources,
+      programRevision: state.programRevision + 1, programTransitionMode: "none", manualBlend: 0 }));
   },
   persistStudioState: async () => {
     const { scenes, sources, groups, previewSceneId, programSceneId } = get();
@@ -302,7 +307,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   removeScene: (sceneId) => {
     set((state) => {
-      if (sceneId === state.programSceneId) {
+      if (sceneId === state.programSceneId || sceneId === state.presentedProgram?.scene?.id) {
         return state;
       }
       const scenes = state.scenes.filter((scene) => scene.id !== sceneId);
@@ -330,12 +335,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (scene) {
       const snapshot = createProgramSnapshot(scene, state.sources);
       const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
+      const isCurrentScene = state.manualBlend === 0 && sceneId === state.programSceneId &&
+        (!state.presentedProgram || state.presentedProgram.scene?.id === sceneId);
       set({
         programSceneId: sceneId,
         programSceneSnapshot: snapshot.scene,
         programSources: snapshot.sources,
         programRevision: state.programRevision + 1,
-        programTransitionMode: "configured",
+        programTransitionMode: isCurrentScene ? "none" : "configured",
         manualBlend: 0,
         settings: { ...state.settings, lowerThird }
       });

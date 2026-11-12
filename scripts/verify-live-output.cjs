@@ -55,6 +55,7 @@ if (!process.versions.electron) {
       if(process.argv.includes("--stream-recovery-only")){console.log(JSON.stringify(await window.webContents.executeJavaScript(`(${require('./verify-stream-capture-errors.cjs').toString()})(${JSON.stringify(root.replace(/\\/g,'/'))},true)`)));app.exit(0);return;}
       if(process.argv.includes("--stream-errors-only")){console.log(JSON.stringify(await window.webContents.executeJavaScript(`(${require('./verify-stream-capture-errors.cjs').toString()})(${JSON.stringify(root.replace(/\\/g,'/'))})`)));app.exit(0);return;}
       if(process.argv.includes("--video-only")){console.log(JSON.stringify(await window.webContents.executeJavaScript(`(${require('./verify-video-sharing.cjs').toString()})(${JSON.stringify('/@fs/'+root.replace(/\\/g,'/')+'/tmp/freeze-regression.webm')})`)));app.exit(0);return;}
+      if (process.argv.includes("--browser-only")) { console.log(JSON.stringify(await require("./verify-browser-capture.cjs")(root, window))); app.exit(0); return; }
       if(process.argv.includes("--settings-only")){const hardware=await require('./../tmp/hardware-verification.cjs').getHardwareCapabilities();console.log(JSON.stringify(await require('./verify-hardware-settings.cjs')(window,hardware)));app.exit(0);return;}
       if(process.argv.includes("--recording-only")){console.log(JSON.stringify(await require('./verify-recording-track.cjs')(window,root)));app.exit(0);return;}
       if(process.argv.includes("--native-video-only")||process.argv.includes("--static-window-only")){console.log(JSON.stringify(await require('./verify-native-h264.cjs')(root)));app.exit(0);return;}
@@ -74,7 +75,8 @@ if (!process.versions.electron) {
         window.dualcast.sendProgramFrame = frame => { if (monitorEncodedFrames) encodedFrames.push(frame); };
         const red = image('red', color('#ff0000')), blue = image('blue', color('#0000ff')), green = image('green', color('#00ff00'));
         const scenes = [red, blue, green].map(source => ({id:source.id, name:source.id, sourceIds:[source.id]}));
-        store.setState({ settings:{...store.getState().settings, networkOutput:{...store.getState().settings.networkOutput,enabled:true}, qualityPreset:'low', frameRate:30, lowerThird:{...store.getState().settings.lowerThird, slides:[], activeSlideId:null, programSlideId:null}, swapPreviewProgram:true}, isFrozen:false, isCutToBlack:false, transitionType:'cut', manualBlend:0 });
+        await store.getState().updateSettings({networkOutput:{...store.getState().settings.networkOutput,enabled:true}, qualityPreset:'low', frameRate:30, lowerThird:{...store.getState().settings.lowerThird, slides:[], activeSlideId:null, programSlideId:null}, swapPreviewProgram:true});
+        store.setState({isFrozen:false, isCutToBlack:false, transitionType:'cut', manualBlend:0});
         store.getState().setStudioState({scenes, sources:{red,blue,green}, groups:[], previewSceneId:'blue', programSceneId:'red'});
         const pixel = () => { const canvas = document.querySelector('.program-pane canvas'); return [...canvas.getContext('2d').getImageData(canvas.width/2, canvas.height/2, 1, 1).data]; };
         const assert = (value, message) => { if (!value) throw Error(message + ' pixel=' + pixel()); };
@@ -95,12 +97,30 @@ if (!process.versions.electron) {
         for(let i=0;i<30;i++){ await wait(15); sample(); }
         assert(pixel()[0]>245, 'Fade did not finish on red');
         const NativeImage = window.Image;
-        window.Image = class extends NativeImage { set src(value) { if(value===green.data.url) setTimeout(()=>{super.src=value;}, 350); else super.src=value; } };
+        window.Image = class extends NativeImage { set src(value) { if(value===green.data.url) setTimeout(()=>{super.src=value;}, 1600); else super.src=value; } };
         store.getState().selectPreviewScene('green'); store.getState().setTransitionType('cut'); store.getState().takeToProgram();
-        await wait(80); assert(pixel()[0]>245, 'Cold capture cleared the live picture');
-        for(let i=0;i<30;i++){ await wait(15); sample(); }
-        assert(pixel()[1]>245, 'Cold capture did not become live');
+        await wait(1100); assert(pixel()[0]>245, 'Cold capture exposed a blank after the warmup deadline');
+        assert(store.getState().presentedProgram.scene.id==='red', 'Cold scene was reported on air before it had a picture');
+        await until(() => { sample(); return pixel()[1]>245; });
         window.Image = NativeImage;
+        const missing = image('missing', 'data:image/png;base64,invalid');
+        store.setState(state => ({ sources: {...state.sources, missing}, scenes: [...state.scenes, {id:'missing', name:'Missing image', sourceIds:['missing']}] }));
+        store.getState().setProgramScene('missing');
+        await wait(900); assert(pixel()[1]>245, 'Failed source cleared Program');
+        store.getState().setTransitionType('fade'); store.getState().setTransitionDuration(500);
+        store.getState().setProgramScene('red');
+        await until(() => { const p=pixel(); return p[0]>50 && p[1]>100; });
+        const interrupted = pixel();
+        store.getState().setProgramScene('blue');
+        const {onCanvasFrame} = await import('/utils/canvasFrames.ts');
+        const firstFrame = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => { off(); reject(Error('Interrupted transition stopped publishing')); }, 1000);
+          const off = onCanvasFrame(document.querySelector('.program-pane canvas'), () => { clearTimeout(timeout); off(); resolve(pixel()); });
+        });
+        assert(Math.abs(interrupted[0]-firstFrame[0])<65 && Math.abs(interrupted[1]-firstFrame[1])<65, 'Interrupted fade jumped away from the current mix');
+        await until(() => { sample(); return pixel()[2]>245; });
+        store.getState().setTransitionType('cut'); store.getState().setProgramScene('green');
+        await until(() => pixel()[1]>245);
         monitorEncodedFrames = false;
         let encodedBlackFrames = 0;
         for (const url of encodedFrames) {
@@ -135,7 +155,38 @@ if (!process.versions.electron) {
         store.getState().takeToProgram(); store.getState().updateSourceRect('cam',{x:5,y:5,width:90,height:90});
         await wait(200);
         assert(cameraRequests===1, 'Camera was reopened for Program or geometry edits: '+cameraRequests);
-        return {midpoint, blackFrames, encodedBlackFrames, encodedFrames:encodedFrames.length, cameraRequests, checks:['rapid fader', 'manual completion', 'fade', 'cold cut hold', 'freeze/black/restore', 'shared camera capture','meeting area crop']};
+        const motionCanvas=document.createElement('canvas'); motionCanvas.width=320; motionCanvas.height=180;
+        const motionContext=motionCanvas.getContext('2d');
+        const motionStream=motionCanvas.captureStream(0), track=motionStream.getVideoTracks()[0];
+        const paintMotion = fill => { motionContext.fillStyle=fill; motionContext.fillRect(0,0,320,180); track.requestFrame(); };
+        navigator.mediaDevices.getUserMedia = async () => motionStream;
+        const moving={...camera,id:'moving-camera',data:{deviceId:'fixture-camera'}};
+        const target=image('held-target',color('#00ff03'));
+        const motionScene={id:'motion',name:'Live motion',sourceIds:[moving.id]};
+        const targetScene={id:'held',name:'Slow target',sourceIds:[target.id]};
+        let loadTarget;
+        window.Image = class extends NativeImage { set src(value) { if(value===target.data.url) loadTarget=()=>{super.src=value;}; else super.src=value; } };
+        const view = async label => {
+          [...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'View').click();
+          await until(() => [...document.querySelectorAll('.menu-command')].some(button => button.textContent.trim().startsWith(label)));
+          [...document.querySelectorAll('.menu-command')].find(button => button.textContent.trim().startsWith(label)).click();
+        };
+        try {
+          await view('Program Focus');
+          await until(() => document.querySelector('.program-focus-mode'));
+          store.getState().setStudioState({scenes:[motionScene,targetScene],sources:{[moving.id]:moving,[target.id]:target},groups:[],previewSceneId:'motion',programSceneId:'motion'});
+          await until(() => { paintMotion('#ff0000'); return pixel()[0]>230 && pixel()[1]<20; });
+          store.getState().setTransitionType('fade'); store.getState().setTransitionDuration(900);
+          [...document.querySelectorAll('.scene-select')].find(button => button.textContent==='Slow target').click();
+          await until(() => Boolean(loadTarget));
+          assert(document.querySelector('.scene-list-item.program-live .scene-select')?.textContent==='Live motion', 'LIVE badge advanced before the new picture');
+          await until(() => { paintMotion('#0000ff'); return pixel()[2]>230; });
+          loadTarget();
+          await until(() => { const p=pixel(); return p[1]>20 && p[2]>80; });
+          await until(() => { paintMotion('#ff0000'); const p=pixel(); return p[0]>30 && p[1]>20 && p[2]<25; });
+          await until(() => pixel()[1]>245 && store.getState().presentedProgram.scene.id==='held');
+        } finally { window.Image=NativeImage; navigator.mediaDevices.getUserMedia=originalMedia; track.stop(); await view('Studio Mode'); }
+        return {midpoint, blackFrames, encodedBlackFrames, encodedFrames:encodedFrames.length, cameraRequests, checks:['rapid fader', 'manual completion', 'fade', 'slow and failed source hold', 'live outgoing motion', 'interrupted fade', 'freeze/black/restore', 'shared camera capture','meeting area crop']};
       })()`);
       // Drive the actual range control with native Chromium pointer events.
       // Store-only tests cannot detect endpoint repeat events or capture loss.
@@ -198,6 +249,7 @@ if (!process.versions.electron) {
         }
         return checked;
       })()`);
+      if (process.argv.includes("--scenes-only")) { console.log(JSON.stringify(result)); app.exit(0); return; }
       result.scrollingText = await window.webContents.executeJavaScript(`(${require("./verify-scrolling-text.cjs").toString()})(${JSON.stringify("/@fs/" + root.replace(/\\/g, "/") + "/src/shared/scrollingText.ts")})`);
       console.log("Transitions, fader and scrolling-text controls passed.");
       result.frameRecovery = await window.webContents.executeJavaScript(`(${require("./verify-frame-recovery.cjs").toString()})()`);
@@ -228,7 +280,7 @@ if (!process.versions.electron) {
       result.performance = await window.webContents.executeJavaScript(`(${require("./verify-output-performance.cjs").toString()})(${performanceFps})`);
       console.log(JSON.stringify({performance:result.performance}));
       if (!process.argv.includes("--performance-only")) result.projectionVideo = await require("./verify-projection-video.cjs")(window, root);
-      if (!process.argv.includes("--performance-only")) result.browserCapture = await require("./verify-browser-capture.cjs")(root);
+      if (!process.argv.includes("--performance-only")) result.browserCapture = await require("./verify-browser-capture.cjs")(root, window);
       if (!process.argv.includes("--performance-only")) result.nativeVideo = await require("./verify-native-h264.cjs")(root);
       if (!process.argv.includes("--performance-only")) result.recording = await require("./verify-recording-track.cjs")(window,root);
       if (process.platform === "win32") {

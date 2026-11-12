@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-Current release: **v0.6.46**.
+The current release is **v0.6.47**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,15 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.46
+### What's new in v0.6.47
+
+- Keep the outgoing scene on Program while the incoming scene prepares its picture.
+- Use a 400 ms fade by default, keep **Cut** available, and start interrupted transitions from the picture already on screen.
+- Keep the **LIVE** indicator on the outgoing scene until the handoff completes. Wait for browser sources to load before sending their first frame.
+
+See the [v0.6.47 release notes](docs/releases/v0.6.47.md).
+
+### Included from v0.6.46
 
 - Keep plugin diagnostic output out of the native audio protocol, preventing false **invalid audio** failures.
 - Accept VST2 effects that finish initializing during Open and effects using the older float32 processing callback.

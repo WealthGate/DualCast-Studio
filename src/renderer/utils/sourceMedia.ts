@@ -32,9 +32,10 @@ export const sourceMediaSignature = (source: Source) => {
 export const canShareSourceMedia = (source: Source) =>
   ["display", "window", "camera", "image", "video"].includes(source.type);
 
-export const sourceMediaReady = (source: Source, media?: { videoEl?: HTMLVideoElement; imageEl?: HTMLImageElement; canvas?: HTMLCanvasElement; error?: string }) => {
+type SourceFrame = { videoEl?: HTMLVideoElement; imageEl?: HTMLImageElement; canvas?: HTMLCanvasElement };
+
+export const sourceMediaHasFrame = (source: Source, media?: SourceFrame) => {
   if (!source.enabled || source.type === "text" || source.type === "scrolling-text" || source.type === "audio") return true;
-  if (media?.error) return true;
   if (media?.canvas) return media.canvas.width > 0 && media.canvas.height > 0;
   if (source.type === "image") return Boolean(media?.imageEl?.complete && media.imageEl.naturalWidth);
   return Boolean(media?.videoEl && media.videoEl.readyState >= 2 && media.videoEl.videoWidth > 0);
