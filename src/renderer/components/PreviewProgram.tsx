@@ -27,7 +27,8 @@ import { fitToBounds, getOutputProfile } from "../../shared/recording";
 import { LowerThirdAnimation, LowerThirdSlide, MultiviewTile, Scene, SceneTransitionType, Source, SourceRect, WorkspaceViewMode } from "../../shared/types";
 import { publishAudioMeters } from "../audioMeterBus";
 import { updateProgramAudioMonitor } from "../utils/audioMonitoring";
-import { createMicrophoneCapture } from "../utils/microphoneCapture";
+import { createAudioInputCapturePool } from "../utils/microphoneCapture";
+import { audioInputMeterId } from "../../shared/programAudio";
 
 type PreviewProgramProps = {
   programCanvasRef: React.RefObject<HTMLCanvasElement>;
@@ -177,7 +178,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const [isMultiviewOpen, setIsMultiviewOpen] = useState(false);
   const [mediaRevision, setMediaRevision] = useState(0);
   const [lowerThirdAssetsRevision, setLowerThirdAssetsRevision] = useState(0);
-  const [microphoneRevision, setMicrophoneRevision] = useState(0);
+  const [audioInputRevision, setAudioInputRevision] = useState(0);
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
   const transitionRef = useRef<{
     type: SceneTransitionType;
@@ -205,7 +206,7 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
   const lowerThirdImageRef = useRef<HTMLImageElement | null>(null);
   const bibleImageRef = useRef<HTMLImageElement | null>(null);
   const lowerThirdBackgroundImageRef = useRef<HTMLImageElement | null>(null);
-  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const audioInputPoolRef = useRef<ReturnType<typeof createAudioInputCapturePool> | null>(null);
   const programMixGainRef = useRef<GainNode | null>(null);
   const programAudioMonitorGainRef = useRef<GainNode | null>(null);
   const programAudioBusRef = useRef<ReturnType<typeof createProgramAudioBus> | null>(null);
@@ -333,25 +334,20 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
   const microphoneEnabled = settings.audioMode === "microphone" || settings.audioMode === "both";
   useEffect(() => {
-    if (!microphoneEnabled) {
-      stopMediaStream(microphoneStreamRef.current);
-      microphoneStreamRef.current = null;
-      setMicrophoneRevision((revision) => revision + 1);
-      return;
-    }
-
-    const capture = createMicrophoneCapture({
-      deviceId: settings.microphoneDeviceId,
-      onStream: stream => {
-        microphoneStreamRef.current = stream;
-        setMicrophoneRevision(revision => revision + 1);
-      }
-    });
+    const pool = createAudioInputCapturePool(() => setAudioInputRevision(revision => revision + 1));
+    audioInputPoolRef.current = pool;
     return () => {
-      capture.stop();
-      microphoneStreamRef.current = null;
+      audioInputPoolRef.current = null;
+      pool.stop();
     };
-  }, [microphoneEnabled, settings.microphoneDeviceId]);
+  }, []);
+
+  useEffect(() => {
+    audioInputPoolRef.current?.setInputs(microphoneEnabled ? [
+      { deviceId: settings.microphoneDeviceId, channel: settings.microphoneChannel ?? null },
+      ...(settings.audioInputLines ?? [])
+    ] : []);
+  }, [microphoneEnabled, settings.microphoneDeviceId, settings.microphoneChannel, settings.audioInputLines]);
 
   useEffect(() => {
     const elements = [previewContainerRef.current, programContainerRef.current].filter((element): element is HTMLDivElement => Boolean(element));
@@ -710,16 +706,36 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     });
 
     if (includeMicrophone) {
-      connectStream(microphoneStreamRef.current, "microphone", settings.microphoneGain ?? 1);
+      const pool = audioInputPoolRef.current;
+      const primary = pool?.streamFor(settings.microphoneDeviceId);
+      if (primary) audioSources.push({
+        id: "microphone",
+        stream: primary,
+        channel: settings.microphoneChannel,
+        gain: settings.microphoneMuted ? 0 : settings.microphoneGain ?? 1,
+        preset: settings.microphoneMuted ? "clean" : settings.microphonePreset ?? "clean"
+      });
+      for (const line of settings.audioInputLines ?? []) {
+        const stream = pool?.streamFor(line.deviceId);
+        if (stream) audioSources.push({
+          id: audioInputMeterId(line.id), stream, channel: line.channel,
+          gain: line.muted ? 0 : line.gain, preset: line.muted ? "clean" : line.preset
+        });
+      }
     }
 
     bus.setSources(audioSources);
   }, [
     mediaRevision,
-    microphoneRevision,
+    audioInputRevision,
     audioProgram,
     settings.audioMode,
     settings.microphoneGain,
+    settings.microphoneDeviceId,
+    settings.microphoneMuted,
+    settings.microphoneChannel,
+    settings.microphonePreset,
+    settings.audioInputLines,
     setProgramAudioStream,
     sources
   ]);

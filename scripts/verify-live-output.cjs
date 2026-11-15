@@ -14,7 +14,9 @@ if (!process.versions.electron) {
     if (motion.status !== 0) throw Error("Could not generate moving-video fixture: " + motion.stderr);
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/cursorFreeCaptureService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "ffmpeg-static"], outfile: path.join(root, "tmp/capture-verification.cjs") });
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/projectionService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron"], outfile: path.join(root, "tmp/projection-verification.cjs") });
-    if(process.argv.includes("--service-features-only")||process.argv.includes("--designer-only")) require("esbuild").buildSync({entryPoints:[path.join(root,"electron/services/settingsService.ts")],bundle:true,platform:"node",format:"cjs",external:["electron","electron-store"],outfile:path.join(root,"tmp/schedule-settings-verification.cjs")});
+    if (["--service-features-only", "--designer-only", "--mixer-only"].some(flag => process.argv.includes(flag))) {
+      require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/settingsService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "electron-store"], outfile: path.join(root, "tmp/schedule-settings-verification.cjs") });
+    }
     require("esbuild").buildSync({ entryPoints: [path.join(root, "electron/services/browserSourceService.ts")], bundle: true, platform: "node", format: "cjs", external: ["electron", "electron-log"], outfile: path.join(root, "tmp/browser-verification.cjs") });
     if(process.argv.includes("--settings-only")) require("esbuild").buildSync({entryPoints:[path.join(root,"electron/services/hardwareService.ts")],bundle:true,platform:"node",format:"cjs",external:["electron","electron-log","ffmpeg-static"],outfile:path.join(root,"tmp/hardware-verification.cjs")});
     const vite = spawn(process.execPath, [path.join(root, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5174", "--strictPort"], { cwd: root, env, windowsHide: true, stdio: "ignore" });
@@ -39,6 +41,7 @@ if (!process.versions.electron) {
   app.setPath("userData", profile);
   app.commandLine.appendSwitch("use-fake-device-for-media-stream");
   app.commandLine.appendSwitch("use-fake-ui-for-media-stream");
+  if (process.argv.includes("--mixer-only")) app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
   app.whenReady().then(async () => {
     const window = new BrowserWindow({ show: false, width: 1400, height: 900, webPreferences: { backgroundThrottling: false, contextIsolation: true, preload:path.join(root,"tmp/output-test-preload.js") } });
     window.webContents.on("console-message", event => { if (event.level === "error") console.error(event.message); });
@@ -46,6 +49,10 @@ if (!process.versions.electron) {
       await window.loadURL("http://127.0.0.1:5174");
       window.showInactive();
       let result = {};
+      if (process.argv.includes("--mixer-only")) {
+        console.log(JSON.stringify(await require("./verify-audio-mixer.cjs")(window)));
+        app.exit(0); return;
+      }
       if (process.argv.includes("--floating-only")) {
         console.log(JSON.stringify(await require("./verify-floating-docks.cjs")(window)));
         app.exit(0); return;

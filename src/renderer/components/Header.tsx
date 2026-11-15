@@ -207,8 +207,8 @@ const Header: React.FC<HeaderProps> = ({
           <label htmlFor="audioMode">Audio</label>
           <select id="audioMode" value={settings.audioMode} onChange={handleAudioChange}>
             <option value="system">Scene Sources</option>
-            <option value="microphone">Mic (All Scenes)</option>
-            <option value="both">Sources + Mic</option>
+            <option value="microphone">Input Lines (All Scenes)</option>
+            <option value="both">Sources + Input Lines</option>
             <option value="none">Mute All</option>
           </select>
         </div>

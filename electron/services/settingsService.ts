@@ -26,7 +26,10 @@ import { normalizeYouTubeBroadcastSettings } from "../../src/shared/streamingPla
 import { normalizeStudioState } from "../../src/shared/settings";
 import { normalizeServiceSchedules } from "../../src/shared/serviceSchedules";
 import { normalizeVideoResolution } from "../../src/shared/recording";
-import { defaultProgramEqualizer, normalizeProgramEqualizer } from "../../src/shared/programAudio";
+import {
+  defaultProgramEqualizer, normalizeProgramEqualizer,
+  normalizeAudioInputChannel, normalizeAudioInputLines, normalizeAudioInputPreset
+} from "../../src/shared/programAudio";
 
 let store: Store<Settings> | null = null;
 
@@ -125,6 +128,10 @@ const createStore = () => {
       audioMode: "system",
       microphoneDeviceId: null,
       microphoneGain: 1,
+      microphoneMuted: false,
+      microphoneChannel: null,
+      microphonePreset: "clean",
+      audioInputLines: [],
       audioEqualizer: defaultProgramEqualizer,
       lastDisplayId: null,
       streamRtmpUrl: "",
@@ -163,6 +170,10 @@ const createStore = () => {
       audioMode: { type: "string" },
       microphoneDeviceId: { type: ["string", "null"] },
       microphoneGain: { type: "number" },
+      microphoneMuted: { type: "boolean" },
+      microphoneChannel: { type: ["number", "null"] },
+      microphonePreset: { type: "string" },
+      audioInputLines: { type: "array" },
       audioEqualizer: { type: "object" },
       lastDisplayId: { type: ["string", "null"] },
       streamRtmpUrl: { type: "string" },
@@ -329,6 +340,10 @@ export const getSettings = (): Settings => {
     trimModifier: stored.trimModifier ?? "Alt",
     microphoneDeviceId: typeof stored.microphoneDeviceId === "string" ? stored.microphoneDeviceId : null,
     microphoneGain: Number.isFinite(stored.microphoneGain) ? stored.microphoneGain : 1,
+    microphoneMuted: stored.microphoneMuted === true,
+    microphoneChannel: normalizeAudioInputChannel(stored.microphoneChannel),
+    microphonePreset: normalizeAudioInputPreset(stored.microphonePreset),
+    audioInputLines: normalizeAudioInputLines(stored.audioInputLines),
     audioEqualizer: normalizeProgramEqualizer(stored.audioEqualizer),
     sanctuaryDisplay: normalizeSanctuaryDisplay(stored.sanctuaryDisplay),
     displayBackgrounds: normalizeDisplayBackgrounds(stored.displayBackgrounds),
@@ -352,6 +367,10 @@ export const getSettings = (): Settings => {
 export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate => {
   const sanitized: SettingsUpdate = {};
   if (update.audioEqualizer !== undefined) sanitized.audioEqualizer = normalizeProgramEqualizer(update.audioEqualizer);
+  if (typeof update.microphoneMuted === "boolean") sanitized.microphoneMuted = update.microphoneMuted;
+  if (update.microphoneChannel !== undefined) sanitized.microphoneChannel = normalizeAudioInputChannel(update.microphoneChannel);
+  if (update.microphonePreset !== undefined) sanitized.microphonePreset = normalizeAudioInputPreset(update.microphonePreset);
+  if (update.audioInputLines !== undefined) sanitized.audioInputLines = normalizeAudioInputLines(update.audioInputLines);
   if (Array.isArray(update.serviceSchedules)) sanitized.serviceSchedules = normalizeServiceSchedules(update.serviceSchedules);
   if (typeof update.streamPassthrough === "boolean") sanitized.streamPassthrough = update.streamPassthrough;
   if (typeof update.streamAutoRecover === "boolean") sanitized.streamAutoRecover = update.streamAutoRecover;

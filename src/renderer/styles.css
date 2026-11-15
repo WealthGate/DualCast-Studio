@@ -2241,22 +2241,43 @@ body {
 }
 
 .mixer-master {
+  position: sticky;
+  z-index: 4;
+  top: 0;
   display: grid;
-  grid-template-columns: 150px 28px minmax(120px, 1fr);
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px;
-  border-bottom: 1px solid #414650;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 8px 12px 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text);
 }
 
-.mixer-master > div {
+.mixer-master-heading,
+.mixer-input-heading,
+.mixer-inputs-toolbar {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
-.mixer-master span,
+.mixer-master-heading strong,
+.mixer-input-heading strong,
+.mixer-inputs-toolbar strong {
+  margin-right: auto;
+  overflow-wrap: anywhere;
+}
+
+.mixer-master-heading output,
+.mixer-input-heading output {
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 .mixer-value {
   color: #b6bdca;
   font-size: 10px;
@@ -2273,7 +2294,7 @@ body {
 
 .mixer-channel {
   display: grid;
-  min-width: 96px;
+  min-width: 150px;
   grid-template-columns: 15px 1fr;
   grid-template-rows: 30px 1fr 22px 28px;
   gap: 3px 6px;
@@ -2315,7 +2336,50 @@ body {
 .mixer-fader {
   grid-row: 2;
   width: 100%;
+  min-height: 36px;
   align-self: center;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mixer-fader::-webkit-slider-runnable-track {
+  height: 8px;
+  border: 1px solid #727e90;
+  border-radius: 6px;
+  background: #394557;
+}
+
+.mixer-fader::-webkit-slider-thumb {
+  width: 23px;
+  height: 23px;
+  margin-top: -9px;
+  appearance: none;
+  border: 2px solid #107da0;
+  border-radius: 6px;
+  background: #d7f7ff;
+  box-shadow: 0 1px 3px #0009;
+}
+
+.mixer-master .mixer-fader {
+  min-height: 42px;
+}
+
+.mixer-master .mixer-fader::-webkit-slider-thumb {
+  width: 28px;
+  height: 28px;
+  margin-top: -11px;
+}
+
+.mixer-fader:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.mixer-fader:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .mixer-value,
@@ -2392,20 +2456,109 @@ body {
   font-size: 9px;
 }
 
-.mixer-master .mixer-meter {
-  width: 24px;
-  height: 38px;
-}
-
 .audio-mixer-panel {
   display: flex;
-  min-height: 260px;
   flex-direction: column;
+  overflow-y: auto;
+  scroll-padding-top: 92px;
+}
+
+.audio-mixer-panel > * {
+  flex-shrink: 0;
+}
+
+.mixer-inputs {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+  color: var(--text);
+}
+
+.mixer-inputs-toolbar,
+.mixer-inputs > .field-help {
+  margin: 0 4px;
+}
+
+.mixer-input-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-strong);
+}
+
+.mixer-input-heading .mixer-mute {
+  min-height: 29px;
+  min-width: 55px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.mixer-master .mixer-fader,
+.mixer-input-line .mixer-fader,
+.mixer-monitor .mixer-fader {
+  grid-row: auto;
+}
+
+.mixer-preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.mixer-preset-buttons .btn,
+.mixer-inputs-toolbar .btn,
+.mixer-input-fields .btn {
+  min-height: 32px;
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+.mixer-preset-buttons .btn[aria-pressed="true"] {
+  border-color: #76e4f6;
+  background: #155575;
+  color: #fff;
+}
+
+.mixer-input-status {
+  margin: 2px 0;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.mixer-input-settings summary {
+  width: fit-content;
+  min-height: 28px;
+  padding: 5px 0;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mixer-input-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(125px, 100%), 1fr));
+  align-items: end;
+  gap: 7px;
+  margin: 5px 0;
+}
+
+.mixer-input-fields label {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.mixer-input-fields :is(input, select) {
+  width: 100%;
+  min-height: 32px;
 }
 
 .mixer-routing {
   display: grid;
-  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 7px;
   padding: 6px 8px;
   border-bottom: 1px solid #414650;
@@ -2414,11 +2567,12 @@ body {
 .mixer-routing label {
   display: grid;
   gap: 3px;
-  color: #b6bdca;
-  font-size: 10px;
+  color: var(--text);
+  font-size: 12px;
 }
 
 .mixer-routing select,
+.mixer-input-fields :is(input, select),
 .mixer-scope {
   min-width: 0;
   border: 1px solid #4a4f5b;
@@ -2430,7 +2584,6 @@ body {
 }
 
 .mixer-channels {
-  flex: 1;
   height: auto;
 }
 
@@ -2516,6 +2669,42 @@ body {
   font-weight: 800;
   text-align: center;
 }
+
+.mixer-meter.horizontal {
+  grid-row: auto;
+  width: 100%;
+  height: 16px;
+  border-radius: 3px;
+}
+
+.mixer-meter.horizontal .meter-scale {
+  inset: 0;
+  height: 100%;
+}
+
+.mixer-meter.horizontal .meter-warning,
+.mixer-meter.horizontal .meter-clip {
+  left: auto;
+}
+
+.mixer-meter.horizontal .meter-warning { width: 30%; }
+.mixer-meter.horizontal .meter-clip { width: 12%; }
+
+.mixer-meter.horizontal .meter-bar {
+  top: 2px;
+  bottom: auto;
+  left: 0;
+  right: auto;
+  height: 4px;
+  background: #48d37d;
+  transition: width 65ms linear;
+}
+
+.mixer-meter.horizontal .meter-right { top: 8px; }
+.mixer-meter.horizontal.mono .meter-left { height: 10px; }
+.mixer-meter.horizontal.clipping .meter-bar { background: #ff5264; }
+.mixer-meter.horizontal.clipping::after { top: 1px; right: 4px; text-align: right; }
+.mixer-meter.horizontal small { display: none; }
 
 .mixer-scope,
 .mixer-mute {
@@ -3642,7 +3831,6 @@ body.projection-mode, body.projection-mode * { cursor: none !important; }
   .youtube-broadcast-grid, .youtube-option-grid { grid-template-columns: minmax(0, 1fr); }
   .mixer-monitor label { grid-template-columns: auto minmax(0, 1fr) auto; }
   .monitor-status { white-space: normal; }
-  .mixer-master { grid-template-columns: minmax(0, 1fr) 28px minmax(60px, 1fr); }
 }
 @media (max-width: 1100px) {
   .dock-workspace { overflow-y: auto; }

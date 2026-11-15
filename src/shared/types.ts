@@ -319,6 +319,10 @@ export type Settings = {
   audioMode: AudioMode;
   microphoneDeviceId: string | null;
   microphoneGain: number;
+  microphoneMuted?: boolean;
+  microphoneChannel?: number | null;
+  microphonePreset?: import("./programAudio").AudioInputPreset;
+  audioInputLines?: import("./programAudio").AudioInputLine[];
   lastDisplayId: string | null;
   streamRtmpUrl: string;
   streamPreset: StreamingPreset;

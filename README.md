@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-The current release is **v0.6.48**.
+The current release is **v0.6.49**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,15 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.48
+### What's new in v0.6.49
+
+- Keep the larger **Program Master** fader visible while scrolling the Audio Mixer.
+- Mix up to eight mic and instrument lines with independent devices or channels, names, mutes, and levels.
+- Apply **Radio Gold**, **Lead Vocal**, **Choir**, or **Clean** to each line. The effects run locally and lines on the same selected device share its capture.
+
+See the [v0.6.49 release notes](docs/releases/v0.6.49.md).
+
+### Included from v0.6.48
 
 - Use **Replace Source Audio** to make ReaStream or another receiver the only audio source for Program, recording, and streaming.
 - Scan and use Windows x64 VST3 effects alongside existing VST2 effects. Load the audio bridge in the installed app and preserve useful errors if a plugin stops during startup.

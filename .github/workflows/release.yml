@@ -68,6 +68,13 @@ jobs:
           npm run verify:audio-plugin-ui
           npm run verify:audio-plugin-bridge
 
+      - name: Verify Program mixer controls and independent input audio
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: |
+          npm run verify:audio-fidelity
+          node scripts/verify-live-output.cjs --mixer-only
+
       - name: Verify release tag matches package version
         shell: bash
         env:

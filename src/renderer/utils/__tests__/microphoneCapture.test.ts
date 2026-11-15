@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMicrophoneCapture } from "../microphoneCapture";
+import { createAudioInputCapturePool, createMicrophoneCapture } from "../microphoneCapture";
 
-const audioStream = () => {
-  const track = Object.assign(new EventTarget(), { readyState: "live", stop: vi.fn() });
+const audioStream = (channelCount = 2) => {
+  const track = Object.assign(new EventTarget(), { readyState: "live", stop: vi.fn(), getSettings: () => ({ channelCount }) });
   return { track, stream: { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream };
 };
 
@@ -59,5 +59,32 @@ describe("persistent microphone capture", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(late.track.stop).toHaveBeenCalledTimes(1);
     expect(onStream).not.toHaveBeenCalled();
+  });
+
+  it("shares one stream across lines and preserves working devices when a channel is unavailable", async () => {
+    vi.useFakeTimers();
+    const mixer = audioStream(), secondDevice = audioStream(1), fallback = audioStream();
+    const getUserMedia = vi.fn()
+      .mockResolvedValueOnce(mixer.stream).mockResolvedValueOnce(secondDevice.stream).mockResolvedValueOnce(fallback.stream);
+    const pool = createAudioInputCapturePool(vi.fn(), microphoneDevices(getUserMedia));
+    const lines = [
+      { deviceId: "usb-mixer", channel: 1 }, { deviceId: "usb-mixer", channel: 2 }, { deviceId: null, channel: null }
+    ];
+    pool.setInputs(lines);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(pool.streamFor("usb-mixer")).toBe(mixer.stream);
+    expect(pool.streamFor("default")).toBe(secondDevice.stream);
+    pool.setInputs([...lines, { deviceId: "usb-mixer", channel: 4 }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getUserMedia.mock.calls[2][0].audio.channelCount).toEqual({ ideal: 4 });
+    expect(pool.streamFor("usb-mixer")).toBe(mixer.stream);
+    expect(mixer.track.stop).not.toHaveBeenCalled();
+    expect(fallback.track.stop).toHaveBeenCalledTimes(1);
+    pool.setInputs([lines[1]]);
+    expect(secondDevice.track.stop).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledTimes(3);
+    pool.stop();
+    expect(mixer.track.stop).toHaveBeenCalledTimes(1);
   });
 });

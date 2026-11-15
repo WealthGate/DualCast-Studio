@@ -2,8 +2,16 @@ import { createStereoProgramOutput, setProgramChannelMode } from "./audioChannel
 import { createProgramAudioMonitor } from "./audioMonitoring";
 import { createProgramEqualizer } from "./programEqualizer";
 import { AudioMeterSnapshot } from "../audioMeterBus";
+import { AudioInputPreset, maxAudioInputChannels } from "../../shared/programAudio";
+import { createAudioInputEffect } from "./audioInputEffects";
 
-export type ProgramAudioSource = { id: string; stream: MediaStream; gain: number };
+export type ProgramAudioSource = {
+  id: string;
+  stream: MediaStream;
+  gain: number;
+  channel?: number | null;
+  preset?: AudioInputPreset;
+};
 
 const gainValue = (value: number) => Number.isFinite(value) ? Math.min(2, Math.max(0, value)) : 1;
 const setGain = (node: GainNode, value: number, time: number) => {
@@ -22,15 +30,15 @@ const createMeter = (context: BaseAudioContext, input: AudioNode, channels: 1 | 
     return { analyser, buffer: new Float32Array(analyser.fftSize) };
   });
   return {
-    read: () => {
-      const peaks = analysers.map(({ analyser, buffer }) => {
+    read: (meterChannels: 1 | 2 = channels) => {
+      const peaks = analysers.slice(0, meterChannels).map(({ analyser, buffer }) => {
         analyser.getFloatTimeDomainData(buffer);
         let peak = 0;
         for (let index = 0; index < buffer.length; index += 1) peak = Math.max(peak, Math.abs(buffer[index]));
         return peak;
       });
       const level = (peak: number) => Math.min(1, Math.max(0, ((peak > 0 ? 20 * Math.log10(peak) : -60) + 60) / 60));
-      return { left: level(peaks[0]), right: level(peaks[1] ?? peaks[0]), channels, clipping: peaks.some(peak => peak >= 0.985) };
+      return { left: level(peaks[0]), right: level(peaks[1] ?? peaks[0]), channels: meterChannels, clipping: peaks.some(peak => peak >= 0.985) };
     },
     stop: () => {
       input.disconnect(splitter);
@@ -60,15 +68,31 @@ export const createProgramAudioBus = () => {
   output.connect(destination);
   const monitor = createProgramAudioMonitor(context, output, false, 0);
   const masterMeter = createMeter(context, output, 2);
+  const inputs = new Map<MediaStream, { source: MediaStreamAudioSourceNode; splitter?: ChannelSplitterNode; users: number }>();
   const routes = new Map<string, {
-    stream: MediaStream; source: MediaStreamAudioSourceNode; gain: GainNode; meter: ReturnType<typeof createMeter>;
+    stream: MediaStream;
+    channel: number | null;
+    input: AudioNode;
+    gain: GainNode;
+    targetGain: number;
+    effect?: ReturnType<typeof createAudioInputEffect>;
+    meter: ReturnType<typeof createMeter>;
+    meterChannels: 1 | 2;
   }>();
   const removeRoute = (id: string) => {
     const route = routes.get(id);
     if (!route) return;
     route.meter.stop();
-    route.source.disconnect();
+    route.input.disconnect(route.effect?.input ?? route.gain, (route.channel ?? 1) - 1);
+    route.effect?.stop();
     route.gain.disconnect();
+    const input = inputs.get(route.stream)!;
+    input.users -= 1;
+    if (input.users === 0) {
+      input.source.disconnect();
+      input.splitter?.disconnect();
+      inputs.delete(route.stream);
+    }
     routes.delete(id);
   };
   const silence = context.createConstantSource();
@@ -99,33 +123,56 @@ export const createProgramAudioBus = () => {
     setSources: (sources: ProgramAudioSource[]) => {
       const active = new Set<string>();
       for (const entry of sources) {
-        if (active.has(entry.id) || !entry.stream.getAudioTracks().some(track => track.readyState !== "ended")) continue;
+        if (active.has(entry.id)) continue;
+        const track = entry.stream.getAudioTracks().find(track => track.readyState !== "ended");
+        if (!track) continue;
+        const channel = entry.channel ?? null;
+        const availableChannels = track.getSettings().channelCount;
+        if (channel && channel > (availableChannels ?? 1)) continue;
+        const channels = channel || availableChannels === 1 ? 1 : 2;
+        const meterChannels = entry.preset === "choir" ? 2 : channels;
+        const targetGain = gainValue(entry.gain);
         active.add(entry.id);
         let route = routes.get(entry.id);
-        if (route?.stream !== entry.stream) {
+        if (route?.stream !== entry.stream || route.channel !== channel || Boolean(route.effect) !== Boolean(entry.preset)) {
           removeRoute(entry.id);
-          try {
-            const source = context.createMediaStreamSource(entry.stream);
-            const gain = context.createGain();
-            gain.gain.value = gainValue(entry.gain);
-            source.connect(gain);
-            gain.connect(pluginInput);
-            const channels = entry.stream.getAudioTracks()[0]?.getSettings().channelCount === 1 ? 1 : 2;
-            route = { stream: entry.stream, source, gain, meter: createMeter(context, gain, channels) };
-            routes.set(entry.id, route);
-          } catch {
-            // A restricted or stopped source cannot silence the rest of Program.
-            continue;
+          let input = inputs.get(entry.stream);
+          if (!input) {
+            try {
+              input = { source: context.createMediaStreamSource(entry.stream), users: 0 };
+            } catch {
+              // A restricted or stopped source cannot silence the rest of Program.
+              continue;
+            }
+            inputs.set(entry.stream, input);
           }
+          if (channel && !input.splitter) {
+            input.splitter = context.createChannelSplitter(maxAudioInputChannels);
+            input.source.connect(input.splitter);
+          }
+          const routeInput = channel ? input.splitter! : input.source;
+          const gain = context.createGain();
+          const effect = entry.preset && createAudioInputEffect(context, entry.preset);
+          gain.gain.value = targetGain;
+          routeInput.connect(effect?.input ?? gain, (channel ?? 1) - 1);
+          effect?.output.connect(gain);
+          gain.connect(pluginInput);
+          input.users += 1;
+          const meter = createMeter(context, gain, effect ? 2 : channels);
+          route = { stream: entry.stream, channel, input: routeInput, gain, targetGain, effect, meter, meterChannels };
+          routes.set(entry.id, route);
         }
-        if (route) setGain(route.gain, entry.gain, context.currentTime);
+        if (route.targetGain !== targetGain) setGain(route.gain, targetGain, context.currentTime);
+        route.targetGain = targetGain;
+        route.meterChannels = meterChannels;
+        if (entry.preset) route.effect?.setPreset(entry.preset);
       }
       Array.from(routes.keys()).filter(id => !active.has(id)).forEach(removeRoute);
       resume();
     },
     readMeters: (): AudioMeterSnapshot => {
       const meters: AudioMeterSnapshot = { master: masterMeter.read() };
-      routes.forEach((route, id) => { meters[id] = route.meter.read(); });
+      routes.forEach((route, id) => { meters[id] = route.meter.read(route.meterChannels); });
       return meters;
     },
     stop: () => {
