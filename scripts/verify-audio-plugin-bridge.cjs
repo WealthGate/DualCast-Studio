@@ -123,7 +123,12 @@ if (!process.versions.electron) {
         for(let i=0;i<20;i++){if(!(await window.dualcast.getAudioPluginStatus()).running)break;await wait(50);}
         const failed=await window.dualcast.getAudioPluginStatus();assert(!failed.running,'Killed host was still active');
         await wait(150);const afterCrash=compare(await capture(),2048,1);assert(afterCrash.matched===1,'Plugin crash interrupted or retimed source audio: '+JSON.stringify(afterCrash));
-        tone.disconnect();
+        await window.dualcast.configureAudioPlugin({action:'routing',routing:'replace'});
+        const peak=data=>data.left.reduce((max,value)=>Math.max(max,Math.abs(value)),0);
+        await wait(150);assert(peak(await capture())<1e-6,'Replace leaked local audio with the plugin stopped');
+        await window.dualcast.configureAudioPlugin({action:'start',id:'fixture-attenuator'});await wait(300);
+        assert(peak(await capture())<1e-6,'Local source leaked into the replacement plugin');
+        await window.dualcast.configureAudioPlugin({action:'stop'});
         await window.dualcast.configureAudioPlugin({action:'start',id:'fixture-generator'});await wait(400);
         const generated=await capture();let generatedCount=0;
         for(let i=4096;i<generated.left.length;i++)if(Math.abs(generated.left[i]-0.125)<1e-6&&Math.abs(generated.right[i]-0.125)<1e-6)generatedCount++;
@@ -133,8 +138,13 @@ if (!process.versions.electron) {
         for(let i=4096;i<reduced.left.length;i++)if(Math.abs(reduced.left[i]-0.0625)<1e-6)reducedCount++;
         const masterFraction=reducedCount/(reduced.left.length-4096);assert(masterFraction>0.85,'Master failed for generated audio: '+masterFraction);
         assert(bus.destination.stream.getAudioTracks()[0]===track&&track.readyState==='live','Native operations replaced Program output track');
-        await window.dualcast.configureAudioPlugin({action:'stop'});await wait(100);t.detach();t.offBlocks();t.offStatus();tone.stop();bus.stop();
-        return {afterCrash,generatorFraction,mutedPeak,masterFraction,stableAudioTrack:true,statuses:stats.statuses};
+        await window.dualcast.configureAudioPlugin({action:'stop'});await wait(150);
+        assert(peak(await capture())<1e-6,'Stopping the plugin exposed local audio in Replace mode');
+        bus.setMasterGain(1);
+        await window.dualcast.configureAudioPlugin({action:'routing',routing:'process'});await wait(150);
+        assert(compare(await capture(),2048,1).matched===1,'Returning to Process mode did not restore local audio');
+        t.detach();t.offBlocks();t.offStatus();tone.stop();bus.stop();
+        return {afterCrash,generatorFraction,mutedPeak,masterFraction,replaceSourceVerified:true,stableAudioTrack:true,statuses:stats.statuses};
       })()`, true);
       console.log(JSON.stringify({ ...initial, ...recovered, rendererErrors: errors }));
       if (errors.length) throw Error("Renderer emitted errors: " + errors.join("; "));

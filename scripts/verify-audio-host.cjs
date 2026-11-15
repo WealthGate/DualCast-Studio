@@ -11,9 +11,10 @@ function build(...args) {
   const run = spawnSync(process.execPath, [path.join(__dirname, "build-audio-host.cjs"), ...args], { windowsHide: true, encoding: "utf8", timeout: 120000 });
   assert.equal(run.status, 0, run.stdout + run.stderr);
 }
-build(); build("--test-fixture");
+build(); build("--test-fixture"); build("--test-vst3-fixture");
 const exe = path.join(root, "assets/audio-host/openchurch-audio-host.exe");
 const fixture = path.join(root, "tmp/native-audio-host/test-plugin.dll");
+const fixtureVst3 = path.join(root, "tmp/native-audio-host/test-plugin-vst3.vst3");
 const state = path.join(root, "tmp/native-audio-host/test-settings.ocvst");
 const stateGenerator = path.join(root, "tmp/native-audio-host/test-generator.ocvst");
 const stateInvalid = path.join(root, "tmp/native-audio-host/test-invalid.ocvst");
@@ -111,6 +112,24 @@ console.log('PASS: actionable initialization and unsupported MIDI instrument dia
 const restoreCrash = run(fixture, Buffer.alloc(0), ['--state', state], { OPENCHURCH_TEST_PLUGIN_CRASH_RESTORE: '1' });
 assert.notEqual(restoreCrash.status, 0);
 assert.ok(events(restoreCrash).some(item => item.event === 'restoring'), 'Identify a preset restore crash before the effect takes down its host');
+const probeVst3 = run(fixtureVst3, undefined, ['--probe']);
+assert.equal(probeVst3.status, 0, probeVst3.stderr.toString());
+assert.equal(events(probeVst3).find(item => item.event === 'ready')?.format, 'vst3');
+const stateVst3 = path.join(root, 'tmp/native-audio-host/vst3-settings.bin');
+fs.rmSync(stateVst3, { force: true });
+const v3 = run(fixtureVst3, packet(1, 31, pcm), ['--state', stateVst3]);
+assert.equal(v3.status, 0, v3.stderr.toString());
+const v3Block = responses(v3.stdout)[0].data;
+for (let offset = 0; offset < pcm.length; offset += 4) assert.equal(v3Block.readFloatLE(offset), Math.fround(pcm.readFloatLE(offset) * .5));
+const v3Preset = fs.readFileSync(stateVst3);
+assert.equal(v3Preset.length, 28);
+v3Preset.writeFloatLE(-1, 24);
+fs.writeFileSync(stateVst3, v3Preset);
+const v3Generated = run(fixtureVst3, packet(1, 32, silent), ['--state', stateVst3]);
+assert.equal(v3Generated.status, 0, v3Generated.stderr.toString());
+const v3Signal = responses(v3Generated.stdout)[0].data;
+for (let offset = 0; offset < v3Signal.length; offset += 4) assert.equal(v3Signal.readFloatLE(offset), .125);
+console.log('PASS: VST3 factory probe, stereo realtime processing, persisted state and silent-input generation.');
 if (process.argv.includes("--installed")) {
   for (const name of ["reaeq-standalone.dll", "reastream-standalone.dll"]) {
     const plugin = path.join(process.env.ProgramFiles || "C:\\Program Files", "VSTPlugins/ReaPlugs", name);

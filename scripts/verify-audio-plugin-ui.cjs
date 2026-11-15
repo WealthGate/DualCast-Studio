@@ -36,14 +36,19 @@ if (!process.versions.electron) {
   fs.mkdirSync(profile, { recursive: true }); app.setPath('userData', profile); app.setAppPath(root);
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
   const installed = process.argv.includes('--installed');
-  const folder = installed ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'VSTPlugins/ReaPlugs') : path.join(temp, 'fixtures');
-  if (!installed) {
+  const installedVst3 = process.argv.includes('--vst3-installed');
+  const fixture = !installed && !installedVst3;
+  const folder = installedVst3 ? path.join(process.env.CommonProgramFiles, 'VST3/Plugins.VST.NDI.Input.vst3') : installed ? path.join(process.env.ProgramFiles || 'C:\\Program Files', 'VSTPlugins/ReaPlugs') : path.join(temp, 'fixtures');
+  if (fixture) {
     // Validate the production scanner/bridge against a noisy legacy effect,
     // not just a modern effect that keeps stdout clean.
     process.env.OPENCHURCH_TEST_PLUGIN_DIAGNOSTICS = '1';
     process.env.OPENCHURCH_TEST_PLUGIN_LEGACY = '1';
     fs.mkdirSync(folder, { recursive: true });
     fs.copyFileSync(path.join(root, 'tmp/native-audio-host/test-plugin.dll'), path.join(folder, 'test-plugin.dll'));
+    const bundle = path.join(folder, 'fixture.vst3', 'Contents', 'x86_64-win');
+    fs.mkdirSync(bundle, { recursive: true });
+    fs.copyFileSync(path.join(root, 'tmp/native-audio-host/test-plugin-vst3.vst3'), path.join(bundle, 'fixture.vst3'));
     fs.writeFileSync(path.join(folder, 'bad.dll'), 'MZ');
   }
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
@@ -65,8 +70,8 @@ if (!process.versions.electron) {
         await until(()=>!button('Scan folder…').disabled);
         let status=await window.dualcast.getAudioPluginStatus();
         assert(status.scan.added>0,'Scan found no usable effects: '+JSON.stringify(status));
-        const select=document.querySelector('select');
-        const target=status.plugins.find(p=>${installed ? "/ReaStream/.test(p.name)&&!p.name.includes(':4')" : "true"});
+        const select=document.querySelector('select[aria-label="Audio plugin"]');
+        const target=status.plugins.find(p=>${installedVst3 ? "p.format==='vst3' && p.name==='NDI Input'" : installed ? "/ReaStream/.test(p.name)&&!p.name.includes(':4')" : "p.format==='vst2'"});
         assert(target,'Scan did not find requested plugin');
         select.value=target.id;select.dispatchEvent(new Event('change',{bubbles:true}));await wait(50);
         assert(!button('Enable plugin').disabled,'Scanned plugin was not selectable');
@@ -74,21 +79,31 @@ if (!process.versions.electron) {
         await until(()=>button('Bypass plugin')&&!button('Bypass plugin').disabled);
         await until(()=>testAudio.blocks>5);
         status=await window.dualcast.getAudioPluginStatus();assert(status.running&&status.activeId===target.id,'Enable failed');
-        ${installed ? "assert(!button('Open plugin controls').disabled,'ReaStream controls unavailable');" : "assert(status.scan.issues.some(i=>i.includes('bad.dll')),'Bad DLL was not reported');"}
+        ${fixture ? "assert(status.scan.issues.some(i=>i.includes('bad.dll')),'Bad DLL was not reported');" : "assert(!button('Open plugin controls').disabled,'Plugin controls unavailable');"}
         const before=status.plugins.map(p=>p.id);
         button('Bypass plugin').click();await until(()=>button('Enable plugin')&&!button('Enable plugin').disabled);
         button('Scan folder…').click();await wait(50);await until(()=>!button('Scan folder…').disabled);
         status=await window.dualcast.getAudioPluginStatus();
         assert(status.scan.added===0&&status.scan.existing===before.length,'Rescan duplicated registrations');
         assert(status.plugins.every(p=>before.includes(p.id)),'Rescan lost saved IDs');
+        if(${fixture}) {
+          const vst3=status.plugins.find(p=>p.format==='vst3');
+          assert(vst3?.name==='OpenChurch VST3 test','VST3 bundle was not registered');
+          const next=await window.dualcast.configureAudioPlugin({action:'start',id:vst3.id});
+          assert(next.running&&next.activeId===vst3.id,'VST3 failed to activate');
+          const blocks=testAudio.blocks;
+          await until(()=>testAudio.blocks>blocks+5);
+          await window.dualcast.configureAudioPlugin({action:'stop'});
+          select.value=target.id;select.dispatchEvent(new Event('change',{bubbles:true}));
+        }
         testAudio.detach();testAudio.bus.stop();
         return {name:target.name,nativeBlocks:testAudio.blocks,scanned:status.scan.checked,existing:status.scan.existing,issues:status.scan.issues};
       })()`, true);
-      if (!installed) {
+      if (fixture) {
         process.env.OPENCHURCH_TEST_PLUGIN_CRASH_RESTORE = '1';
         const failure = await window.webContents.executeJavaScript(`(async()=>{
           const status=await window.dualcast.getAudioPluginStatus();
-          try {await window.dualcast.configureAudioPlugin({action:'start',id:status.plugins[0].id});throw Error('Expected preset restore failure');}
+          try {await window.dualcast.configureAudioPlugin({action:'start',id:status.plugins.find(item=>item.format==='vst2').id});throw Error('Expected preset restore failure');}
           catch(error){return {message:String(error),running:(await window.dualcast.getAudioPluginStatus()).running};}
         })()`);
         delete process.env.OPENCHURCH_TEST_PLUGIN_CRASH_RESTORE;

@@ -26,7 +26,7 @@ export const installDevelopmentBridge = () => {
     configureVirtualCamera: unavailableVirtualCamera,
     sendVirtualCameraFrame: async () => false,
     onVirtualCameraStatus: () => noopUnsubscribe,
-    getAudioPluginStatus: async () => ({ supported: false, plugins: [], activeId: null, running: false, session: null, message: "Native VST2 plugins require the Windows x64 desktop app." }),
+    getAudioPluginStatus: async () => ({ supported: false, plugins: [], activeId: null, running: false, session: null, message: "Native VST plugins require the Windows x64 desktop app." }),
     configureAudioPlugin: async () => { throw new Error("Native plugins require the Windows x64 desktop app."); },
     sendAudioPluginBlock: () => undefined,
     onAudioPluginBlock: () => noopUnsubscribe,

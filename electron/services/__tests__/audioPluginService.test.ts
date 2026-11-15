@@ -34,4 +34,11 @@ describe.skipIf(process.platform !== "win32" || process.arch !== "x64")("audio p
     expect(getAudioPluginStatus().plugins[0]).toMatchObject({ available: true, hasEditor: true });
     expect(getAudioPluginStatus().plugins[0]).not.toHaveProperty("filePath");
   });
+  it("keeps Replace mode and diagnostics when an editor request races a stopped host", async () => {
+    const configure = mocks.handlers.get(IpcChannels.configureAudioPlugin)!;
+    await configure({ sender: studio }, { action: "routing", routing: "replace" });
+    const failure = await configure({ sender: studio }, { action: "bridge-error" });
+    expect(failure).toMatchObject({ running: false, routing: "replace", message: expect.stringContaining("Program audio stays silent") });
+    await expect(configure({ sender: studio }, { action: "editor" })).resolves.toMatchObject({ message: failure.message });
+  });
 });

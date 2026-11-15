@@ -113,6 +113,28 @@ async function browserVerification(root) {
     assert(routed.at(-1) === "song", "A hymn click opens its presentation controls and starts at slide one");
     await until(() => !itemButton("John 3:16").disabled, "Scripture ready"); itemButton("John 3:16").click(); await until(() => scripture.querySelector("#resolvedReference")?.value === "John 3:16", "scripture panel routed");
     assert(routed.at(-1) === "scripture" && scripture.querySelector("#scriptureText").value === "For God so loved the world", "Scripture clicks populate its editor with clean text and show it live");
+    const scriptureCue = store.getState().settings.lowerThird.programSlideId;
+    set(schedule, '[aria-label="Find a service item"]', 'Fourth line');
+    await until(() => schedule.querySelectorAll('.schedule-items > li').length === 1 && itemButton('Test hymn'), 'find hymn by slide text');
+    const browse = schedule.querySelector('[aria-label="Browse slides for Test hymn"]');
+    browse.click();
+    const slideTwo = await (async () => {
+      const get = () => schedule.querySelector('[aria-label="Show slide 2 of Test hymn live"]');
+      await until(get, 'show matching slide in schedule browser'); return get();
+    })();
+    assert(store.getState().settings.lowerThird.programSlideId === scriptureCue && schedule.querySelectorAll('.schedule-slide-results > li').length === 1, 'Searching and browsing a service leaves the live cue in place');
+    slideTwo.click();
+    await until(() => store.getState().settings.lowerThird.programSlideId?.endsWith(hymn.id + ':1') && routed.at(-1) === 'song', 'show selected slide directly');
+    assert(routed.at(-1) === 'song', 'A specific schedule slide goes live and opens its controls');
+    browse.click(); set(schedule, '[aria-label="Find a service item"]', '');
+    const beforeSearch = store.getState().settings.lowerThird;
+    const unrelated = { id: 'queue-legacy', text: 'Unique announcement keyword', kind: 'text' };
+    await store.getState().updateSettings({ lowerThird: { ...beforeSearch, slides: [unrelated, ...beforeSearch.slides] } });
+    await until(() => panel.querySelectorAll('.lower-third-slide').length === 2, 'follow scheduled preview deck');
+    set(panel, '[aria-label="Find slides"]', 'announcement keyword');
+    await until(() => panel.querySelectorAll('.lower-third-slide').length === 1 && panel.querySelector('.lower-third-slide').textContent.includes(unrelated.text), 'search across queued decks');
+    assert(store.getState().settings.lowerThird.programSlideId === beforeSearch.programSlideId, 'Queue search finds slides outside the current deck without taking them live');
+    set(panel, '[aria-label="Find slides"]', '');
     const originalOrder = store.getState().settings.serviceSchedules[0].items.map(item => item.id), liveId = store.getState().settings.lowerThird.programSlideId;
     const transfer = new DataTransfer(), dragged = items()[0].querySelector(".schedule-drag-handle"), target = items()[2];
     dragged.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: transfer })); await wait(30);

@@ -16,6 +16,7 @@ import { cleanupRecordingSessions, cleanupStaleRecordingFiles } from "./services
 import { forceStopStreaming } from "./services/streamingService";
 import { cleanupEditorCommands } from "./services/editorService";
 import { registerAudioPluginIpc, stopAudioPlugins } from "./services/audioPluginService";
+import { declareAudioWorkletProtocol, registerAudioWorkletProtocol } from "./services/audioWorkletProtocol";
 import { installApplicationMenu } from "./services/menuService";
 import { IpcChannels } from "../src/shared/ipc";
 import { registerDisplayEscape } from "./services/displayEscapeService";
@@ -24,6 +25,7 @@ import { closeMultiviewWindow, hasMultiviewWindow } from "./services/multiviewSe
 
 
 const isDev = !app.isPackaged && Boolean(process.env.VITE_DEV_SERVER_URL);
+declareAudioWorkletProtocol();
 if (isDev) {
   const devUserData = path.join(app.getPath("appData"), "OpenChurch Broadcast Studio Dev");
   app.setPath("userData", devUserData);
@@ -89,6 +91,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
+    registerAudioWorkletProtocol(path.join(__dirname, "../dist/renderer"));
     setupLogging();
     await cleanupStaleRecordingFiles();
     createMainWindow();

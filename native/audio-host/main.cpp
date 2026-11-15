@@ -14,11 +14,13 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
 #include <xmmintrin.h>
 #include "vst2-abi.h"
+#include "vst3-host.h"
 
 using namespace ocvst;
 namespace {
@@ -26,6 +28,7 @@ constexpr uint32_t MaxFrames = 8192, MaxState = 64 * 1024 * 1024;
 constexpr int MaxLatency = 8192;
 constexpr UINT ShowEditorMessage = WM_APP + 1, SaveStateMessage = WM_APP + 2;
 Effect* plugin = nullptr;
+std::unique_ptr<ocvst3::EffectHost> vst3;
 HMODULE module = nullptr;
 HWND window = nullptr;
 HANDLE doneEvent = nullptr;
@@ -128,9 +131,19 @@ void restoreState() {
     }
   }
 }
+void writeState(const std::vector<char>& bytes) {
+  if (bytes.empty() || bytes.size() > MaxState) return;
+  const std::wstring temporary = statePath + L".tmp";
+  std::ofstream output(std::filesystem::path(temporary), std::ios::binary | std::ios::trunc);
+  output.write(bytes.data(), bytes.size()); output.close();
+  if (!output || !MoveFileExW(temporary.c_str(), statePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    event("{\"event\":\"warning\",\"message\":\"Could not save plugin settings.\"}");
+  else event("{\"event\":\"saved\"}");
+}
 void saveState() {
-  if (statePath.empty() || !plugin || !initialized) return;
+  if (statePath.empty() || !initialized) return;
   std::lock_guard<std::recursive_mutex> guard(pluginMutex);
+  if (vst3) { writeState(vst3->save()); return; }
   std::vector<char> bytes;
   uint32_t kind = 0;
   if (plugin->flags & ProgramChunks) {
@@ -148,28 +161,29 @@ void saveState() {
   }
   if (!kind) return;
   uint32_t header[4] = {0x3156434f, (uint32_t)plugin->id, kind, (uint32_t)bytes.size()};
-  const std::wstring temporary = statePath + L".tmp";
-  std::ofstream output(std::filesystem::path(temporary), std::ios::binary | std::ios::trunc);
-  output.write((char*)header, 16); output.write(bytes.data(), bytes.size()); output.close();
-  if (!output || !MoveFileExW(temporary.c_str(), statePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-    fail("Could not save plug-in settings.");
-  else event("{\"event\":\"saved\"}");
+  const auto* headerBytes = reinterpret_cast<const char*>(header);
+  bytes.insert(bytes.begin(), headerBytes, headerBytes + sizeof(header));
+  writeState(bytes);
 }
 void closeEditor() {
   if (!editorOpen) return;
   std::lock_guard<std::recursive_mutex> guard(pluginMutex);
-  dispatch(EditorClose); editorOpen = false;
+  if (vst3) vst3->closeEditor(); else dispatch(EditorClose);
+  editorOpen = false;
   ShowWindow(window, SW_HIDE); saveState();
   event("{\"event\":\"editor\",\"open\":false}");
 }
 void showEditor() {
-  if (!plugin || !(plugin->flags & HasEditor)) { fail("This plug-in has no native editor."); return; }
   std::lock_guard<std::recursive_mutex> guard(pluginMutex);
   if (!editorOpen) {
-    dispatch(EditorOpen, 0, 0, window); editorOpen = true;
-    EditorRect* rect = nullptr;
-    dispatch(EditorGetRect, 0, 0, &rect);
-    if (rect) resizeEditor(rect->right - rect->left, rect->bottom - rect->top);
+    if (vst3) editorOpen = vst3->showEditor(window);
+    else if (plugin && (plugin->flags & HasEditor)) {
+      dispatch(EditorOpen, 0, 0, window); editorOpen = true;
+      EditorRect* rect = nullptr;
+      dispatch(EditorGetRect, 0, 0, &rect);
+      if (rect) resizeEditor(rect->right - rect->left, rect->bottom - rect->top);
+    }
+    if (!editorOpen) { event("{\"event\":\"warning\",\"message\":\"Could not open the plug-in's native editor.\"}"); return; }
   }
   ShowWindow(window, SW_SHOWNORMAL); SetForegroundWindow(window);
   event("{\"event\":\"editor\",\"open\":true}");
@@ -206,8 +220,9 @@ void audioLoop() {
   _mm_setcsr(_mm_getcsr() | 0x8040);
   SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
   std::vector<float> stereo(MaxFrames * 2), result(MaxFrames * 2);
-  const int pluginInputs = plugin->inputs, pluginOutputs = plugin->outputs;
-  const int pluginLatency = std::max(plugin->latency, 0);
+  const int pluginInputs = vst3 ? vst3->inputs : plugin->inputs;
+  const int pluginOutputs = vst3 ? vst3->outputs : plugin->outputs;
+  const int pluginLatency = vst3 ? vst3->delay() : std::max(plugin->latency, 0);
   const int channelCount = std::max({2, pluginInputs, pluginOutputs});
   std::vector<std::vector<float>> in(channelCount, std::vector<float>(blockSize));
   std::vector<std::vector<float>> out(channelCount, std::vector<float>(blockSize));
@@ -233,20 +248,31 @@ void audioLoop() {
         }
         {
           std::lock_guard<std::recursive_mutex> guard(pluginMutex);
-          if (plugin->inputs != pluginInputs || plugin->outputs != pluginOutputs) {
-            fail("The plug-in changed its audio channel layout. Reload it to use the new layout.");
-            running.store(false); SetEvent(doneEvent); return;
-          }
-          if (std::max(plugin->latency, 0) != pluginLatency) {
-            fail("The plug-in changed its processing latency. Settings were saved; reload the plug-in to align its new delay.");
-            running.store(false); SetEvent(doneEvent); return;
-          }
-          // Older VST2 effects accumulate into the already-cleared outputs.
-          const auto process = (plugin->flags & Replacing) && plugin->replace ? plugin->replace : plugin->process;
-          process(plugin, inputPointers.data(), outputPointers.data(), count);
-          if (std::max(plugin->latency, 0) != pluginLatency) {
-            fail("The plug-in changed its processing latency. Settings were saved; reload the plug-in to align its new delay.");
-            running.store(false); SetEvent(doneEvent); return;
+          if (vst3) {
+            try {
+              if (vst3->delay() != pluginLatency) throw std::runtime_error("The VST3 plug-in changed its latency. Enable it again to apply its settings.");
+              vst3->process(inputPointers.data(), outputPointers.data(), count, samplePosition.load());
+              if (vst3->delay() != pluginLatency) throw std::runtime_error("The VST3 plug-in changed its latency. Enable it again to apply its settings.");
+            } catch (const std::exception& error) {
+              fail(error.what());
+              running.store(false); SetEvent(doneEvent); return;
+            }
+          } else {
+            if (plugin->inputs != pluginInputs || plugin->outputs != pluginOutputs) {
+              fail("The plug-in changed its audio channel layout. Reload it to use the new layout.");
+              running.store(false); SetEvent(doneEvent); return;
+            }
+            if (std::max(plugin->latency, 0) != pluginLatency) {
+              fail("The plug-in changed its processing latency. Settings were saved; reload the plug-in to align its new delay.");
+              running.store(false); SetEvent(doneEvent); return;
+            }
+            // Older VST2 effects accumulate into the already-cleared outputs.
+            const auto process = (plugin->flags & Replacing) && plugin->replace ? plugin->replace : plugin->process;
+            process(plugin, inputPointers.data(), outputPointers.data(), count);
+            if (std::max(plugin->latency, 0) != pluginLatency) {
+              fail("The plug-in changed its processing latency. Settings were saved; reload the plug-in to align its new delay.");
+              running.store(false); SetEvent(doneEvent); return;
+            }
           }
         }
         for (int f = 0; f < count; ++f) for (int c = 0; c < 2; ++c) {
@@ -297,6 +323,19 @@ int wmain(int argc, wchar_t** argv) {
   }
   SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  auto extension = std::filesystem::path(pluginPath).extension().wstring();
+  std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+  std::string pluginName, vendorName;
+  if (extension == L".vst3") {
+    vst3 = std::make_unique<ocvst3::EffectHost>();
+    try {
+      auto preset = probe ? std::vector<char>{} : readState();
+      if (!preset.empty()) event("{\"event\":\"restoring\"}");
+      vst3->open(pluginPath, sampleRate, blockSize, preset, resizeEditor);
+      initialized = true;
+      pluginName = vst3->name; vendorName = vst3->vendor;
+    } catch (const std::exception& error) { fail(error.what()); vst3.reset(); CoUninitialize(); return 3; }
+  } else {
   module = LoadLibraryExW(pluginPath.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
   if (!module) { fail("Could not load this 64-bit Windows VST2 DLL or a required dependency (Windows error " + std::to_string(GetLastError()) + ")."); return 3; }
   auto entry = (Effect* (*)(HostCallback))GetProcAddress(module, "VSTPluginMain");
@@ -329,23 +368,34 @@ int wmain(int argc, wchar_t** argv) {
   char name[256]{}, vendor[256]{};
   dispatch(GetName, 0, 0, name); dispatch(GetVendor, 0, 0, vendor);
   name[255] = vendor[255] = 0;
-  const auto emitReady = [&]() { event("{\"event\":\"ready\",\"protocol\":1,\"format\":\"vst2\",\"name\":\"" + escaped(name) + "\",\"vendor\":\"" + escaped(vendor)
-       + "\",\"inputs\":" + std::to_string(plugin->inputs) + ",\"outputs\":" + std::to_string(plugin->outputs)
-       + ",\"parameters\":" + std::to_string(plugin->parameters) + ",\"hasEditor\":" + ((plugin->flags & HasEditor) ? "true" : "false")
-       + ",\"latencyFrames\":" + std::to_string(std::max(plugin->latency, 0)) + "}"); };
-  if (probe) { emitReady(); dispatch(Close); FreeLibrary(module); CoUninitialize(); return 0; }
+  pluginName = name; vendorName = vendor;
+  }
+  const auto latency = [&]() { return vst3 ? vst3->delay() : std::max(plugin->latency, 0); };
+  const auto emitReady = [&]() { event(std::string("{\"event\":\"ready\",\"protocol\":1,\"format\":\"") + (vst3 ? "vst3" : "vst2") + "\",\"name\":\"" + escaped(pluginName) + "\",\"vendor\":\"" + escaped(vendorName)
+       + "\",\"inputs\":" + std::to_string(vst3 ? vst3->inputs : plugin->inputs) + ",\"outputs\":" + std::to_string(vst3 ? vst3->outputs : plugin->outputs)
+       + ",\"parameters\":" + std::to_string(vst3 ? 0 : plugin->parameters) + ",\"hasEditor\":" + ((vst3 ? vst3->hasEditor() : (plugin->flags & HasEditor)) ? "true" : "false")
+       + ",\"latencyFrames\":" + std::to_string(latency()) + "}"); };
+  const auto unload = [&]() {
+    if (vst3) vst3.reset();
+    else { dispatch(Close); plugin = nullptr; FreeLibrary(module); }
+  };
+  if (probe) { emitReady(); unload(); CoUninitialize(); return 0; }
   WNDCLASSW wc{}; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"OpenChurchAudioPluginEditor"; wc.lpfnWndProc = windowProc;
   wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&wc);
   std::wstring title = std::filesystem::path(pluginPath).stem().wstring() + L" — OpenChurch Audio";
   window = CreateWindowExW(0, wc.lpszClassName, title.c_str(), WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX,
                           CW_USEDEFAULT, CW_USEDEFAULT, 700, 500, nullptr, nullptr, wc.hInstance, nullptr);
-  if (!window) { fail("Could not create the plug-in editor window."); dispatch(Close); FreeLibrary(module); return 4; }
+  if (!window) { fail("Could not create the plug-in editor window."); unload(); CoUninitialize(); return 4; }
   doneEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-  dispatch(MainsChanged, 0, 1); dispatch(StartProcess);
-  if (std::max(plugin->latency, 0) > MaxLatency || plugin->inputs < 0 || plugin->inputs > 64 || plugin->outputs < 1 || plugin->outputs > 64) {
+  if (!doneEvent) { fail("Could not initialize the audio processing event."); unload(); DestroyWindow(window); CoUninitialize(); return 4; }
+  try {
+    if (vst3) { vst3->activate(); vst3->startProcessing(); }
+    else { dispatch(MainsChanged, 0, 1); dispatch(StartProcess); }
+  } catch (const std::exception& error) { fail(error.what()); unload(); DestroyWindow(window); CloseHandle(doneEvent); CoUninitialize(); return 3; }
+  if (latency() > MaxLatency || (!vst3 && (plugin->inputs < 0 || plugin->inputs > 64 || plugin->outputs < 1 || plugin->outputs > 64))) {
     fail("The plug-in requires an unsupported channel layout or more than 8192 frames of delay. Reduce its lookahead/latency and reload it.");
-    dispatch(StopProcess); dispatch(MainsChanged, 0, 0); dispatch(Close);
-    DestroyWindow(window); CloseHandle(doneEvent); FreeLibrary(module); CoUninitialize(); return 3;
+    if (!vst3) { dispatch(StopProcess); dispatch(MainsChanged, 0, 0); }
+    unload(); DestroyWindow(window); CloseHandle(doneEvent); CoUninitialize(); return 3;
   }
   emitReady();
   _setmode(_fileno(stdin), _O_BINARY);
@@ -355,13 +405,13 @@ int wmain(int argc, wchar_t** argv) {
     MsgWaitForMultipleObjects(1, &doneEvent, FALSE, 50, QS_ALLINPUT);
     MSG msg{};
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
-    if (editorOpen) {
+    if (editorOpen && !vst3) {
       std::lock_guard<std::recursive_mutex> guard(pluginMutex); dispatch(EditorIdle);
     }
   }
   audio.join();
   closeEditor(); saveState();
-  dispatch(StopProcess); dispatch(MainsChanged, 0, 0); dispatch(Close); plugin = nullptr;
-  DestroyWindow(window); CloseHandle(doneEvent); FreeLibrary(module); CoUninitialize();
+  if (!vst3) { dispatch(StopProcess); dispatch(MainsChanged, 0, 0); }
+  unload(); DestroyWindow(window); CloseHandle(doneEvent); CoUninitialize();
   return 0;
 }

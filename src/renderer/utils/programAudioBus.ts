@@ -51,7 +51,9 @@ export const createProgramAudioBus = () => {
   // Generators and network receiver plugins may produce signal with silent
   // input. Keep the EQ, final master and Mute all downstream of the insert.
   const pluginInput = context.createGain();
-  pluginInput.connect(equalizer.input);
+  const sourceFallback = context.createGain();
+  sourceFallback.connect(equalizer.input);
+  pluginInput.connect(sourceFallback);
   equalizer.output.connect(masterGain);
   const output = createStereoProgramOutput(context, masterGain);
   let pluginNode: AudioNode | null = null;
@@ -83,13 +85,14 @@ export const createProgramAudioBus = () => {
   return {
     context, destination, masterGain, output, monitor, equalizer, pluginInput,
     setMasterGain: (value: number) => setGain(masterGain, value, context.currentTime),
+    setPluginReplacement: (replace: boolean) => { sourceFallback.gain.value = replace ? 0 : 1; },
     setPluginNode: (node: AudioNode | null) => {
       if (node === pluginNode) return;
       // Connect the replacement before removing the previous edge, within one
       // JS task, so the audio thread never sees a disconnected destination.
       if (node) node.connect(equalizer.input);
-      pluginInput.connect(node ?? equalizer.input);
-      pluginInput.disconnect(pluginNode ?? equalizer.input);
+      pluginInput.connect(node ?? sourceFallback);
+      pluginInput.disconnect(pluginNode ?? sourceFallback);
       pluginNode?.disconnect(equalizer.input);
       pluginNode = node;
     },
@@ -131,6 +134,7 @@ export const createProgramAudioBus = () => {
       masterMeter.stop();
       equalizer.stop();
       pluginInput.disconnect();
+      sourceFallback.disconnect();
       pluginNode?.disconnect(equalizer.input);
       silence.stop();
       destination.stream.getTracks().forEach(track => track.stop());

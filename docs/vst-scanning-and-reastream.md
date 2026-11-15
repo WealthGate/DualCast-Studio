@@ -10,28 +10,28 @@ Scan details can still include DLLs that are support libraries rather than VST2 
 
 Open **Audio Mixer → VST audio plugin** in the Windows x64 desktop app.
 
-1. Choose **Scan installed VST2 plugins**. The app searches `Program Files/VSTPlugins`, `Program Files/Steinberg/VstPlugins`, the Common Files VST2 folders, the Windows 64-bit VST registry locations, `VST_PATH`, and previously chosen folders.
-2. For an installation elsewhere, choose **Scan folder…**. The selected folder is searched recursively and remembered for future installed-plugin scans. **Add VST2 .dll** still accepts a single file.
-3. Select a discovered plugin and choose **Enable plugin**. Its native controls open automatically when it has an editor. Use **Open plugin controls** to reopen them.
+1. Choose **Scan installed VST plugins**. The app searches the usual Windows VST2 paths, the Common Files and per-user VST3 folders, Windows VST registry locations, `VST_PATH`, and previously chosen folders.
+2. Use **Scan folder…** for a custom folder or a `.vst3` bundle. **Add plugin file** accepts a standalone VST2 `.dll` or VST3 `.vst3` file.
+3. Select the plugin and choose **Process Source Audio** to run an effect on the existing mix, or **Replace Source Audio** for a receiver or generator. Enable the plugin. If it has a native editor, the controls open automatically. Use **Open plugin controls** to reopen them.
 4. Choose **Bypass plugin** to stop it and save its settings. Enable again after restarting the app. Only one plugin runs at a time. EQ and master volume follow the plugin.
 
-Scans preserve existing registration IDs and presets and leave DLLs in their installed locations. They do not enable audio processing. Duplicate files are skipped. Invalid DLLs and failed probes appear under **Scan details**; one failure does not stop other files from being scanned. VST3 bundles are skipped. Scanning is bounded to 256 DLLs, 10,000 directory entries, 12 directory levels and two minutes of probing, with 10 seconds per probe and at most 64 registered plugins. The app reports when a limit is reached; select a smaller folder to continue. Up to 20 failure details are shown. Scans may execute third-party plugin initialization in an isolated helper.
+Scans preserve registration IDs and presets. Failed probes appear under **Scan details**. Scanning is bounded to 256 candidates, 10,000 directory entries, 12 directory levels and two minutes of probing, with 10 seconds per probe and at most 64 registered plugins. Choose a smaller folder if the scan reaches a limit.
 
 ## Receive ReaStream audio
 
 Use the installed **64-bit ReaPlugs** VST2 DLL, commonly `C:\Program Files\VSTPlugins\ReaPlugs\reastream-standalone.dll`. The separate `reastream-standalone-4.dll` variant is also discovered; the host uses its first stereo output pair.
 
-1. Scan or add the DLL, select **ReaStream (ReaPlugs Edition)** and choose **Enable plugin**.
+1. Scan or add the DLL and select **ReaStream (ReaPlugs Edition)**. Choose **Replace Source Audio**, then **Enable plugin**.
 2. In the controls, turn on **Enable audio/MIDI**, choose **Receive audio/MIDI**, and enter the same identifier as the sending ReaStream instance.
 3. Configure the sending instance for the receiver's network address. Permit the OpenChurch audio host through Windows Firewall if prompted. Network routing and firewall settings must allow sender and receiver to communicate.
-4. Play audio at the sender and check Program audio before broadcasting. The receiver continues processing silence when no microphone/source is active. EQ, master volume, Mute all, monitoring, recording and streaming apply to its output.
+4. Play audio at the sender and check Program audio before broadcasting. The receiver gets a continuous stream of silent blocks. EQ, master volume, Mute all, monitoring, recording and streaming apply to its output. Replace mode stays silent when the plugin stops, misses a block or receives no audio. To resume local audio, bypass the plugin and choose **Process Source Audio**.
 
 ## If Enable is unavailable or fails
 
 - **No plugin selected:** scan or add a DLL, then select it.
 - **File missing:** the DLL was moved or removed. Scan its current folder or remove the stale entry and add the installed DLL again. Removing an entry leaves the plugin installation intact.
 - **Audio host missing:** reinstall the latest Windows x64 app. Development checkouts must run `npm run prepare:audio-host`. Previously this condition incorrectly displayed only the generic Windows x64 requirement.
-- **32-bit, VST3 or wrong architecture:** install/select the 64-bit Windows VST2 DLL. Native hosting on macOS/Linux is not included.
+- **Wrong architecture:** install the Windows x64 effect. Native VST hosting is available in the Windows x64 desktop app.
 - **Dependency/load error:** retain the original installation folder and repair the plugin installation if needed. The app shows the native host's load error. A failed or stalled plugin is bypassed; Program source audio continues.
 - **Could not initialize / timeout:** check the plugin's license/activation manager and required dependencies, complete any plugin activation dialog, and retry. This describes an initialization failure rather than declaring the DLL invalid.
 - **MIDI instrument:** choose an audio effect. This slot does not supply MIDI notes to instruments.

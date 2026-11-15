@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
-type Message = { type: string; sequence?: number; samples?: Float32Array; value?: boolean; latencyFrames?: number };
+type Message = { type: string; sequence?: number; samples?: Float32Array; value?: boolean; replace?: boolean; latencyFrames?: number };
 type Processor = { port: { onmessage: (event: { data: Message }) => void }; process: (inputs: Float32Array[][], outputs: Float32Array[][]) => boolean };
 const setup = () => {
   let construct: new () => Processor;
@@ -53,5 +53,16 @@ describe("live native plugin deadline and dry fallback", () => {
     processor.port.onmessage({ data: { type: "enabled", value: false } });
     for (let step = 0; step < 40; step++) tick(false);
     for (let index = 3072; index < left.length; index++) expect(left[index]).toBe(Math.fround(((index - 3072) % 10007) / 10007));
+  });
+
+  it("sends silence to the receiver and never falls back to local sound in Replace mode", () => {
+    const { processor, tick, left, right } = setup();
+    processor.port.onmessage({ data: { type: "enabled", value: true, replace: true } });
+    for (let step = 0; step < 80; step++) tick(true);
+    for (let step = 0; step < 40; step++) tick(false);
+    processor.port.onmessage({ data: { type: "enabled", value: false, replace: true } });
+    for (let step = 0; step < 40; step++) tick(false);
+    expect(left.every(sample => sample === 0)).toBe(true);
+    expect(right.every(sample => sample === 0)).toBe(true);
   });
 });

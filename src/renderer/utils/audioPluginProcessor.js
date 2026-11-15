@@ -1,7 +1,7 @@
 /* global AudioWorkletProcessor, registerProcessor */
 // The real-time thread never waits for Electron or native code. Every block has
-// a fixed output deadline; a late reply uses the original samples at that same
-// deadline, so a plugin cannot create silence, reorder audio or grow latency.
+// a fixed output deadline. Late replies use delayed source audio in Process
+// mode and silence in Replace mode.
 class NativePluginProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -16,10 +16,12 @@ class NativePluginProcessor extends AudioWorkletProcessor {
     this.selected = null;
     this.stopped = false;
     this.enabled = false;
+    this.replace = false;
     this.port.onmessage = ({ data }) => {
       if (data.type === "stop") { this.stopped = true; this.replies.clear(); return; }
       if (data.type === "enabled") {
         this.enabled = data.value === true;
+        this.replace = data.replace === true;
         if (Number.isInteger(data.latencyFrames) && data.latencyFrames >= 0 && data.latencyFrames <= 8192) this.latency = data.latencyFrames;
         this.replies.clear(); this.selected = null; return;
       }
@@ -53,8 +55,8 @@ class NativePluginProcessor extends AudioWorkletProcessor {
         }
         const dryFrame = read - this.latency;
         const dryIndex = (Math.max(0, dryFrame) % this.ringFrames) * 2;
-        const dryLeft = dryFrame >= 0 ? this.dry[dryIndex] : 0;
-        const dryRight = dryFrame >= 0 ? this.dry[dryIndex + 1] : 0;
+        const dryLeft = !this.replace && dryFrame >= 0 ? this.dry[dryIndex] : 0;
+        const dryRight = !this.replace && dryFrame >= 0 ? this.dry[dryIndex + 1] : 0;
         const sampleLeft = this.selected?.[position * 2] ?? dryLeft;
         const sampleRight = this.selected?.[position * 2 + 1] ?? dryRight;
         output[0][index] = Number.isFinite(sampleLeft) ? sampleLeft : dryLeft;
@@ -63,6 +65,7 @@ class NativePluginProcessor extends AudioWorkletProcessor {
       if (offset === this.frames - 1) {
         const samples = this.input;
         if (this.enabled) {
+          if (this.replace) samples.fill(0);
           this.port.postMessage({ type: "input", sequence: Math.floor(this.cursor / this.frames) + 1, samples }, [samples.buffer]);
           this.input = new Float32Array(this.frames * 2);
         }

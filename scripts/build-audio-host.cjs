@@ -9,7 +9,8 @@ if (process.platform !== "win32") {
   console.log("Native VST2 hosting is currently available on Windows x64.");
   process.exit(0);
 }
-const fixture = process.argv.includes("--test-fixture");
+const vst3Fixture = process.argv.includes("--test-vst3-fixture");
+const fixture = vst3Fixture || process.argv.includes("--test-fixture");
 const programFiles86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
 const vswhere = path.join(programFiles86, "Microsoft Visual Studio/Installer/vswhere.exe");
 let install;
@@ -23,20 +24,21 @@ const temp = path.join(root, "tmp/native-audio-host");
 const output = path.join(root, "assets/audio-host");
 fs.mkdirSync(temp, { recursive: true });
 fs.mkdirSync(output, { recursive: true });
-const source = path.join(root, "native/audio-host", fixture ? "test-plugin.cpp" : "main.cpp");
-const executable = fixture ? path.join(temp, "test-plugin.dll") : path.join(output, "openchurch-audio-host.exe");
-const object = path.join(temp, fixture ? "test-plugin.obj" : "audio-host.obj");
-const build = path.join(temp, fixture ? "build-fixture.cmd" : "build.cmd");
+const name = vst3Fixture ? "test-plugin-vst3" : fixture ? "test-plugin" : "audio-host";
+const source = path.join(root, "native/audio-host", fixture ? `${name}.cpp` : "main.cpp");
+const executable = fixture ? path.join(temp, `${name}.${vst3Fixture ? "vst3" : "dll"}`) : path.join(output, "openchurch-audio-host.exe");
+const object = path.join(temp, `${name}.obj`);
+const build = path.join(temp, `build-${name}.cmd`);
 fs.writeFileSync(build, [
   "@echo off",
   'call "%OC_HOST_VCVARS%" >nul',
   "if errorlevel 1 exit /b %errorlevel%",
-  `cl.exe /nologo /std:c++17 /utf-8 /EHsc /O2 /MT /W4 /DUNICODE /D_UNICODE ${fixture ? "/LD " : ""}/Fo"%OC_HOST_OBJECT%" /Fe"%OC_HOST_EXECUTABLE%" "%OC_HOST_SOURCE%" /link user32.lib ole32.lib`,
+  `cl.exe /nologo /std:c++17 /utf-8 /EHsc /O2 /MT /W4 /DUNICODE /D_UNICODE /I"%OC_VST_INCLUDE%" ${fixture ? "/LD " : ""}/Fo"%OC_HOST_OBJECT%" /Fe"%OC_HOST_EXECUTABLE%" "%OC_HOST_SOURCE%" /link user32.lib ole32.lib`,
   "exit /b %errorlevel%", ""
 ].join("\r\n"));
 const result = spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", path.basename(build)], {
   cwd: temp, windowsHide: true, windowsVerbatimArguments: true, encoding: "utf8",
-  env: { ...process.env, OC_HOST_VCVARS: vcvars, OC_HOST_SOURCE: source, OC_HOST_OBJECT: object, OC_HOST_EXECUTABLE: executable }
+  env: { ...process.env, OC_HOST_VCVARS: vcvars, OC_HOST_SOURCE: source, OC_HOST_OBJECT: object, OC_HOST_EXECUTABLE: executable, OC_VST_INCLUDE: path.join(root, "native/audio-host/vendor") }
 });
 if (result.stdout) process.stdout.write(result.stdout);
 if (result.stderr) process.stderr.write(result.stderr);
@@ -44,10 +46,11 @@ if (result.status !== 0) throw new Error(`Native audio host compilation failed (
 if (!fixture) {
   const digest = file => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
   fs.writeFileSync(path.join(output, "SOURCE.json"), JSON.stringify({
-    source: "native/audio-host/main.cpp", protocol: 1, platform: "win32-x64", format: "vst2",
+    source: "native/audio-host/main.cpp", protocol: 1, platform: "win32-x64", formats: ["vst2", "vst3"],
     sourceSHA256: digest(source), abiSHA256: digest(path.join(root, "native/audio-host/vst2-abi.h")),
     executableSHA256: digest(executable)
   }, null, 2));
   fs.copyFileSync(path.join(root, "native/audio-host/README.md"), path.join(output, "README.md"));
+  fs.copyFileSync(path.join(root, "native/audio-host/vendor/pluginterfaces/LICENSE.txt"), path.join(output, "VST3-LICENSE.txt"));
 }
 console.log(`Built ${executable}`);

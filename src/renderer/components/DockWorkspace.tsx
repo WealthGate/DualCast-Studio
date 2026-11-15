@@ -1,4 +1,5 @@
-import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import React, { ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import ContextMenu from "./ContextMenu";
 
 export type DockPanelDefinition = {
@@ -36,6 +37,7 @@ type DockContextMenu = {
 const STORAGE_KEY = "openchurch:dock-layout:v2";
 const SIZE_STORAGE_KEY = "openchurch:dock-sizes:v1";
 const SCHEMA_STORAGE_KEY = "openchurch:dock-layout-schema";
+const FLOATING_STORAGE_KEY = "openchurch:floating-docks:v1";
 const CURRENT_LAYOUT_SCHEMA = 5;
 
 const defaultLayout: DockLayout = {
@@ -81,9 +83,11 @@ const startPointerResize = (cursor: string, handleMove: (event: PointerEvent) =>
     document.body.style.userSelect = "";
     window.removeEventListener("pointermove", handleMove);
     window.removeEventListener("pointerup", handleUp);
+    window.removeEventListener("pointercancel", handleUp);
   };
   window.addEventListener("pointermove", handleMove);
   window.addEventListener("pointerup", handleUp);
+  window.addEventListener("pointercancel", handleUp);
 };
 
 const cloneLayout = (layout: DockLayout): DockLayout => ({
@@ -268,12 +272,58 @@ type DockWorkspaceProps = {
   focusRequest?: { panelId: string; token: number } | null;
 };
 
+type FloatingDock = { id: string; x: number; y: number; width: number; height: number };
+const loadFloating = (panelIds: Set<string>): FloatingDock[] => {
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(FLOATING_STORAGE_KEY) ?? "[]");
+    if (!Array.isArray(saved)) return [];
+    const seen = new Set<string>();
+    return saved.filter((item): item is FloatingDock => {
+      if (!item || !panelIds.has(item.id) || seen.has(item.id) || ![item.x, item.y, item.width, item.height].every(Number.isFinite)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  } catch { return []; }
+};
+
+const fitFloating = (panel: FloatingDock, bounds: { width: number; height: number }) => {
+  const width = Math.min(bounds.width, Math.max(240, panel.width));
+  const height = Math.min(bounds.height, Math.max(180, panel.height));
+  return {
+    ...panel, width, height,
+    x: Math.max(0, Math.min(bounds.width - width, panel.x)),
+    y: Math.max(0, Math.min(bounds.height - height, panel.y))
+  };
+};
+
+// Moving the same portal container between slots preserves editor drafts,
+// scroll position, and subscriptions when a panel floats or returns to its dock.
+const DockPanelSlot = ({ container, id, active = true }: { container: HTMLDivElement; id: string; active?: boolean }) => {
+  const slotRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const slot = slotRef.current;
+    slot?.append(container);
+    return () => { if (container.parentElement === slot) container.remove(); };
+  }, [container]);
+  return <div ref={slotRef} data-dock-panel-id={id} className={`dock-panel-instance ${active ? "active" : "inactive"}`} />;
+};
+
 const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequest }) => {
   const workspaceRef = useRef<HTMLDivElement>(null);
   const contentRefs = useRef(new Map<string, HTMLDivElement>());
   const panelMap = useMemo(() => new Map(panels.map((panel) => [panel.id, panel])), [panels]);
   const panelIds = useMemo(() => new Set(panelMap.keys()), [panelMap]);
   const [layout, setLayout] = useState<DockLayout>(() => loadLayout(panelIds));
+  const [floating, setFloating] = useState(() => loadFloating(panelIds));
+  const [floatBounds, setFloatBounds] = useState({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight });
+  const slots = useRef(new Map<string, HTMLDivElement>());
+  const getSlot = (id: string) => {
+    const existing = slots.current.get(id);
+    if (existing) return existing;
+    const element = document.createElement("div");
+    slots.current.set(id, element);
+    return element;
+  };
   const [sizes, setSizes] = useState<DockSizes>(loadSizes);
   const [draggingPanelId, setDraggingPanelId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<DockContextMenu | null>(null);
@@ -285,6 +335,10 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     // otherwise live stream statistics keep pulling users back to Stream Setup.
     if (handledFocusToken.current === focusRequest.token) return;
     handledFocusToken.current = focusRequest.token;
+    if (floating.some(panel => panel.id === focusRequest.panelId)) {
+      bringForward(focusRequest.panelId);
+      return;
+    }
     setLayout((current) => {
       const next = cloneLayout(current);
       for (const zoneId of zoneIds) {
@@ -306,7 +360,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     window.requestAnimationFrame(() => {
       document.querySelector<HTMLElement>(`[data-dock-panel-id="${focusRequest.panelId}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
-  }, [focusRequest?.token, panelMap]);
+  }, [focusRequest?.token, panelMap, floating]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
@@ -316,16 +370,33 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     window.localStorage.setItem(SIZE_STORAGE_KEY, JSON.stringify(sizes));
   }, [sizes]);
 
+  useEffect(() => { window.localStorage.setItem(FLOATING_STORAGE_KEY, JSON.stringify(floating)); }, [floating]);
+  useLayoutEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+    const measure = () => {
+      const { left, top, width, height } = workspace.getBoundingClientRect();
+      setFloatBounds({ left, top, width, height });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(workspace);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+
   const visiblePanelIds = useMemo(
-    () => new Set(zoneIds.flatMap((zoneId) => layout[zoneId].flatMap((group) => group.panelIds))),
-    [layout]
+    () => new Set([...floating.map(panel => panel.id), ...zoneIds.flatMap(zoneId => layout[zoneId].flatMap(group => group.panelIds))]),
+    [layout, floating]
   );
+  const docked = useMemo(() => floating.reduce((current, panel) => closeDockPanel(current, panel.id), layout), [floating, layout]);
   const hiddenPanels = panels.filter((panel) => !visiblePanelIds.has(panel.id));
 
   const movePanel = (panelId: string, zoneId: DockZoneId, groupId?: string) => {
     if (!panelMap.has(panelId)) {
       return;
     }
+    setFloating(current => current.filter(panel => panel.id !== panelId));
     setLayout((current) => moveDockPanel(current, panelId, zoneId, groupId));
     setDraggingPanelId(null);
     setContextMenu(null);
@@ -346,6 +417,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const closePanel = (panelId: string) => {
+    setFloating(current => current.filter(panel => panel.id !== panelId));
     setLayout((current) => closeDockPanel(current, panelId));
     setContextMenu(null);
   };
@@ -381,10 +453,53 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const resetLayout = () => {
+    setFloating([]);
     setLayout(normalizeLayout(defaultLayout, panelIds));
     setSizes(defaultSizes);
     window.localStorage.setItem(SCHEMA_STORAGE_KEY, String(CURRENT_LAYOUT_SCHEMA));
     setContextMenu(null);
+  };
+
+  const floatPanel = (panelId: string) => {
+    setFloating(current => {
+      if (current.some(panel => panel.id === panelId)) return current;
+      const offset = (current.length % 8) * 26;
+      return [...current, fitFloating({ id: panelId, x: 28 + offset, y: 42 + offset, width: 420, height: 380 }, floatBounds)];
+    });
+    setContextMenu(null);
+  };
+  const bringForward = (id: string) => setFloating(current => {
+    if (current[current.length - 1]?.id === id) return current;
+    const panel = current.find(item => item.id === id);
+    return panel ? [...current.filter(item => item !== panel), panel] : current;
+  });
+  const redockPanel = (id: string) => {
+    const home = zoneIds.find(zone => layout[zone].some(group => group.panelIds.includes(id)));
+    const group = home && layout[home].find(item => item.panelIds.includes(id));
+    if (home && group) setActivePanel(home, group.id, id);
+    setFloating(current => current.filter(panel => panel.id !== id));
+    setContextMenu(null);
+  };
+  const adjustFloating = (panel: FloatingDock, dx: number, dy: number, resize: boolean) => {
+    const next = resize ? {
+      ...panel, width: Math.min(floatBounds.width - panel.x, panel.width + dx), height: Math.min(floatBounds.height - panel.y, panel.height + dy)
+    } : { ...panel, x: panel.x + dx, y: panel.y + dy };
+    setFloating(current => current.map(item => item.id === panel.id ? fitFloating(next, floatBounds) : item));
+  };
+  const moveFloating = (event: React.PointerEvent, panel: FloatingDock, resize: boolean) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const { clientX, clientY } = event;
+    bringForward(panel.id);
+    startPointerResize(resize ? "nwse-resize" : "move", move => adjustFloating(panel, move.clientX - clientX, move.clientY - clientY, resize));
+  };
+  const keyboardMove = (event: React.KeyboardEvent, panel: FloatingDock, resize: boolean) => {
+    const step = event.shiftKey ? 40 : 12;
+    const delta: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    const movement = delta[event.key];
+    if (!movement) return;
+    event.preventDefault();
+    adjustFloating(panel, ...movement, resize);
   };
 
   const beginZoneResize = (event: React.PointerEvent, zoneId: DockZoneId) => {
@@ -436,7 +551,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const renderZone = (zoneId: DockZoneId) => {
-    const groups = layout[zoneId];
+    const groups = docked[zoneId];
     if (groups.length === 0) {
       return null;
     }
@@ -518,6 +633,8 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                       );
                     })}
                   </div>
+                  <button type="button" className="dock-float-button" title="Float panel" aria-label={`Float ${panelMap.get(group.activePanelId)?.title ?? "panel"}`}
+                    onClick={() => floatPanel(group.activePanelId)}>↗</button>
                 </div>
                 <div
                   className="dock-panel-content"
@@ -535,13 +652,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                       return null;
                     }
                     return (
-                      <div
-                        key={panelId}
-                        data-dock-panel-id={panelId}
-                        className={`dock-panel-instance ${group.activePanelId === panelId ? "active" : "inactive"}`}
-                      >
-                        {panel.content}
-                      </div>
+                      <DockPanelSlot key={panelId} id={panelId} container={getSlot(panelId)} active={group.activePanelId === panelId} />
                     );
                   })}
                 </div>
@@ -622,10 +733,10 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
       </div>
 
       {renderZone("top")}
-      {layout.top.length > 0 ? <div className="dock-zone-resizer horizontal" onPointerDown={(event) => beginZoneResize(event, "top")} /> : null}
+      {docked.top.length > 0 ? <div className="dock-zone-resizer horizontal" onPointerDown={(event) => beginZoneResize(event, "top")} /> : null}
       <div className="dock-middle-row">
         {renderZone("left")}
-        {layout.left.length > 0 ? <div className="dock-zone-resizer vertical" onPointerDown={(event) => beginZoneResize(event, "left")} /> : null}
+        {docked.left.length > 0 ? <div className="dock-zone-resizer vertical" onPointerDown={(event) => beginZoneResize(event, "left")} /> : null}
         <main
           className="studio-center"
           onContextMenu={(event) => {
@@ -637,11 +748,32 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
         >
           {center}
         </main>
-        {layout.right.length > 0 ? <div className="dock-zone-resizer vertical" onPointerDown={(event) => beginZoneResize(event, "right")} /> : null}
+        {docked.right.length > 0 ? <div className="dock-zone-resizer vertical" onPointerDown={(event) => beginZoneResize(event, "right")} /> : null}
         {renderZone("right")}
       </div>
-      {layout.bottom.length > 0 ? <div className="dock-zone-resizer horizontal" onPointerDown={(event) => beginZoneResize(event, "bottom")} /> : null}
+      {docked.bottom.length > 0 ? <div className="dock-zone-resizer horizontal" onPointerDown={(event) => beginZoneResize(event, "bottom")} /> : null}
       {renderZone("bottom")}
+
+      <div className="dock-float-layer" style={floatBounds}>
+        {floating.map(item => {
+          const panel = panelMap.get(item.id);
+          if (!panel) return null;
+          const { x, y, width, height } = fitFloating(item, floatBounds);
+          const bounds = { id: item.id, x, y, width, height };
+          return <section key={item.id} className="dock-group floating-dock" aria-label={`Floating ${panel.title}`}
+            style={{ left: x, top: y, width, height }} onPointerDownCapture={() => bringForward(item.id)} onFocusCapture={() => bringForward(item.id)}>
+            <div className="dock-tabbar floating-dock-header">
+              <button type="button" className="floating-dock-title" aria-label={`Move ${panel.title}`} title="Drag or use the arrow keys to move"
+                onPointerDown={event => moveFloating(event, bounds, false)} onKeyDown={event => keyboardMove(event, bounds, false)}>{panel.title}</button>
+              <button type="button" className="dock-float-button" title="Return to dock" aria-label={`Dock ${panel.title}`} onClick={() => redockPanel(item.id)}>↙</button>
+            </div>
+            <div className="dock-panel-content"><DockPanelSlot id={item.id} container={getSlot(item.id)} /></div>
+            <button type="button" className="floating-dock-resize" aria-label={`Resize ${panel.title}`} title="Drag or use the arrow keys to resize"
+              onPointerDown={event => moveFloating(event, bounds, true)} onKeyDown={event => keyboardMove(event, bounds, true)} />
+          </section>;
+        })}
+      </div>
+      {panels.filter(panel => visiblePanelIds.has(panel.id)).map(panel => createPortal(panel.content, getSlot(panel.id), panel.id))}
 
       {draggingPanelId ? (
         <div className="dock-drop-layer" aria-hidden="true">
@@ -669,6 +801,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
           {contextPanel ? (
             <>
               <div className="context-menu-title">{contextPanel.title}</div>
+              <button role="menuitem" onClick={() => floatPanel(contextPanel.id)}>Float Panel</button>
               {zoneIds.map((zoneId) => (
                 <button key={zoneId} role="menuitem" onClick={() => movePanel(contextPanel.id, zoneId)}>Dock {zoneId}</button>
               ))}

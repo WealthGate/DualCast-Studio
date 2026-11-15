@@ -6,6 +6,7 @@ import { splitTextIntoSlides } from "../utils/presentationSlides";
 import LowerThirdDesigner, { lowerThirdAnimationOptions } from "./LowerThirdDesigner";
 import { lowerThirdTitle } from "../../shared/lowerThirdDesign";
 import AddToScheduleButton from "./AddToScheduleButton";
+import { matchesSlide, searchWords } from "../utils/slideSearch";
 
 const createId = () => crypto.randomUUID?.() ?? `lower-third-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -33,6 +34,8 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearingSlides, setClearingSlides] = useState(false);
   const [queueMessage, setQueueMessage] = useState("");
+  const [slideQuery, setSlideQuery] = useState("");
+  const [deckFilter, setDeckFilter] = useState("follow");
   const [songs, setSongs] = useState<SongLibraryEntry[]>([]);
   const [selectedSongId, setSelectedSongId] = useState("");
   const [songUrl, setSongUrl] = useState("");
@@ -44,6 +47,29 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
     [lowerThird.activeSlideId, lowerThird.slides]
   );
   const activeSlide = activeIndex >= 0 ? lowerThird.slides[activeIndex] : null;
+  const decks = useMemo(() => {
+    const groups = new Map<string, { title: string; slides: LowerThirdSlide[] }>();
+    for (const slide of lowerThird.slides) {
+      const key = slide.deckId ? `deck:${slide.deckId}` : "ungrouped";
+      const existing = groups.get(key);
+      if (existing) existing.slides.push(slide);
+      else groups.set(key, { title: slide.deckId ? slide.deckTitle || slide.title || slide.reference || "Untitled deck" : "Ungrouped slides", slides: [slide] });
+    }
+    return groups;
+  }, [lowerThird.slides]);
+  const activeDeck = activeSlide?.deckId ? `deck:${activeSlide.deckId}` : activeSlide ? "ungrouped" : "all";
+  const selectedDeck = deckFilter === "follow" ? activeDeck : deckFilter;
+  const queryWords = searchWords(slideQuery);
+  const visibleSlides = lowerThird.slides.flatMap((slide, index) => {
+    const slideDeck = slide.deckId ? `deck:${slide.deckId}` : "ungrouped";
+    if (slide.id === editingSlideId || (queryWords.length ? matchesSlide(slide, queryWords) : selectedDeck === "all" || slideDeck === selectedDeck)) {
+      return [{ slide, index }];
+    }
+    return [];
+  });
+  useEffect(() => {
+    if (deckFilter !== "follow" && deckFilter !== "all" && !decks.has(deckFilter)) setDeckFilter("follow");
+  }, [deckFilter, decks]);
   const navigationSlides = useMemo(
     () => activeSlide?.deckId
       ? lowerThird.slides.filter((slide) => slide.deckId === activeSlide.deckId)
@@ -317,6 +343,20 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
         <h2>Lower Third Studio</h2>
         <span className="tag">{activeSlide ? `Preview ${navigationIndex + 1}/${navigationSlides.length}` : "Preview Clear"}</span>
       </div>
+      {lowerThird.slides.length > 0 && <div className="slide-browser-controls">
+        <label className="field">Slide deck
+          <select aria-label="Slide deck" value={deckFilter} onChange={event => { setDeckFilter(event.target.value); setSlideQuery(""); }}>
+            <option value="follow">Follow Preview{decks.has(activeDeck) ? ` · ${decks.get(activeDeck)!.title}` : ""}</option>
+            <option value="all">All slides ({lowerThird.slides.length})</option>
+            {Array.from(decks, ([key, deck]) => <option key={key} value={key}>
+              {deck.slides.length === 1 && deck.title === "Manual Text" ? deck.slides[0].text.replace(/\s+/g, " ").slice(0, 70) : deck.title} ({deck.slides.length})
+            </option>)}
+          </select>
+        </label>
+        <label className="field">Find slides<input type="search" aria-label="Find slides" value={slideQuery} onChange={event => setSlideQuery(event.target.value)} placeholder="Deck, title, verse or words"
+          onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); panelRef.current?.querySelector(".lower-third-slide-list")?.scrollIntoView({ block: "nearest" }); } }} /></label>
+        <button type="button" className="btn btn-outline btn-compact" onClick={() => panelRef.current?.querySelector(".lower-third-slide-list")?.scrollIntoView({ block: "nearest" })}>Go to slides</button>
+      </div>}
 
       <div className="lower-third-design-switch" role="group" aria-label="Lower-third presentation style">
         <button type="button" className={`btn ${lowerThird.mode !== "designer" ? "btn-primary" : "btn-outline"}`} aria-pressed={lowerThird.mode !== "designer"} onClick={() => void saveLowerThird({ mode: "classic" })}>Classic lower third</button>
@@ -437,7 +477,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
       <div className="field-help">Click a slide to cue it, then Enter to show it in Preview and Program. Arrow keys move within the selected deck. Program text reaches connected projection and streaming outputs.</div>
 
       <div className="lower-third-slide-list">
-        {lowerThird.slides.map((slide, index) => (
+        {visibleSlides.map(({ slide, index }) => (
           <div key={slide.id} className={`lower-third-slide ${slide.id === lowerThird.activeSlideId ? "active" : ""} ${editingSlideId === slide.id ? "editing" : ""}`}>
             {editingSlideId === slide.id ? (
               <div className="lower-third-slide-editor">
@@ -486,7 +526,7 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
             </div>
           </div>
         ))}
-        {lowerThird.slides.length === 0 ? <div className="empty-hint">No lower-third slides yet.</div> : null}
+        {visibleSlides.length === 0 && <div className="empty-hint">{lowerThird.slides.length ? "No slides match the search." : "No lower-third slides yet."}</div>}
       </div>
 
       <details className="lower-third-formatting">

@@ -92,6 +92,13 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Verify the packaged audio worklet and floating docks
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: |
+          node scripts/verify-audio-worklet-production.cjs
+          node scripts/verify-live-output.cjs --floating-only
+
       - name: Verify mobile controls, authentication and phone/tablet layouts
         if: runner.os == 'Windows'
         timeout-minutes: 3

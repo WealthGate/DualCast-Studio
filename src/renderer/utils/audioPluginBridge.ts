@@ -1,4 +1,4 @@
-import { AudioPluginStatus } from "../../shared/audioPlugins";
+import { AUDIO_WORKLET_URL, AudioPluginStatus } from "../../shared/audioPlugins";
 import { createProgramAudioBus } from "./programAudioBus";
 import processorUrl from "./audioPluginProcessor.js?url";
 
@@ -9,6 +9,8 @@ export const attachAudioPluginBridge = (bus: ReturnType<typeof createProgramAudi
   let activeSession: string | null = null;
   let module: Promise<void> | null = null;
   let initializationFailed = false;
+  let replacing = false;
+  const reportBridgeFailure = () => { void window.dualcast.configureAudioPlugin({ action: "bridge-error" }).catch(() => undefined); };
   const clear = () => {
     bus.setPluginNode(null);
     node?.port.postMessage({ type: "stop" });
@@ -17,7 +19,12 @@ export const attachAudioPluginBridge = (bus: ReturnType<typeof createProgramAudi
     node = null; activeSession = null;
   };
   const apply = async (status: AudioPluginStatus) => {
-    if (stopped || (node && status.session === activeSession)) return;
+    if (stopped) return;
+    const replace = status.routing === "replace";
+    const routingChanged = replace !== replacing;
+    replacing = replace;
+    bus.setPluginReplacement(replace);
+    if (node && status.session === activeSession && !routingChanged) return;
     if (initializationFailed && !status.session) return;
     const token = ++revision;
     activeSession = null;
@@ -25,16 +32,17 @@ export const attachAudioPluginBridge = (bus: ReturnType<typeof createProgramAudi
     if (node && (!status.running || !status.session)) {
       // Keep the short, fixed dry delay after bypass/failure. Removing it would
       // skip 43 ms of the live signal and change A/V timing mid-broadcast.
-      node?.port.postMessage({ type: "enabled", value: false });
+      node.port.postMessage({ type: "enabled", value: false, replace });
       return;
     }
     if (node) {
       activeSession = status.session;
-      node.port.postMessage({ type: "enabled", value: true, latencyFrames: status.plugins.find(plugin => plugin.id === status.activeId)?.latencyFrames ?? 0 });
+      node.port.postMessage({ type: "enabled", value: true, replace, latencyFrames: status.plugins.find(plugin => plugin.id === status.activeId)?.latencyFrames ?? 0 });
       return;
     }
     try {
-      module ??= bus.context.audioWorklet.addModule(processorUrl);
+      const url = import.meta.env?.PROD && location.protocol === "file:" ? AUDIO_WORKLET_URL : processorUrl;
+      module ??= bus.context.audioWorklet.addModule(url);
       await module;
       if (stopped || token !== revision) return;
       node = new AudioWorkletNode(bus.context, "openchurch-native-plugin", {
@@ -49,15 +57,15 @@ export const attachAudioPluginBridge = (bus: ReturnType<typeof createProgramAudi
       node.onprocessorerror = () => {
         initializationFailed = true;
         clear();
-        void window.dualcast.configureAudioPlugin({ action: "stop" }).catch(() => undefined);
+        reportBridgeFailure();
       };
       bus.setPluginNode(node);
       initializationFailed = false;
-      node.port.postMessage({ type: "enabled", value: status.running, latencyFrames: status.plugins.find(plugin => plugin.id === status.activeId)?.latencyFrames ?? 0 });
+      node.port.postMessage({ type: "enabled", value: status.running, replace, latencyFrames: status.plugins.find(plugin => plugin.id === status.activeId)?.latencyFrames ?? 0 });
     } catch {
       if (stopped || token !== revision) return;
       clear(); module = null; initializationFailed = true;
-      void window.dualcast.configureAudioPlugin({ action: "stop" }).catch(() => undefined);
+      if (status.session) reportBridgeFailure();
     }
   };
   const offStatus = window.dualcast.onAudioPluginStatus(status => { void apply(status); });
