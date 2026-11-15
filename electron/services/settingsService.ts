@@ -7,6 +7,7 @@ import Store from "electron-store";
 import path from "path";
 import { randomInt } from "crypto";
 import { normalizeRemoteUrl } from "../../src/shared/remoteControl";
+import { isThemePreference } from "../../src/shared/interfaceThemes";
 import { app } from "electron";
 import {
   AudioMode,
@@ -18,8 +19,7 @@ import {
   StreamingEncoder,
   StreamingFps,
   StreamingPreset,
-  StudioState,
-  ThemePreference
+  StudioState
 } from "../../src/shared/types";
 import { STREAMING_ENCODER_OPTIONS } from "../../src/shared/streamingEncoders";
 import { normalizeYouTubeBroadcastSettings } from "../../src/shared/streamingPlatforms";
@@ -44,7 +44,6 @@ const allowedStreamingEncoders: StreamingEncoder[] = [
   ...STREAMING_ENCODER_OPTIONS.map((option) => option.id)
 ];
 const allowedOperatorRoles = ["director", "graphics", "audio", "stream"];
-const allowedThemes: ThemePreference[] = ["system", "dark", "light", "high-contrast", "midnight", "warm"];
 const allowedLowerThirdAnimations = ["none", "fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "wipe", "reveal", "spring"] as const;
 
 export const getDefaultSaveDirectory = () => path.join(app.getPath("videos"), "OpenChurch Broadcast Studio");
@@ -350,7 +349,7 @@ export const getSettings = (): Settings => {
     audioChannelMode: stored.audioChannelMode === "mono" ? "mono" : "stereo",
     swapPreviewProgram: stored.swapPreviewProgram !== false,
     hideOutputCursor: stored.hideOutputCursor !== false,
-    theme: allowedThemes.includes(stored.theme) ? stored.theme : "system",
+    theme: isThemePreference(stored.theme) ? stored.theme : "system",
     lowerThird: normalizeLowerThird(stored.lowerThird),
     networkOutput: {
       enabled: stored.networkOutput?.enabled === true,
@@ -456,7 +455,7 @@ export const sanitizeSettingsUpdate = (update: SettingsUpdate): SettingsUpdate =
     sanitized.masterAudioGain = Math.max(0, Math.min(2, update.masterAudioGain));
   }
 
-  if (allowedThemes.includes(update.theme as ThemePreference)) {
+  if (isThemePreference(update.theme)) {
     sanitized.theme = update.theme;
   }
 

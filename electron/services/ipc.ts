@@ -15,12 +15,14 @@ import {
   beginRecording,
   cancelRecording,
   finishRecording,
+  hasActiveRecording,
   saveRecording
 } from "./recordingService";
 import {
   getStreamLogPath,
   getStreamLogContent,
   getStreamingCapabilities,
+  hasActiveStream,
   sendStreamChunk,
   setStreamStatusPublisher,
   startStreaming,
@@ -189,7 +191,15 @@ export const registerIpcHandlers = () => {
   ipcMain.handle(IpcChannels.getUpdateStatus, () => getUpdateStatus());
   ipcMain.handle(IpcChannels.checkForUpdates, async () => checkForUpdates());
   ipcMain.handle(IpcChannels.downloadUpdate, async () => downloadUpdate());
-  ipcMain.handle(IpcChannels.installUpdate, () => installUpdate());
+  ipcMain.handle(IpcChannels.installUpdate, async (event) => {
+    if (!hasActiveRecording() && !hasActiveStream()) return installUpdate();
+    const options = { type: "info" as const, message: "Install after the service",
+      detail: "Stop streaming and finish recording before restarting to install this update." };
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (owner) await dialog.showMessageBox(owner, options);
+    else await dialog.showMessageBox(options);
+    return false;
+  });
   ipcMain.handle(IpcChannels.openReleasePage, async () => {
     await shell.openExternal("https://github.com/WealthGate/DualCast-Studio/releases/latest");
     return true;

@@ -19,6 +19,7 @@ if (ffmpegPath) {
 
 const recordingSessions = new Map<string, RecordingDiskSession>();
 const activeRecordingCommands = new Set<ReturnType<typeof ffmpeg>>();
+export const hasActiveRecording = () => recordingSessions.size > 0 || activeRecordingCommands.size > 0;
 const MAX_CHUNK_BYTES = 64 * 1024 * 1024;
 
 const normalizeRecordingData = (data: SaveRecordingPayload["data"]) => {

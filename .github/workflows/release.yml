@@ -116,6 +116,11 @@ jobs:
         timeout-minutes: 3
         run: npm run verify:presentation
 
+      - name: Verify service finder, panel navigation and operator themes
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: node scripts/verify-live-output.cjs --studio-usability-only
+
       - name: Verify service playback, saved schedules and output exits
         if: runner.os == 'Windows'
         timeout-minutes: 3

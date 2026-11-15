@@ -4,7 +4,7 @@ import { registerBackgroundMediaIpc } from "./services/backgroundMediaService";
 import { registerVirtualCameraIpc, stopVirtualCamera } from "./services/virtualCameraService";
 import { stopAllCursorFreeCaptures } from "./services/cursorFreeCaptureService";
 import { configureGraphics } from "./services/hardwareService";
-import { app, BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, dialog, screen } from "electron";
 import path from "path";
 import { registerIpcHandlers } from "./services/ipc";
 import { registerRemoteControlIpc } from "./services/remoteControlIpc";
@@ -18,6 +18,7 @@ import { cleanupEditorCommands } from "./services/editorService";
 import { registerAudioPluginIpc, stopAudioPlugins } from "./services/audioPluginService";
 import { declareAudioWorkletProtocol, registerAudioWorkletProtocol } from "./services/audioWorkletProtocol";
 import { installApplicationMenu } from "./services/menuService";
+import { requireTermsAcceptance } from "./services/termsService";
 import { IpcChannels } from "../src/shared/ipc";
 import { registerDisplayEscape } from "./services/displayEscapeService";
 import { closeProjectionWindows, closeLowerThirdWindow, hasProjectionWindows } from "./services/projectionService";
@@ -91,8 +92,18 @@ if (!hasSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
-    registerAudioWorkletProtocol(path.join(__dirname, "../dist/renderer"));
     setupLogging();
+    try {
+      if (!await requireTermsAcceptance()) {
+        app.quit();
+        return;
+      }
+    } catch (error) {
+      dialog.showErrorBox("Could not open the Terms and Conditions", error instanceof Error ? error.message : String(error));
+      app.quit();
+      return;
+    }
+    registerAudioWorkletProtocol(path.join(__dirname, "../dist/renderer"));
     await cleanupStaleRecordingFiles();
     createMainWindow();
     installApplicationMenu(() => mainWindow);

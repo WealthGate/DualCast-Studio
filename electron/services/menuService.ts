@@ -5,6 +5,7 @@ import path from "path";
 import { IpcChannels } from "../../src/shared/ipc";
 import { AppCommand } from "../../src/shared/types";
 import { getSettings } from "./settingsService";
+import { readTerms } from "./termsService";
 
 const openDirectory = async (directoryPath: string) => {
   fs.mkdirSync(directoryPath, { recursive: true });
@@ -71,6 +72,9 @@ export const installApplicationMenu = (getWindow: () => BrowserWindow | null) =>
     {
       label: "Help",
       submenu: [
+        { label: "Terms and Conditions", click: () => runMenuAction(async () => {
+          await dialog.showMessageBox({ title: "Terms and Conditions", message: `OpenChurch Broadcast Studio v${app.getVersion()}`, detail: await readTerms() });
+        }, "Opening the Terms and Conditions") },
         { label: "OpenChurch Broadcast Studio Releases", click: () => runMenuAction(() => shell.openExternal("https://github.com/WealthGate/DualCast-Studio/releases/latest"), "Opening the releases page") },
         { role: "about" }
       ]

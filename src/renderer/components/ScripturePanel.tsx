@@ -78,7 +78,7 @@ const ScripturePanel: React.FC = () => {
       setSelectedBook(position[1]); setSelectedChapter(Number(position[2]));
       setStartVerse(Number(position[3])); setEndVerse(Number(position[4] ?? position[3])); setJumpVerse(position[3]);
     }
-    setMessage("Schedule Scripture is live on the lower third and connected outputs.");
+    setMessage(scriptureCueRequest.live ? "Scripture is live." : "Scripture is in Preview. Press TAKE to send it live.");
   }, [scriptureCueRequest]);
 
   const activeScene = useMemo(

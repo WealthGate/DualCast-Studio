@@ -6,6 +6,7 @@ import { getUpdateControlView, normalizeVersion } from "../utils/updateControl";
 import { formatElapsedTimer } from "../utils/time";
 
 type HeaderProps = {
+  onOpenServiceFinder: () => void;
   onOpenMultiview: () => void;
   onCheckForUpdates: () => void;
   onDownloadUpdate: () => void;
@@ -17,6 +18,7 @@ type HeaderProps = {
 };
 
 const Header: React.FC<HeaderProps> = ({
+  onOpenServiceFinder,
   onOpenMultiview,
   onCheckForUpdates,
   onDownloadUpdate,
@@ -188,6 +190,9 @@ const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
       <div className="header-controls">
+        <button type="button" className="btn btn-primary" onClick={onOpenServiceFinder} title="Find service content (Ctrl or Command + K)">
+          Find in Service
+        </button>
         <button
           className={`btn header-update-button state-${updateStatus?.state ?? "idle"} ${updateControl.emphasis === "primary" ? "btn-primary" : "btn-outline"}`}
           type="button"

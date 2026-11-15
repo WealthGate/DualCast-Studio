@@ -143,6 +143,7 @@ const AudioMixerPanel: React.FC = () => {
   const [microphones, setMicrophones] = useState<MicrophoneDevice[]>([]);
   const [newLineId, setNewLineId] = useState<string>();
   const [settingsError, setSettingsError] = useState("");
+  const vstSection = useRef<HTMLDivElement>(null);
   const audioSources = Object.values(sources).filter(supportsAudio);
   const microphoneEnabled = settings.audioMode === "microphone" || settings.audioMode === "both";
   const lines = settings.audioInputLines ?? [];
@@ -208,6 +209,10 @@ const AudioMixerPanel: React.FC = () => {
         <div className="mixer-master-heading">
           <strong>Program Master</strong>
           <output>{Math.round(settings.masterAudioGain * 100)}%</output>
+          <button type="button" className="btn btn-outline mixer-vst-jump" onClick={() => {
+            vstSection.current?.scrollIntoView({ block: "start" });
+            vstSection.current?.focus({ preventScroll: true });
+          }}>VST effects</button>
         </div>
         <Meter id="master" label="Program master" horizontal />
         <Fader label="Master Program audio" gain={settings.masterAudioGain}
@@ -313,7 +318,7 @@ const AudioMixerPanel: React.FC = () => {
         <p>Use headphones to prevent feedback. Monitor volume affects only what you hear locally.</p>
       </div>
       <p className="mixer-help">Lower the channel or master fader if its meter shows CLIP.</p>
-      <AudioPluginsPanel />
+      <div ref={vstSection} tabIndex={-1} aria-label="VST effects"><AudioPluginsPanel /></div>
     </section>
   );
 };

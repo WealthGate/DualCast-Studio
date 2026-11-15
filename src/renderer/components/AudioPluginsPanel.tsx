@@ -35,7 +35,7 @@ const AudioPluginsPanel: React.FC = () => {
   const plugin = status?.plugins.find(item => item.id === selected);
   return <div className="audio-plugins">
     <div className="audio-plugin-heading"><strong>VST audio plugin</strong><span>{status?.running ? "Processing" : "Bypassed"}</span></div>
-    <p className="field-help">Use a Windows x64 VST2 or VST3 effect for Program, recordings and streams.</p>
+    <p className="field-help">Add a Windows x64 VST2 or VST3 effect for Program, recordings and streams.</p>
     <div className="audio-plugin-actions">
       <button type="button" className="btn btn-outline" disabled={busy || !status?.supported} onClick={() => void action("scan")}>Scan installed VST plugins</button>
       <button type="button" className="btn btn-outline" disabled={busy || !status?.supported} onClick={() => void action("scan-folder")}>Scan folder…</button>
@@ -55,6 +55,7 @@ const AudioPluginsPanel: React.FC = () => {
       </select>
     </label>}
     {status?.routing === "replace" && <p className="field-help">Program takes audio only from the plugin. Program stays silent if the plugin is stopped or has no audio.</p>}
+    {status?.supported && status.routing !== "replace" && <p className="field-help">Process Source Audio sends the combined scene and input-line mix through the effect. Choose a plugin and select Enable plugin.</p>}
     <div className="audio-plugin-actions">
       <button type="button" className="btn btn-primary" aria-pressed={status?.running ?? false} disabled={busy || (!status?.running && (!status?.supported || !plugin || plugin.available === false))} onClick={() => void action(status?.running ? "stop" : "start")}>{busy ? "Please wait…" : status?.running ? "Bypass plugin" : "Enable plugin"}</button>
       <button type="button" className="btn btn-outline" disabled={busy || !status?.running || !plugin?.hasEditor} onClick={() => void action("editor")}>Open plugin controls</button>

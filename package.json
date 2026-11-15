@@ -1,6 +1,6 @@
 {
   "name": "openchurch-broadcast-studio",
-  "version": "0.6.49",
+  "version": "0.6.50",
   "private": true,
   "description": "Open church production, presentation, recording, and multi-destination streaming studio",
   "author": {
@@ -83,6 +83,7 @@
       "dist-electron/**",
       "dist/renderer/**",
       "assets/icon.png",
+      "assets/terms-and-conditions.txt",
       "assets/mobile/**",
       "assets/OpenChurch-Broadcast-Studio-User-Guide.pdf",
       "package.json"
@@ -108,6 +109,8 @@
       "entitlements": "assets/entitlements.mac.plist",
       "entitlementsInherit": "assets/entitlements.mac.plist"
     },
+    "dmg": { "license": "terms-and-conditions.txt" },
+    "nsis": { "oneClick": false, "include": "assets/installer.nsh" },
     "win": {
       "extraResources": [
         {

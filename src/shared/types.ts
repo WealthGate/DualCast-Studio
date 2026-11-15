@@ -1,3 +1,5 @@
+import type { ThemePreference } from "./interfaceThemes";
+
 export type AudioChannelMode = "mono" | "stereo";
 export type SceneTransitionType = "cut" | "fade" | "crossfade" | "wipe-left" | "wipe-right" | "slide-left" | "slide-right" | "zoom" | "iris";
 export type AudioMode = "system" | "microphone" | "both" | "none";
@@ -22,7 +24,7 @@ export type StreamingEncoder =
   | "v4l2m2m";
 export type OperatorRole = "director" | "graphics" | "audio" | "stream";
 export type TextSourceRole = "standard" | "lower-third" | "presentation";
-export type ThemePreference = "system" | "dark" | "light" | "high-contrast" | "midnight" | "warm";
+export type { ThemePreference };
 export type LowerThirdAnimation = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "slide-down" | "zoom" | "wipe" | "reveal" | "spring";
 export type WorkspaceViewMode = "studio" | "program-focus" | "program-only";
 export type StreamPlatform = "custom" | "youtube" | "facebook";

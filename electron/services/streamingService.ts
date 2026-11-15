@@ -546,6 +546,8 @@ export const getStreamingCapabilities = () => ({
   encoders: Array.from(availableEncoders)
 });
 
+export const hasActiveStream = () => ["connecting", "live", "reconnecting", "stopping"].includes(currentStatus.status);
+
 export const startStreaming = async (payload: StreamStartPayload): Promise<StreamStartResult> => {
   if (runtimes.size > 0) {
     return { ok: false, message: "Streaming is already active." };

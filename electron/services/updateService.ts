@@ -95,7 +95,7 @@ export const initializeUpdater = () => {
   }
   initialized = true;
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = false;
   autoUpdater.requestHeaders = { "Cache-Control": "no-cache" };
 
@@ -121,7 +121,7 @@ export const initializeUpdater = () => {
     state: "downloaded",
     latestVersion: info.version,
     progressPercent: 100,
-    message: `Version ${info.version} is ready to install.`
+    message: `Review and accept the terms during installation or when v${info.version} opens.`
   }));
   autoUpdater.on("error", (error) => publishStatus({
     state: "error",

@@ -1,5 +1,5 @@
 import { getSanctuaryDisplayState } from "./utils/sanctuaryContent";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Header from "./components/Header";
 import BackgroundsPanel from "./components/BackgroundsPanel";
 import SettingsPanel from "./components/SettingsPanel";
@@ -20,6 +20,7 @@ import LowerThirdPanel from "./components/LowerThirdPanel";
 import ScripturePanel from "./components/ScripturePanel";
 import ProfileManager, { ProfileManagerIntent } from "./components/ProfileManager";
 import AutoConfigurationWizard from "./components/AutoConfigurationWizard";
+import ServiceFinder from "./components/ServiceFinder";
 import { useAppStore } from "./store/useAppStore";
 import { useConnectedDisplays } from "./store/useConnectedDisplays";
 import { useProgramRecorder } from "./hooks/useProgramRecorder";
@@ -27,6 +28,7 @@ import { useProgramStreamer } from "./hooks/useProgramStreamer";
 import { useVirtualCamera } from "./hooks/useVirtualCamera";
 import { useRemoteControl } from "./hooks/useRemoteControl";
 import { UpdateStatusPayload, WorkspaceViewMode } from "../shared/types";
+import { resolveInterfaceTheme } from "../shared/interfaceThemes";
 
 const App: React.FC = () => {
   const programCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,6 +44,7 @@ const App: React.FC = () => {
   const [dockFocus, setDockFocus] = useState<{ panelId: string; token: number } | null>(null);
   const [profileManagerIntent, setProfileManagerIntent] = useState<ProfileManagerIntent | null>(null);
   const [showAutoConfiguration, setShowAutoConfiguration] = useState(false);
+  const [showServiceFinder, setShowServiceFinder] = useState(false);
   const [streamStartRequest, setStreamStartRequest] = useState(0);
 
   const {
@@ -75,6 +78,17 @@ const App: React.FC = () => {
   const focusDock = (panelId: string) => setDockFocus({ panelId, token: Date.now() + Math.random() });
 
   useEffect(() => {
+    const openFinder = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.shiftKey ||
+          (!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== "k" || profileManagerIntent || showAutoConfiguration) return;
+      event.preventDefault();
+      setShowServiceFinder(true);
+    };
+    window.addEventListener("keydown", openFinder);
+    return () => window.removeEventListener("keydown", openFinder);
+  }, [profileManagerIntent, showAutoConfiguration]);
+
+  useEffect(() => {
     const refresh = () => void useConnectedDisplays.getState().refresh();
     refresh();
     const off = window.dualcast.onProjectionDisplaysChanged(refresh);
@@ -94,12 +108,10 @@ const App: React.FC = () => {
     else if (command === "toggle-studio") setViewMode((current) => current === "studio" ? "program-focus" : "studio");
   }), []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
     const applyTheme = () => {
-      const resolvedTheme = settings.theme === "system" ? (mediaQuery.matches ? "light" : "dark") : settings.theme;
-      document.documentElement.dataset.theme = resolvedTheme;
-      document.documentElement.style.colorScheme = resolvedTheme === "light" ? "light" : "dark";
+      document.documentElement.dataset.theme = resolveInterfaceTheme(settings.theme, mediaQuery.matches);
     };
     applyTheme();
     mediaQuery.addEventListener("change", applyTheme);
@@ -321,6 +333,7 @@ const App: React.FC = () => {
   return (
     <div className={`app-shell ${viewMode}-mode`}>
       <Header
+        onOpenServiceFinder={() => setShowServiceFinder(true)}
         onOpenMultiview={() => window.dualcast.openMultiview()}
         onCheckForUpdates={handleCheckForUpdates}
         onDownloadUpdate={handleDownloadUpdate}
@@ -353,6 +366,11 @@ const App: React.FC = () => {
       />
       {profileManagerIntent ? <ProfileManager intent={profileManagerIntent} onClose={() => setProfileManagerIntent(null)} /> : null}
       {showAutoConfiguration ? <AutoConfigurationWizard onClose={() => setShowAutoConfiguration(false)} /> : null}
+      {showServiceFinder ? <ServiceFinder onClose={() => setShowServiceFinder(false)} onOpenDock={(panel, showPreview) => {
+        if (showPreview) setViewMode("studio");
+        else if (viewMode === "program-only") setViewMode("program-focus");
+        focusDock(panel);
+      }} /> : null}
     </div>
   );
 };

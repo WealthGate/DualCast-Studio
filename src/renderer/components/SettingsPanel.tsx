@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { FrameRatePreset, QualityPreset, StreamingCredentialProvider, StreamingCredentialStatus, ThemePreference, VideoResolution, GraphicsMode, HardwareCapabilities, StreamingEncoder } from "../../shared/types";
+import { FrameRatePreset, QualityPreset, StreamingCredentialProvider, StreamingCredentialStatus, VideoResolution, GraphicsMode, HardwareCapabilities, StreamingEncoder } from "../../shared/types";
+import { interfaceThemes } from "../../shared/interfaceThemes";
 import { VIDEO_RESOLUTIONS } from "../../shared/recording";
 import { STREAMING_ENCODER_OPTIONS } from "../../shared/streamingEncoders";
 import { use8KSupport, supports8KEncoding } from "../hooks/use8KSupport";
@@ -14,6 +15,7 @@ const SettingsPanel: React.FC = () => {
   const [credentialStatus, setCredentialStatus] = useState<Record<StreamingCredentialProvider, StreamingCredentialStatus | null>>({ youtube: null, facebook: null });
   const [credentials, setCredentials] = useState({ youtube: { clientId: "", clientSecret: "" }, facebook: { clientId: "", clientSecret: "" } });
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
+  const [appearanceError, setAppearanceError] = useState("");
 
   const refreshCredentialStatus = async () => {
     try {
@@ -71,6 +73,24 @@ const SettingsPanel: React.FC = () => {
   return (
     <section className="panel settings-panel">
       <h2>Settings</h2>
+      <fieldset className="theme-chooser">
+        <legend>Appearance</legend>
+        <div className="theme-choices">
+          {interfaceThemes.map(theme => (
+            <button key={theme.id} type="button" className="theme-choice" aria-pressed={settings.theme === theme.id}
+              onClick={() => {
+                setAppearanceError("");
+                void updateSettings({ theme: theme.id }).catch(() => setAppearanceError("The theme could not be saved. Try again."));
+              }}>
+              <span className="theme-swatch" aria-hidden="true">
+                {theme.colors.map(color => <i key={color} style={{ backgroundColor: color }} />)}
+              </span>
+              <span>{theme.label}</span>
+            </button>
+          ))}
+        </div>
+        {appearanceError ? <p role="alert">{appearanceError}</p> : null}
+      </fieldset>
       <h3>General</h3>
       <details className="settings-section" open>
         <summary>Graphics and video acceleration</summary>
@@ -105,21 +125,6 @@ const SettingsPanel: React.FC = () => {
         <p className="field-help">Encoder options are tested on this device. Windows, macOS and Linux offer their supported hardware backends; a detected graphics card alone does not guarantee driver support for every encoder.</p>
       </details>
       <p className="field-help">The pointer stays visible to the operator. Live displays always hide it.</p>
-      <div className="field">
-        <label htmlFor="theme">Interface Theme</label>
-        <select
-          id="theme"
-          value={settings.theme}
-          onChange={(event) => updateSettings({ theme: event.target.value as ThemePreference })}
-        >
-          <option value="system">System</option>
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-          <option value="high-contrast">High Contrast</option>
-          <option value="midnight">Midnight Blue</option>
-          <option value="warm">Warm Sanctuary</option>
-        </select>
-      </div>
       <details className="settings-section streaming-account-settings" open>
         <summary>Streaming Accounts</summary>
         <p className="settings-path"><strong>You are here:</strong> Controls → Settings → System Settings → Streaming Accounts</p>

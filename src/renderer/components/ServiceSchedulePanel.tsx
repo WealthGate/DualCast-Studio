@@ -17,6 +17,7 @@ const ServiceSchedulePanel: React.FC<{ onOpenItem?: (item: ServiceScheduleItem) 
   const [scheduleId, setScheduleId] = useState(library.some(item => item.id === activeScheduleId) ? activeScheduleId : library.some(item => item.id === session.scheduleId) ? session.scheduleId : library[0]?.id ?? "");
   const [selected, setSelected] = useState(session.selected);
   const [live, setLive] = useState<{ id: string; slide: number } | null>(session.live);
+  const liveScheduleCue = useAppStore(state => state.liveScheduleCue);
   const [deleted, setDeleted] = useState<ServiceSchedule | null>(null);
   useEffect(() => { session = { scheduleId, selected, live }; }, [scheduleId, selected, live]);
   const [status, setStatus] = useState("Schedules are saved on this PC.");
@@ -34,6 +35,14 @@ const ServiceSchedulePanel: React.FC<{ onOpenItem?: (item: ServiceScheduleItem) 
     setScheduleId(current => next.some(item => item.id === activeScheduleId) ? activeScheduleId : next.some(item => item.id === current) ? current : next[0]?.id ?? "");
   }, [savedSchedules, activeScheduleId]);
   useEffect(() => { if (scheduleId) useAppStore.setState({ activeScheduleId: scheduleId }); }, [scheduleId]);
+  useEffect(() => {
+    if (!liveScheduleCue) return;
+    if (!useAppStore.getState().settings.serviceSchedules?.some(service => service.id === liveScheduleCue.scheduleId &&
+      service.items.some(item => item.id === liveScheduleCue.itemId))) return;
+    setScheduleId(liveScheduleCue.scheduleId);
+    setSelected(liveScheduleCue.itemId);
+    setLive({ id: liveScheduleCue.itemId, slide: liveScheduleCue.slide });
+  }, [liveScheduleCue]);
   useEffect(() => {
     if (live && !lowerThird.programSlideId && library.find(service => service.id === scheduleId)?.items.find(item => item.id === live.id)?.kind === "slides") {
       setLive(null); session.live = null;

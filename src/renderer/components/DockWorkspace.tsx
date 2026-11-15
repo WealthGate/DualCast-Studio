@@ -298,19 +298,19 @@ const fitFloating = (panel: FloatingDock, bounds: { width: number; height: numbe
 
 // Moving the same portal container between slots preserves editor drafts,
 // scroll position, and subscriptions when a panel floats or returns to its dock.
-const DockPanelSlot = ({ container, id, active = true }: { container: HTMLDivElement; id: string; active?: boolean }) => {
+const DockPanelSlot = ({ container, id, title, active = true }: { container: HTMLDivElement; id: string; title: string; active?: boolean }) => {
   const slotRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const slot = slotRef.current;
     slot?.append(container);
     return () => { if (container.parentElement === slot) container.remove(); };
   }, [container]);
-  return <div ref={slotRef} data-dock-panel-id={id} className={`dock-panel-instance ${active ? "active" : "inactive"}`} />;
+  return <div ref={slotRef} id={`dock-panel-${id}`} role="tabpanel" aria-label={title}
+    data-dock-panel-id={id} className={`dock-panel-instance ${active ? "active" : "inactive"}`} />;
 };
 
 const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequest }) => {
   const workspaceRef = useRef<HTMLDivElement>(null);
-  const contentRefs = useRef(new Map<string, HTMLDivElement>());
   const panelMap = useMemo(() => new Map(panels.map((panel) => [panel.id, panel])), [panels]);
   const panelIds = useMemo(() => new Set(panelMap.keys()), [panelMap]);
   const [layout, setLayout] = useState<DockLayout>(() => loadLayout(panelIds));
@@ -335,32 +335,36 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     // otherwise live stream statistics keep pulling users back to Stream Setup.
     if (handledFocusToken.current === focusRequest.token) return;
     handledFocusToken.current = focusRequest.token;
-    if (floating.some(panel => panel.id === focusRequest.panelId)) {
-      bringForward(focusRequest.panelId);
+    focusPanel(focusRequest.panelId);
+  }, [focusRequest?.token, panelMap, floating]);
+
+  function focusPanel(panelId: string) {
+    if (floating.some(panel => panel.id === panelId)) {
+      bringForward(panelId);
       return;
     }
     setLayout((current) => {
       const next = cloneLayout(current);
       for (const zoneId of zoneIds) {
-        const group = next[zoneId].find((entry) => entry.panelIds.includes(focusRequest.panelId));
+        const group = next[zoneId].find((entry) => entry.panelIds.includes(panelId));
         if (group) {
-          group.activePanelId = focusRequest.panelId;
+          group.activePanelId = panelId;
           return next;
         }
       }
       const target = next.right[0];
       if (target) {
-        target.panelIds.push(focusRequest.panelId);
-        target.activePanelId = focusRequest.panelId;
+        target.panelIds.push(panelId);
+        target.activePanelId = panelId;
       } else {
-        next.right.push({ id: `dock-right-focus-${focusRequest.panelId}`, panelIds: [focusRequest.panelId], activePanelId: focusRequest.panelId });
+        next.right.push({ id: `dock-right-focus-${panelId}`, panelIds: [panelId], activePanelId: panelId });
       }
       return next;
     });
     window.requestAnimationFrame(() => {
-      document.querySelector<HTMLElement>(`[data-dock-panel-id="${focusRequest.panelId}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      document.getElementById(`dock-tab-${panelId}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
-  }, [focusRequest?.token, panelMap, floating]);
+  }
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
@@ -431,25 +435,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
       }
       return next;
     });
-    window.requestAnimationFrame(() => {
-      const content = contentRefs.current.get(groupId);
-      if (content) {
-        content.scrollTop = 0;
-        content.scrollLeft = 0;
-        const activePanel = Array.from(content.querySelectorAll<HTMLElement>(".dock-panel-instance"))
-          .find((element) => element.dataset.dockPanelId === panelId);
-        if (activePanel) {
-          [activePanel, ...Array.from(activePanel.querySelectorAll<HTMLElement>("*"))].forEach((element) => {
-            if (element.scrollTop > 0) {
-              element.scrollTop = 0;
-            }
-            if (element.scrollLeft > 0) {
-              element.scrollLeft = 0;
-            }
-          });
-        }
-      }
-    });
+    window.requestAnimationFrame(() => document.getElementById(`dock-tab-${panelId}`)?.scrollIntoView({ block: "nearest", inline: "nearest" }));
   };
 
   const resetLayout = () => {
@@ -611,9 +597,23 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                           key={panelId}
                           className={`dock-tab ${group.activePanelId === panelId ? "active" : ""}`}
                           role="tab"
+                          id={`dock-tab-${panelId}`}
+                          aria-controls={`dock-panel-${panelId}`}
+                          tabIndex={group.activePanelId === panelId ? 0 : -1}
                           aria-selected={group.activePanelId === panelId}
                           draggable
                           onClick={() => setActivePanel(zoneId, group.id, panelId)}
+                          onKeyDown={event => {
+                            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                            event.preventDefault();
+                            const index = group.panelIds.indexOf(panelId);
+                            const count = group.panelIds.length;
+                            const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? count - 1
+                              : (index + (event.key === "ArrowRight" ? 1 : count - 1)) % count;
+                            const next = group.panelIds[nextIndex];
+                            setActivePanel(zoneId, group.id, next);
+                            document.getElementById(`dock-tab-${next}`)?.focus({ preventScroll: true });
+                          }}
                           onContextMenu={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
@@ -636,23 +636,14 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                   <button type="button" className="dock-float-button" title="Float panel" aria-label={`Float ${panelMap.get(group.activePanelId)?.title ?? "panel"}`}
                     onClick={() => floatPanel(group.activePanelId)}>↗</button>
                 </div>
-                <div
-                  className="dock-panel-content"
-                  ref={(element) => {
-                    if (element) {
-                      contentRefs.current.set(group.id, element);
-                    } else {
-                      contentRefs.current.delete(group.id);
-                    }
-                  }}
-                >
+                <div className="dock-panel-content">
                   {group.panelIds.map((panelId) => {
                     const panel = panelMap.get(panelId);
                     if (!panel) {
                       return null;
                     }
                     return (
-                      <DockPanelSlot key={panelId} id={panelId} container={getSlot(panelId)} active={group.activePanelId === panelId} />
+                      <DockPanelSlot key={panelId} id={panelId} title={panel.title} container={getSlot(panelId)} active={group.activePanelId === panelId} />
                     );
                   })}
                 </div>
@@ -728,8 +719,12 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
       >
         <div>
           <strong>Studio Workspace</strong>
-          <span>Drag tabs to an edge to split or the center to tab · drag boundaries to resize</span>
         </div>
+        <button type="button" className="studio-toolbar-button" aria-haspopup="menu" aria-expanded={Boolean(contextMenu && !contextMenu.panelId)}
+          onClick={event => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setContextMenu({ x: bounds.right - 255, y: bounds.bottom + 5 });
+          }}>Panels</button>
       </div>
 
       {renderZone("top")}
@@ -767,7 +762,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                 onPointerDown={event => moveFloating(event, bounds, false)} onKeyDown={event => keyboardMove(event, bounds, false)}>{panel.title}</button>
               <button type="button" className="dock-float-button" title="Return to dock" aria-label={`Dock ${panel.title}`} onClick={() => redockPanel(item.id)}>↙</button>
             </div>
-            <div className="dock-panel-content"><DockPanelSlot id={item.id} container={getSlot(item.id)} /></div>
+            <div className="dock-panel-content"><DockPanelSlot id={item.id} title={panel.title} container={getSlot(item.id)} /></div>
             <button type="button" className="floating-dock-resize" aria-label={`Resize ${panel.title}`} title="Drag or use the arrow keys to resize"
               onPointerDown={event => moveFloating(event, bounds, true)} onKeyDown={event => keyboardMove(event, bounds, true)} />
           </section>;
@@ -811,9 +806,11 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
           ) : (
             <>
               <div className="context-menu-title">Workspace Docks</div>
-              {hiddenPanels.length === 0 ? <div className="context-menu-note">All docks are visible</div> : null}
-              {hiddenPanels.map((panel) => (
-                <button key={panel.id} role="menuitem" onClick={() => movePanel(panel.id, "right")}>Show {panel.title}</button>
+              {panels.map((panel) => (
+                <button key={panel.id} role="menuitem" onClick={() => {
+                  focusPanel(panel.id);
+                  setContextMenu(null);
+                }}>{hiddenPanels.includes(panel) ? `Show ${panel.title}` : panel.title}</button>
               ))}
               <div className="context-menu-separator" />
               <button role="menuitem" onClick={resetLayout}>Reset Workspace Layout</button>

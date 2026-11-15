@@ -49,6 +49,10 @@ if (!process.versions.electron) {
       await window.loadURL("http://127.0.0.1:5174");
       window.showInactive();
       let result = {};
+      if (process.argv.includes("--studio-usability-only")) {
+        console.log(JSON.stringify(await require("./verify-studio-usability.cjs")(window)));
+        app.exit(0); return;
+      }
       if (process.argv.includes("--mixer-only")) {
         console.log(JSON.stringify(await require("./verify-audio-mixer.cjs")(window)));
         app.exit(0); return;

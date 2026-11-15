@@ -76,6 +76,46 @@
   --border: rgba(242, 196, 132, 0.34);
 }
 
+:root[data-theme="forest"] {
+  --bg: #0d1a17;
+  --bg-2: #142622;
+  --panel: #1a3129;
+  --panel-strong: #243e34;
+  --panel-soft: #142622;
+  --text: #f0faf4;
+  --muted: #bed7ca;
+  --accent: #8eddad;
+  --accent-2: #78d4c1;
+  --border: #476154;
+}
+
+:root[data-theme="mulberry"] {
+  --bg: #1b1424;
+  --bg-2: #291e32;
+  --panel: #33253d;
+  --panel-strong: #402e48;
+  --panel-soft: #291e32;
+  --text: #fff5fd;
+  --muted: #e0c9e4;
+  --accent: #edb5e7;
+  --accent-2: #c4b8ff;
+  --border: #65516d;
+}
+
+:root[data-theme="sandstone"] {
+  color-scheme: light;
+  --bg: #e9dcc7;
+  --bg-2: #f3e9d8;
+  --panel: #fff9ec;
+  --panel-strong: #fffdf7;
+  --panel-soft: #f3e9d8;
+  --text: #362b20;
+  --muted: #685748;
+  --accent: #975520;
+  --accent-2: #79602d;
+  --border: #b4a08a;
+}
+
 .fatal-error {
   display: grid;
   min-height: 100vh;
@@ -2031,7 +2071,10 @@ body {
 .dock-panel-instance {
   height: 100%;
   min-height: 0;
+  overflow: auto;
 }
+
+.dock-panel-instance > div { height: 100%; }
 
 .dock-panel-instance.inactive {
   display: none;
@@ -2460,7 +2503,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  scroll-padding-top: 92px;
+  scroll-padding-top: 112px;
 }
 
 .audio-mixer-panel > * {
@@ -2705,6 +2748,33 @@ body {
 .mixer-meter.horizontal.clipping .meter-bar { background: #ff5264; }
 .mixer-meter.horizontal.clipping::after { top: 1px; right: 4px; text-align: right; }
 .mixer-meter.horizontal small { display: none; }
+
+.theme-chooser {
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.theme-chooser legend { padding: 0 4px; font-weight: 650; }
+.theme-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 6px; }
+.theme-choice {
+  display: grid;
+  gap: 5px;
+  min-height: 53px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.theme-choice[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent-2); border-color: var(--accent-2); }
+.theme-swatch { display: grid; grid-template-columns: 2fr 2fr 1fr; height: 15px; overflow: hidden; border: 1px solid var(--border); border-radius: 3px; }
 
 .mixer-scope,
 .mixer-mute {
@@ -3891,3 +3961,45 @@ body.projection-mode, body.projection-mode * { cursor: none !important; }
 .sanctuary-logo { position: absolute; left: 30%; top: 30%; width: 40%; height: 40%; object-fit: contain; }
 .sanctuary-text { position: absolute; display: flex; flex-direction: column; line-height: 1.25; white-space: pre-wrap; overflow-wrap: anywhere; overflow: hidden; text-shadow: 0 2px 5px rgba(0,0,0,.6); }
 .sanctuary-reference { margin-top: .6em; font-size: .65em; }
+
+/* The theme applies to studio controls. Program and projection pictures use their own styles. */
+:root[data-theme] :is(.app-shell, .dock-workspace, .dock-zone, .studio-center) {
+  background: var(--bg);
+  color: var(--text);
+}
+:root[data-theme] :is(.app-header, .studio-toolbar, .dock-group, .dock-panel-content, .compact-dock-panel, .pane, .mixer-monitor, .mixer-channel) {
+  background: var(--panel-soft);
+  color: var(--text);
+  border-color: var(--border);
+}
+:root[data-theme] :is(.dock-tabbar, .dock-tab, .menu-panel, .dock-menu, .context-menu, .floating-dock, .recording-status, .panel-tool-overlay, .source-row, .destination-card, .destination-status, .endpoint-preview) {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--border);
+}
+:root[data-theme] :is(.studio-toolbar span, .pane-meta, .mixer-value, .mixer-channel-name, .mixer-monitor label, .mixer-monitor label span, .mixer-monitor p, .mixer-help, .lower-third-dock-section, .display-target-toolbar, .dock-empty-state) {
+  color: var(--muted);
+}
+:root[data-theme] :is(.dock-tab.active, .scene-list-item.active, .source-row.selected, .context-menu button:hover:not(:disabled), .context-menu button:focus-visible, .dock-menu button:hover, .row-action:hover:not(:disabled), .row-action:focus-visible, .studio-toolbar-button:hover) {
+  background: color-mix(in srgb, var(--panel-strong), var(--accent-2) 16%);
+  color: var(--text);
+  border-color: var(--accent-2);
+}
+:root[data-theme] :is(.studio-toolbar-button, .btn-outline, .menu-command, .mixer-input-fields input, .mixer-input-fields select, .mixer-routing select, .mixer-scope, .lower-third-dock-section select) {
+  background: var(--panel-strong);
+  color: var(--text);
+  border-color: var(--border);
+}
+:root[data-theme] :is(.context-menu button, .dock-menu button) { color: var(--text); }
+:root[data-theme] :is(.menu-command:hover, .menu-command:focus-visible) { background: color-mix(in srgb, var(--panel-strong), var(--accent-2) 16%); }
+:root[data-theme] .menu-command span { color: var(--muted); }
+:root[data-theme] .dock-close { color: var(--text); }
+:root[data-theme] .dock-close:hover { color: #fff; }
+:root[data-theme] :is(.btn-outline, .theme-choice, .menu-command):hover:not(:disabled) { border-color: var(--accent-2); }
+:root[data-theme] .brand-dot { background: var(--accent-2); }
+:root[data-theme] .btn-outline[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--panel-strong), var(--accent-2) 22%);
+  color: var(--text);
+  border-color: var(--accent-2);
+}
+.mixer-master-heading .mixer-vst-jump { padding: 2px 7px; font-size: 11px; }

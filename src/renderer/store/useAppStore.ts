@@ -169,9 +169,10 @@ type AppState = {
   toggleLowerThirdHidden: () => void;
   displayTextMode: import("../../shared/displayText").DisplayTextMode;
   setDisplayTextMode: (mode: import("../../shared/displayText").DisplayTextMode) => void;
-  scriptureCueRequest: (import("../../shared/types").ScriptureFetchResult & { requestId: string }) | null;
+  scriptureCueRequest: (import("../../shared/types").ScriptureFetchResult & { requestId: string; live: boolean }) | null;
   presentationGeneration: number;
   activeScheduleId: string;
+  liveScheduleCue: { scheduleId: string; itemId: string; slide: number } | null;
   isCutToBlack: boolean;
   isFrozen: boolean;
   transitionType: SceneTransitionType;
@@ -193,7 +194,7 @@ type AppState = {
   toggleSceneLocked: (sceneId: string) => void;
   toggleSceneEnabled: (sceneId: string) => void;
   selectPreviewScene: (sceneId: string) => void;
-  setProgramScene: (sceneId: string) => void;
+  setProgramScene: (sceneId: string, options?: { preserveProgramText: boolean }) => void;
   takeToProgram: () => void;
   stageLowerThird: (slides: LowerThirdSlide[], activeSlideId: string | null, live?: boolean) => Promise<void>;
   takeLowerThirdToProgram: () => Promise<void>;
@@ -263,6 +264,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   scriptureCueRequest: null,
   presentationGeneration: 0,
   activeScheduleId: "",
+  liveScheduleCue: null,
   isCutToBlack: false,
   isFrozen: false,
   transitionType: "fade",
@@ -329,12 +331,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ previewSceneId: sceneId });
     }
   },
-  setProgramScene: (sceneId) => {
+  setProgramScene: (sceneId, options) => {
     const state = get();
     const scene = state.scenes.find((candidate) => candidate.id === sceneId);
     if (scene) {
       const snapshot = createProgramSnapshot(scene, state.sources);
-      const lowerThird = { ...state.settings.lowerThird, programSlideId: state.settings.lowerThird.activeSlideId };
+      const lowerThird = { ...state.settings.lowerThird, programSlideId: options?.preserveProgramText
+        ? state.settings.lowerThird.programSlideId : state.settings.lowerThird.activeSlideId };
       const isCurrentScene = state.manualBlend === 0 && sceneId === state.programSceneId &&
         (!state.presentedProgram || state.presentedProgram.scene?.id === sceneId);
       set({
