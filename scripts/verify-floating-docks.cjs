@@ -21,11 +21,38 @@ module.exports = async function verifyFloatingDocks(window) {
       assert(node.firstElementChild === original, 'Changing docks remounted the panel.');
       assert(document.querySelectorAll('[data-dock-panel-id="scenes"]').length === 1, 'Scenes appeared twice.');
     };
-    const center = element => {
+    const exposedPoint = (element, name) => {
       const rect = element.getBoundingClientRect();
-      assert(rect.width > 0 && rect.height > 0, 'The drag target is empty.');
-      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+      const viewport = { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight };
+      const axis = (start, end, limit) => {
+        const first = Math.max(0, Math.ceil(start + 1));
+        const last = Math.min(limit - 1, Math.floor(end - 1));
+        if (last < first) return [];
+        const middle = Math.round((first + last) / 2);
+        const points = [middle];
+        for (let offset = 5; middle - offset > first || middle + offset < last; offset += 5) {
+          if (middle - offset > first) points.push(middle - offset);
+          if (middle + offset < last) points.push(middle + offset);
+        }
+        return [...points, first, last];
+      };
+      const xs = axis(rect.left, rect.right, viewport.width);
+      const ys = axis(rect.top, rect.bottom, viewport.height);
+      const blockers = new Set();
+      for (const y of ys) {
+        for (const x of xs) {
+          const hit = document.elementFromPoint(x, y);
+          if (element.contains(hit)) return { x, y };
+          if (blockers.size < 6 && hit) blockers.add(hit.id || hit.getAttribute('class') || hit.tagName);
+        }
+      }
+      const workspace = document.querySelector('.dock-workspace');
+      throw Error('No pointer-accessible point for ' + name + ': ' + JSON.stringify({
+        rect: rect.toJSON(), viewport, scrollTop: workspace.scrollTop, scrollHeight: workspace.scrollHeight,
+        blockers: [...blockers]
+      }));
     };
+    const paint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const locateTarget = target => {
       if (target === 'center') return document.querySelector('.studio-center');
       if (zones.includes(target)) return document.querySelector('.dock-edge-' + target);
@@ -60,15 +87,41 @@ module.exports = async function verifyFloatingDocks(window) {
         await until(() => panel.offsetWidth > width, 'Keyboard resize did not work.');
         await until(() => savedFloats().some(item => item.id === 'scenes' && item.width > width && item.x > x), 'Floating bounds were not saved.');
       },
-      dragHandle: () => center(button('Move Scenes')),
+      async prepareDrag(target) {
+        const group = target === 'center' ? document.querySelector('.studio-center')
+          : target === 'tab' || target === 'split' ? audioGroup() : null;
+        group?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+        await paint();
+        return exposedPoint(button('Move Scenes'), 'floating title');
+      },
+      async narrowViewport() {
+        await until(() => innerWidth <= 1100 && innerHeight <= 730, 'The narrow viewport did not apply.');
+        await paint();
+        return { width: innerWidth, height: innerHeight };
+      },
+      async prepareAutoscroll() {
+        const workspace = document.querySelector('.dock-workspace');
+        workspace.scrollTop = 0;
+        await paint();
+        assert(workspace.scrollHeight > workspace.clientHeight, 'The narrow workspace has no area to scroll.');
+        const rect = workspace.getBoundingClientRect();
+        return {
+          start: exposedPoint(button('Move Scenes'), 'floating title'),
+          // Stay away from the explicit bottom docking target while holding the drag.
+          end: { x: Math.round(rect.left + rect.width * 0.22), y: Math.round(rect.bottom - 18) },
+          scrollTop: workspace.scrollTop
+        };
+      },
+      checkAutoscroll: initialTop => until(() => {
+        const movement = document.querySelector('.dock-workspace').scrollTop - initialTop;
+        return movement >= 32 && movement;
+      }, 'Holding a floating panel near the workspace edge did not scroll the dock area.'),
       floatingPosition: () => ({ x: floating().offsetLeft, y: floating().offsetTop }),
       async dropTarget(target) {
         await until(() => document.querySelector('.dock-drop-layer'), 'Floating drag did not show docking targets.');
         assert(zones.every(zone => document.querySelector('.dock-edge-' + zone)), 'A workspace edge is missing.');
         const element = await until(() => locateTarget(target), 'Requested docking target is missing.');
-        const point = center(element);
-        assert(element.contains(document.elementFromPoint(point.x, point.y)), 'The drag position is obscured at ' + target + '.');
-        return point;
+        return exposedPoint(element, target);
       },
       async checkHover(target) {
         if (target === 'center') return;
@@ -106,7 +159,7 @@ module.exports = async function verifyFloatingDocks(window) {
     contents.sendInputEvent({ type, x: point.x, y: point.y, button: 'left', clickCount: 1, modifiers });
   };
   const drag = async (target, keepFloating = false) => {
-    const start = await call('dragHandle');
+    const start = await call('prepareDrag', target);
     let end = { x: start.x + 18, y: start.y };
     mouse('mouseDown', start);
     try {
@@ -145,8 +198,27 @@ module.exports = async function verifyFloatingDocks(window) {
     const beforeModifierDrag = await call('floatingPosition');
     await drag('tab', true);
     await call('checkStillFloating', beforeModifierDrag);
+    window.setContentSize(980, 700);
+    const narrowViewport = await call('narrowViewport');
+    await drag('tab');
+    await call('checkTab');
+    await call('float');
+    await drag('split');
+    await call('checkSplit');
+    await call('float');
+    const beforeAutoscroll = await call('floatingPosition');
+    const { start, end, scrollTop } = await call('prepareAutoscroll');
+    mouse('mouseDown', start);
+    let autoscrollPixels;
+    try {
+      mouse('mouseMove', end);
+      autoscrollPixels = await call('checkAutoscroll', scrollTop);
+    } finally {
+      mouse('mouseUp', end, true);
+    }
+    await call('checkStillFloating', beforeAutoscroll);
     return { float: true, pointerMove: true, keyboardMoveAndResize: true, settingsSaved: true,
-      keyboardReturn: true, edgeDrops: zones, tabDrop: true, splitDrop: true, modifierKeepsFloating: true, preservedPanel: true };
+      keyboardReturn: true, edgeDrops: zones, tabDrop: true, splitDrop: true, modifierKeepsFloating: true, preservedPanel: true, narrowViewport, autoscrollPixels };
   } finally {
     await contents.executeJavaScript('delete window.floatingDockTest');
   }

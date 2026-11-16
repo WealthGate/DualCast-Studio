@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-The current release is **v0.6.51**.
+The current release is **v0.6.52**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,11 +20,11 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.51
+### What's new in v0.6.52
 
 - Drag a floating panel by its header to any dock edge. Drop on **Tab here** to join a group or use a split target to place it beside another dock.
 
-See the [v0.6.51 release notes](docs/releases/v0.6.51.md).
+See the [v0.6.52 release notes](docs/releases/v0.6.52.md).
 
 ### Included from v0.6.50
 

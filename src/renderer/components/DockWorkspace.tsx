@@ -278,8 +278,11 @@ type FloatingDrag = {
   pointerId: number;
   startX: number;
   startY: number;
+  x: number;
+  y: number;
   started: boolean;
   docking: boolean;
+  scrollFrame?: number;
 };
 
 const dockDropAttributes = (zone: DockZoneId, group?: string, position?: DockSplitPosition) => ({
@@ -411,6 +414,10 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     [layout, floating]
   );
   const docked = useMemo(() => floating.reduce((current, panel) => closeDockPanel(current, panel.id), layout), [floating, layout]);
+  // Raising a floating panel changes its stack level without moving the
+  // captured pointer's target to a different place in the DOM.
+  const floatingLayers = floating.map((item, zIndex) => ({ item, zIndex }))
+    .sort((a, b) => a.item.id.localeCompare(b.item.id));
   const hiddenPanels = panels.filter((panel) => !visiblePanelIds.has(panel.id));
 
   const movePanel = (panelId: string, zoneId: DockZoneId, groupId?: string) => {
@@ -510,12 +517,34 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     hoveredDropTarget.current = target;
   };
 
+  const scrollDockWorkspace = () => {
+    const drag = floatingDrag.current;
+    if (!drag) return;
+    drag.scrollFrame = undefined;
+    const workspace = workspaceRef.current;
+    if (!drag.docking || !workspace || workspace.scrollHeight <= workspace.clientHeight ||
+        !["auto", "scroll"].includes(getComputedStyle(workspace).overflowY)) return;
+    const { left, right, top, bottom } = workspace.getBoundingClientRect();
+    if (drag.x < left || drag.x >= right || drag.y < top || drag.y >= bottom ||
+        dropTargetAt(drag.x, drag.y)?.classList.contains("dock-edge-target")) return;
+
+    const margin = 36;
+    const offset = Math.max(0, drag.y - bottom + margin) - Math.max(0, top + margin - drag.y);
+    if (offset === 0) return;
+    const before = workspace.scrollTop;
+    workspace.scrollTop += Math.sign(offset) * Math.ceil(Math.abs(offset) / 3);
+    if (workspace.scrollTop === before) return;
+    highlightDropTarget(dropTargetAt(drag.x, drag.y));
+    drag.scrollFrame = window.requestAnimationFrame(scrollDockWorkspace);
+  };
+
   const beginFloatingDrag = (event: React.PointerEvent<HTMLButtonElement>, panel: FloatingDock) => {
     if (event.button !== 0 || !event.isPrimary || floatingDrag.current) return;
     event.preventDefault();
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
-    floatingDrag.current = { panel, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, started: false, docking: false };
+    const { clientX: x, clientY: y, pointerId } = event;
+    floatingDrag.current = { panel, pointerId, startX: x, startY: y, x, y, started: false, docking: false };
   };
 
   const dragFloating = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -534,13 +563,17 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
       flushSync(() => setDraggingPanelId(docking ? drag.panel.id : null));
     }
     adjustFloating(drag.panel, dx, dy, false);
+    drag.x = event.clientX;
+    drag.y = event.clientY;
     highlightDropTarget(docking ? dropTargetAt(event.clientX, event.clientY) : null);
+    if (docking && drag.scrollFrame === undefined) drag.scrollFrame = window.requestAnimationFrame(scrollDockWorkspace);
   };
 
   const finishFloatingDrag = (pointerId: number, point?: React.PointerEvent<HTMLButtonElement>) => {
     const drag = floatingDrag.current;
     if (!drag || pointerId !== drag.pointerId) return;
     floatingDrag.current = null;
+    if (drag.scrollFrame !== undefined) window.cancelAnimationFrame(drag.scrollFrame);
     if (!drag.started) return;
 
     const target = point && !point.ctrlKey && !point.metaKey ? dropTargetAt(point.clientX, point.clientY) : null;
@@ -834,14 +867,14 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
       {renderZone("bottom")}
 
       <div className="dock-float-layer" style={floatBounds}>
-        {floating.map(item => {
+        {floatingLayers.map(({ item, zIndex }) => {
           const panel = panelMap.get(item.id);
           if (!panel) return null;
           const { x, y, width, height } = fitFloating(item, floatBounds);
           const bounds = { id: item.id, x, y, width, height };
           return <section key={item.id} className="dock-group floating-dock" aria-label={`Floating ${panel.title}`}
             data-dock-dragging={draggingPanelId === item.id || undefined}
-            style={{ left: x, top: y, width, height }} onPointerDownCapture={() => bringForward(item.id)} onFocusCapture={() => bringForward(item.id)}>
+            style={{ left: x, top: y, width, height, zIndex }} onPointerDownCapture={() => bringForward(item.id)} onFocusCapture={() => bringForward(item.id)}>
             <div className="dock-tabbar floating-dock-header">
               <button type="button" className="floating-dock-title" aria-label={`Move ${panel.title}`} title="Drag to dock. Hold Ctrl or Cmd to keep floating. Use the arrow keys to move."
                 onPointerDown={event => beginFloatingDrag(event, bounds)} onPointerMove={dragFloating}

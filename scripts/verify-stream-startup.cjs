@@ -3,8 +3,8 @@
 const fs = require('fs'), path = require('path'), net = require('net');
 const { spawn, spawnSync } = require('child_process');
 const { Transform } = require('stream');
+const { setTimeout: wait } = require('node:timers/promises');
 const root = path.resolve(__dirname, '..'), ffmpeg = require('ffmpeg-static');
-const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const temp = path.join(root, 'tmp/stream-startup');
 const ci = process.argv.includes('--ci');
 const width = ci ? 1280 : 1920, height = ci ? 720 : 1080;
@@ -21,6 +21,29 @@ let service, source, receiver, proxy;
 const sockets = new Set(), proxyTimers = new Set();
 const cleanup = () => { service?.forceStopStreaming(); source?.kill('SIGKILL'); receiver?.kill('SIGKILL'); proxy?.close(); sockets.forEach(socket=>socket.destroy());proxyTimers.forEach(clearTimeout); };
 const watchdog = setTimeout(() => { console.error('Local RTMP integration test exceeded its bounded duration.'); cleanup(); process.exit(1); }, Math.max(90000,(seconds+45)*1000));
+
+function readFrameTimes(output) {
+  const timeBases = new Map();
+  const tracks = [[], []];
+  for (const line of output.split(/\r?\n/)) {
+    const timeBase = /^#tb (\d+):\s*(\d+)\/(\d+)\s*$/.exec(line);
+    if (timeBase) {
+      timeBases.set(Number(timeBase[1]), Number(timeBase[2]) / Number(timeBase[3]));
+      continue;
+    }
+    if (!line.trim() || line.startsWith('#')) continue;
+    // framecrc writes one structured record per decoded frame. Read the PTS
+    // column in its stream's time base, without parsing interleaved filter logs.
+    const frame = /^\s*(\d+),\s*-?\d+,\s*(-?\d+),/.exec(line);
+    const stream = Number(frame?.[1]);
+    const scale = timeBases.get(stream);
+    if (!frame || !tracks[stream] || !Number.isFinite(scale) || scale <= 0) {
+      throw Error(`Invalid frame timestamp record: ${line}`);
+    }
+    tracks[stream].push(Number(frame[2]) * scale);
+  }
+  return tracks;
+}
 
 (async () => {
   await require('esbuild').build({ entryPoints: [path.join(root, 'electron/services/streamingService.ts')], bundle: true, platform: 'node', format: 'cjs', external: ['ffmpeg-static'], outfile: path.join(temp, 'service.cjs'), plugins: [{ name: 'isolated-desktop-host', setup(build) {
@@ -76,9 +99,9 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
     await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));publishPort=proxy.address().port;
   }
   const received = path.join(temp, `${encoder}-${process.pid}.flv`);
-  receiver = spawn(ffmpeg, ['-hide_banner','-y','-loglevel','error','-listen','1','-i',endpoint,'-map','0:v:0','-map','0:a:0?','-c','copy','-progress','pipe:1','-nostats','-f','flv',received], {windowsHide:true});
-  let receivedFrames = 0, receiverError = '';
-  receiver.stdout.on('data', data => { for(const match of data.toString().matchAll(/frame=\s*(\d+)/g)) receivedFrames=Number(match[1]); });
+  receiver = spawn(ffmpeg, ['-hide_banner','-y','-loglevel','error','-listen','1','-i',endpoint,'-map','0:v:0','-map','0:a:0?','-c','copy','-f','flv',received], {windowsHide:true});
+  const receiverClosed = new Promise(resolve => receiver.once('close', (code, signal) => resolve({code, signal})));
+  let receiverError = '';
   receiver.stderr.on('data', data => {receiverError=(receiverError+data.toString()).slice(-2000);});
   const states = []; let firstLive = null, fatal = null, congestion = null;
   let reportCongestion;
@@ -110,20 +133,37 @@ const watchdog = setTimeout(() => { console.error('Local RTMP integration test e
     if(sourceCode!==0)throw Error('Timed source failed or exceeded its deadline: '+sourceCode);
     await wait(500);
     console.log('Streaming integration: timed source finished.');
-    await service.stopStreaming(); await wait(1500);
-    const decoded = spawnSync(ffmpeg,['-hide_banner','-i',received,'-vf','showinfo','-af','ashowinfo','-f','null','-','-progress','pipe:1'],{encoding:'utf8',windowsHide:true,timeout:15000,maxBuffer:16*1024*1024});
+    await service.stopStreaming();
+    const receiverExit = await Promise.race([receiverClosed, wait(6000, null, {ref:false})]);
+    if (!receiverExit) throw Error(`RTMP receiver did not finish writing its capture. ${receiverError.trim()}`);
     const transportLog = fs.readFileSync(service.getStreamLogPath(),'utf8');
     if(/Non-monoton(?:ic|ous).*DTS/i.test(transportLog))throw Error('Output timestamps moved backwards or collided.');
     if(/FIFO queue full|queue overflow/i.test(transportLog))throw Error('Output discarded media during the transport test.');
-    const count = [...(decoded.stdout||'').matchAll(/frame=\s*(\d+)/g)];
-    receivedFrames = Number(count.at(-1)?.[1] || receivedFrames);
-    const videoTimes=[...(decoded.stderr||'').matchAll(/Parsed_showinfo[^\n]*pts_time:([0-9.]+)/g)].map(m=>Number(m[1]));
-    const audioTimes=[...(decoded.stderr||'').matchAll(/Parsed_ashowinfo[^\n]*pts_time:([0-9.]+)/g)].map(m=>Number(m[1]));
+    const decoded = spawnSync(ffmpeg, [
+      '-hide_banner', '-nostdin', '-loglevel', 'error', '-i', received,
+      '-map', '0:v:0', '-map', '0:a:0', '-fps_mode', 'passthrough', '-enc_time_base:v', 'demux',
+      '-threads:v', '1', '-f', 'framecrc', 'pipe:1'
+    ], {encoding:'utf8',windowsHide:true,timeout:15000,maxBuffer:16*1024*1024});
+    if (decoded.status !== 0) {
+      throw Error(`Could not decode the RTMP capture (status ${decoded.status}). ${decoded.error?.message ?? decoded.stderr?.trim() ?? ''}`);
+    }
+    const [videoTimes, audioTimes] = readFrameTimes(decoded.stdout);
+    const receivedFrames = videoTimes.length;
     const avDriftMs=Math.round(Math.abs(videoTimes.at(-1)-audioTimes.at(-1))*1000);
     const maxAudioGapMs=Math.round(Math.max(...audioTimes.slice(1).map((time,i)=>time-audioTimes[i]))*1000);
     const result = {encoder,copyVideo,preset,pauseOutputMs,uploadKbps,uploadedBytes,width,height,fps,seconds,firstLiveMs:firstLive,receivedFrames,audioFrames:audioTimes.length,avDriftMs,maxAudioGapMs,statuses:[...new Set(states)],error:fatal};
     console.log(JSON.stringify(result));
     const requiredFrames=inputFile?fps*seconds*.8:fps*seconds-2;
-    if(fatal||!firstLive||decoded.status!==0||receivedFrames<requiredFrames||!audioTimes.length||avDriftMs>250||maxAudioGapMs>100)throw Error('Real streaming startup/delivery failed: '+receiverError);
+    const problems = [];
+    if (fatal) problems.push(fatal);
+    if (!firstLive) problems.push('stream did not report live');
+    if (receivedFrames < requiredFrames) problems.push(`received ${receivedFrames}/${requiredFrames} required video frames`);
+    if (!audioTimes.length) problems.push('no audio frames');
+    if (avDriftMs > 250) problems.push(`A/V drift ${avDriftMs} ms exceeds 250 ms`);
+    if (maxAudioGapMs > 100) problems.push(`audio gap ${maxAudioGapMs} ms exceeds 100 ms`);
+    if (problems.length) {
+      if (receiverError) console.error(`RTMP receiver stderr (exit ${receiverExit.code ?? receiverExit.signal}): ${receiverError.trim()}`);
+      throw Error(`Real streaming startup/delivery failed: ${problems.join('; ')}`);
+    }
   } finally { cleanup(); }
 })().catch(error => { console.error(error.message); cleanup(); process.exitCode=1; }).finally(() => clearTimeout(watchdog));
