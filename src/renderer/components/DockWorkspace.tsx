@@ -1,5 +1,5 @@
 import React, { ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import ContextMenu from "./ContextMenu";
 
 export type DockPanelDefinition = {
@@ -273,6 +273,21 @@ type DockWorkspaceProps = {
 };
 
 type FloatingDock = { id: string; x: number; y: number; width: number; height: number };
+type FloatingDrag = {
+  panel: FloatingDock;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  started: boolean;
+  docking: boolean;
+};
+
+const dockDropAttributes = (zone: DockZoneId, group?: string, position?: DockSplitPosition) => ({
+  "data-dock-drop-zone": zone,
+  "data-dock-drop-group": group,
+  "data-dock-drop-position": position
+});
+
 const loadFloating = (panelIds: Set<string>): FloatingDock[] => {
   try {
     const saved: unknown = JSON.parse(window.localStorage.getItem(FLOATING_STORAGE_KEY) ?? "[]");
@@ -326,6 +341,8 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
   const [sizes, setSizes] = useState<DockSizes>(loadSizes);
   const [draggingPanelId, setDraggingPanelId] = useState<string | null>(null);
+  const floatingDrag = useRef<FloatingDrag | null>(null);
+  const hoveredDropTarget = useRef<HTMLElement | null>(null);
   const [contextMenu, setContextMenu] = useState<DockContextMenu | null>(null);
   const handledFocusToken = useRef<number | null>(null);
 
@@ -415,6 +432,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     if (!panelMap.has(panelId)) {
       return;
     }
+    setFloating(current => current.filter(panel => panel.id !== panelId));
     setLayout((current) => splitDockPanel(current, panelId, zoneId, targetGroupId, position));
     setDraggingPanelId(null);
     setContextMenu(null);
@@ -472,12 +490,74 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     } : { ...panel, x: panel.x + dx, y: panel.y + dy };
     setFloating(current => current.map(item => item.id === panel.id ? fitFloating(next, floatBounds) : item));
   };
-  const moveFloating = (event: React.PointerEvent, panel: FloatingDock, resize: boolean) => {
+  const resizeFloating = (event: React.PointerEvent, panel: FloatingDock) => {
     if (event.button !== 0) return;
     event.preventDefault();
     const { clientX, clientY } = event;
     bringForward(panel.id);
-    startPointerResize(resize ? "nwse-resize" : "move", move => adjustFloating(panel, move.clientX - clientX, move.clientY - clientY, resize));
+    startPointerResize("nwse-resize", move => adjustFloating(panel, move.clientX - clientX, move.clientY - clientY, true));
+  };
+
+  const dropTargetAt = (clientX: number, clientY: number) => {
+    const target = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-dock-drop-zone]");
+    return target && workspaceRef.current?.contains(target) ? target : null;
+  };
+
+  const highlightDropTarget = (target: HTMLElement | null) => {
+    if (target === hoveredDropTarget.current) return;
+    hoveredDropTarget.current?.removeAttribute("data-dock-drop-hover");
+    target?.setAttribute("data-dock-drop-hover", "");
+    hoveredDropTarget.current = target;
+  };
+
+  const beginFloatingDrag = (event: React.PointerEvent<HTMLButtonElement>, panel: FloatingDock) => {
+    if (event.button !== 0 || !event.isPrimary || floatingDrag.current) return;
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    floatingDrag.current = { panel, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, started: false, docking: false };
+  };
+
+  const dragFloating = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = floatingDrag.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.started) {
+      if (Math.hypot(dx, dy) < 5) return;
+      drag.started = true;
+    }
+    const docking = !event.ctrlKey && !event.metaKey;
+    if (drag.docking !== docking) {
+      drag.docking = docking;
+      // Render the drop targets before hit-testing the first move.
+      flushSync(() => setDraggingPanelId(docking ? drag.panel.id : null));
+    }
+    adjustFloating(drag.panel, dx, dy, false);
+    highlightDropTarget(docking ? dropTargetAt(event.clientX, event.clientY) : null);
+  };
+
+  const finishFloatingDrag = (pointerId: number, point?: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = floatingDrag.current;
+    if (!drag || pointerId !== drag.pointerId) return;
+    floatingDrag.current = null;
+    if (!drag.started) return;
+
+    const target = point && !point.ctrlKey && !point.metaKey ? dropTargetAt(point.clientX, point.clientY) : null;
+    highlightDropTarget(null);
+    setDraggingPanelId(null);
+    const zone = zoneIds.find(id => id === target?.dataset.dockDropZone);
+    if (zone && target) {
+      const { dockDropGroup, dockDropPosition } = target.dataset;
+      if (dockDropGroup && (dockDropPosition === "before" || dockDropPosition === "after")) {
+        splitPanel(drag.panel.id, zone, dockDropGroup, dockDropPosition);
+      } else {
+        movePanel(drag.panel.id, zone, dockDropGroup);
+      }
+      window.requestAnimationFrame(() => document.getElementById(`dock-tab-${drag.panel.id}`)?.focus());
+    } else {
+      adjustFloating(drag.panel, point ? point.clientX - drag.startX : 0, point ? point.clientY - drag.startY : 0, false);
+    }
   };
   const keyboardMove = (event: React.KeyboardEvent, panel: FloatingDock, resize: boolean) => {
     const step = event.shiftKey ? 40 : 12;
@@ -572,6 +652,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
               <div
                 className={`dock-group ${canSplitDraggedPanel ? "dock-group-drop-ready" : ""}`}
                 style={groupStyle}
+                {...(canMergeDraggedPanel ? dockDropAttributes(zoneId, group.id) : {})}
                 onDragOver={(event) => {
                   if (canMergeDraggedPanel) {
                     event.preventDefault();
@@ -579,8 +660,8 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                   }
                 }}
                 onDrop={(event) => {
-                  event.preventDefault();
-                  if (draggingPanelId) {
+                  if (canMergeDraggedPanel && draggingPanelId) {
+                    event.preventDefault();
                     movePanel(draggingPanelId, zoneId, group.id);
                   }
                 }}
@@ -651,6 +732,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                   <div className={`dock-group-drop-overlay ${horizontalZone ? "horizontal" : "vertical"}`}>
                     <div
                       className="dock-group-split-target before"
+                      {...dockDropAttributes(zoneId, group.id, "before")}
                       onDragOver={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -667,6 +749,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                     {canMergeDraggedPanel ? (
                       <div
                         className="dock-group-merge-target"
+                        {...dockDropAttributes(zoneId, group.id)}
                         onDragOver={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
@@ -683,6 +766,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                     ) : <div className="dock-group-merge-target unavailable">Current tab</div>}
                     <div
                       className="dock-group-split-target after"
+                      {...dockDropAttributes(zoneId, group.id, "after")}
                       onDragOver={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -709,7 +793,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   const contextPanel = contextMenu?.panelId ? panelMap.get(contextMenu.panelId) : null;
 
   return (
-    <div className="dock-workspace" ref={workspaceRef}>
+    <div className={`dock-workspace${draggingPanelId ? " dock-drag-active" : ""}`} ref={workspaceRef}>
       <div
         className="studio-toolbar"
         onContextMenu={(event) => {
@@ -756,26 +840,33 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
           const { x, y, width, height } = fitFloating(item, floatBounds);
           const bounds = { id: item.id, x, y, width, height };
           return <section key={item.id} className="dock-group floating-dock" aria-label={`Floating ${panel.title}`}
+            data-dock-dragging={draggingPanelId === item.id || undefined}
             style={{ left: x, top: y, width, height }} onPointerDownCapture={() => bringForward(item.id)} onFocusCapture={() => bringForward(item.id)}>
             <div className="dock-tabbar floating-dock-header">
-              <button type="button" className="floating-dock-title" aria-label={`Move ${panel.title}`} title="Drag or use the arrow keys to move"
-                onPointerDown={event => moveFloating(event, bounds, false)} onKeyDown={event => keyboardMove(event, bounds, false)}>{panel.title}</button>
+              <button type="button" className="floating-dock-title" aria-label={`Move ${panel.title}`} title="Drag to dock. Hold Ctrl or Cmd to keep floating. Use the arrow keys to move."
+                onPointerDown={event => beginFloatingDrag(event, bounds)} onPointerMove={dragFloating}
+                onPointerUp={event => finishFloatingDrag(event.pointerId, event)}
+                onPointerCancel={event => finishFloatingDrag(event.pointerId)}
+                onLostPointerCapture={event => finishFloatingDrag(event.pointerId)}
+                onContextMenu={event => { event.preventDefault(); setContextMenu({ x: event.clientX, y: event.clientY, panelId: item.id }); }}
+                onKeyDown={event => keyboardMove(event, bounds, false)}>{panel.title}</button>
               <button type="button" className="dock-float-button" title="Return to dock" aria-label={`Dock ${panel.title}`} onClick={() => redockPanel(item.id)}>↙</button>
             </div>
             <div className="dock-panel-content"><DockPanelSlot id={item.id} title={panel.title} container={getSlot(item.id)} /></div>
             <button type="button" className="floating-dock-resize" aria-label={`Resize ${panel.title}`} title="Drag or use the arrow keys to resize"
-              onPointerDown={event => moveFloating(event, bounds, true)} onKeyDown={event => keyboardMove(event, bounds, true)} />
+              onPointerDown={event => resizeFloating(event, bounds)} onKeyDown={event => keyboardMove(event, bounds, true)} />
           </section>;
         })}
       </div>
       {panels.filter(panel => visiblePanelIds.has(panel.id)).map(panel => createPortal(panel.content, getSlot(panel.id), panel.id))}
 
       {draggingPanelId ? (
-        <div className="dock-drop-layer" aria-hidden="true">
+        <div className="dock-drop-layer" aria-hidden="true" style={floatBounds}>
           {zoneIds.map((zoneId) => (
             <div
               key={zoneId}
               className={`dock-edge-target dock-edge-${zoneId}`}
+              {...dockDropAttributes(zoneId)}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
@@ -796,7 +887,9 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
           {contextPanel ? (
             <>
               <div className="context-menu-title">{contextPanel.title}</div>
-              <button role="menuitem" onClick={() => floatPanel(contextPanel.id)}>Float Panel</button>
+              {floating.some(panel => panel.id === contextPanel.id)
+                ? <button role="menuitem" onClick={() => redockPanel(contextPanel.id)}>Return to previous dock</button>
+                : <button role="menuitem" onClick={() => floatPanel(contextPanel.id)}>Float Panel</button>}
               {zoneIds.map((zoneId) => (
                 <button key={zoneId} role="menuitem" onClick={() => movePanel(contextPanel.id, zoneId)}>Dock {zoneId}</button>
               ))}

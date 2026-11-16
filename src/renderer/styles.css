@@ -2094,6 +2094,10 @@ body {
   box-shadow: 0 12px 36px #0007;
 }
 
+.dock-drag-active .dock-float-layer { z-index: 35; }
+.dock-drag-active .floating-dock { pointer-events: none; }
+.floating-dock[data-dock-dragging] { opacity: 0.55; }
+
 .floating-dock-header { flex: none; }
 .dock-float-button { flex: none; min-width: 28px; padding: 2px 6px; }
 .floating-dock-title {
@@ -2146,11 +2150,11 @@ body {
 }
 
 .dock-group-drop-overlay.horizontal {
-  grid-template-columns: minmax(54px, 1fr) minmax(72px, 1.4fr) minmax(54px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
 }
 
 .dock-group-drop-overlay.vertical {
-  grid-template-rows: minmax(40px, 1fr) minmax(52px, 1.4fr) minmax(40px, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
 }
 
 .dock-group-split-target,
@@ -2182,16 +2186,16 @@ body {
   pointer-events: none;
 }
 
-.dock-group-split-target:hover,
-.dock-group-merge-target:hover {
+:is(.dock-group-split-target, .dock-group-merge-target, .dock-edge-target):is(:hover, [data-dock-drop-hover]) {
   border-color: #fff;
   background: rgba(61, 109, 219, 0.96);
 }
 
+.dock-group[data-dock-drop-hover] { outline: 2px solid #7da0ff; outline-offset: -2px; }
+
 .dock-drop-layer {
-  position: absolute;
-  inset: 34px 0 0;
-  z-index: 30;
+  position: fixed;
+  z-index: 50;
   pointer-events: none;
 }
 
@@ -2212,7 +2216,7 @@ body {
 .dock-edge-left,
 .dock-edge-right {
   top: 28%;
-  width: 105px;
+  width: clamp(64px, 8vw, 105px);
   height: 36%;
 }
 
@@ -2223,10 +2227,10 @@ body {
 .dock-edge-bottom {
   left: 38%;
   width: 24%;
-  height: 72px;
+  height: clamp(42px, 8vh, 72px);
 }
 
-.dock-edge-top { top: 8px; }
+.dock-edge-top { top: 42px; }
 .dock-edge-bottom { bottom: 8px; }
 
 .preview-program {
