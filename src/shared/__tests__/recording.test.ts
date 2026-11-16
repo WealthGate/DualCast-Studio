@@ -5,7 +5,7 @@ describe("recording utilities", () => {
   it("formats filenames with date and time", () => {
     const date = new Date("2024-07-03T15:04:05Z");
     const result = formatRecordingFilename(date);
-    expect(result).toContain("DualCast_");
+    expect(result).toContain("OpenChurch_");
     expect(result).toContain(".mp4");
   });
 

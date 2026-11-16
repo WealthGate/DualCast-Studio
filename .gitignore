@@ -8,3 +8,9 @@ Thumbs.db
 *.tmp
 *.swp
 .env
+.npm-cache/
+tmp/
+downloads/
+assets/windows-capture/
+assets/audio-host/
+assets/virtual-camera/

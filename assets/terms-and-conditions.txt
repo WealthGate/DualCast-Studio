@@ -1,0 +1,7 @@
+OpenChurch Broadcast Studio Terms and Conditions
+
+Use OpenChurch Broadcast Studio lawfully and only with content, accounts, and equipment you are authorized to use. Obtain any permissions you need to display, record, or broadcast music, lyrics, Bible translations, images, video, and other material. You are responsible for the content you send to a display, recording, or streaming service and for any notices or permissions required from the people you record.
+
+Third-party services, media libraries, and plug-ins may have their own terms. Keep access credentials and stream keys private, manage who can use remote control, and verify destinations before going live. Keep backups of service schedules, settings, and recordings you need to retain.
+
+By accepting, you agree to these terms for this version of OpenChurch Broadcast Studio.

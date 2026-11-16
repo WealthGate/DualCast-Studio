@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b111b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="OpenChurch">
+  <title>OpenChurch Remote</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/mobile/icon-192.png">
+  <link rel="icon" href="/mobile/icon-192.png">
+  <link rel="stylesheet" href="/mobile/app.css">
+  <script src="/mobile/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/operator"><span class="brand-mark">✚</span><span>OpenChurch<small>BROADCAST REMOTE</small></span></a><span id="connection" class="connection">Disconnected</span></header>
+  <main>
+    <section id="login" class="login card">
+      <span class="eyebrow">YOUR STUDIO. IN YOUR HAND.</span>
+      <h1>Ready when<br>you are.</h1>
+      <p>Control the service from your phone or tablet. Enter the operator PIN shown in the studio’s Venue panel.</p>
+      <form id="login-form"><label for="pin">Operator PIN</label><input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="16" required placeholder="Enter studio PIN"><button class="primary" type="submit">Connect to studio <span aria-hidden="true">→</span></button></form>
+      <p id="login-message" role="status" aria-live="polite"></p>
+      <details><summary>Connecting from another network?</summary><p>Connect Tailscale on this device and the studio computer, then open the studio’s private HTTPS remote address. The studio must be running.</p></details>
+    </section>
+    <div id="desk" hidden>
+      <div class="station-row"><div><span class="eyebrow">CONTROL ROOM</span><h1 id="station">Main studio</h1></div><button id="lock" class="quiet">Lock</button></div>
+      <div id="offline" class="offline" role="alert" hidden>Studio disconnected. Controls are locked until the connection returns. Commands are never queued.</div>
+      <section class="monitor card" aria-label="Program monitor">
+        <div class="monitor-head"><span><i class="live-dot"></i> PROGRAM <b id="program-name">—</b></span><button id="monitor-toggle" class="quiet">Pause monitor</button></div>
+        <div class="picture"><img id="program-image" alt="Live Program confidence monitor" hidden><div id="monitor-note">Waiting for Program picture…</div></div>
+        <div class="status-strip"><span id="stream-state">STREAM IDLE</span><span id="record-state">REC OFF</span><span id="output-state">PROGRAM</span></div>
+      </section>
+      <div id="toast" class="toast" role="status" aria-live="polite">Choose a control below.</div>
+      <section id="tab-live" class="tab-panel">
+        <div class="section-heading"><h2>Cameras & scenes</h2><span id="preview-name" class="muted">Preview: —</span></div>
+        <p class="hint">Tap Preview to cue a scene. Tap Go live to switch immediately.</p>
+        <div id="scenes" class="scene-grid"></div>
+        <div class="take-row"><label for="transition">Transition<select id="transition"><option value="cut">Cut</option><option value="fade">Fade</option><option value="crossfade">Crossfade</option></select></label><button id="take" class="primary" data-control>TAKE Preview <span aria-hidden="true">↗</span></button></div>
+        <div class="two-grid"><button id="black" class="danger" data-control>Black out</button><button id="freeze" data-control>Freeze Program</button></div>
+      </section>
+      <section id="tab-text" class="tab-panel" hidden>
+        <h2>Text & lyrics</h2><p class="hint">Prepare an announcement or paste lyrics. Stage privately, then show when ready.</p>
+        <form id="text-form" class="card form-card"><label for="text-title">Title / speaker name</label><input id="text-title" maxlength="120" placeholder="Welcome / Pastor Daniel"><label for="text-body">Message or lyrics</label><textarea id="text-body" rows="5" maxlength="10000" required placeholder="Welcome to today’s service…"></textarea><label for="text-lines">Lines per slide<select id="text-lines"><option value="2">2 lines</option><option value="3">3 lines</option><option value="4">4 lines</option><option value="6">6 lines</option><option value="1">1 line</option></select></label><button class="primary" type="submit" data-control>Stage in Preview</button></form>
+      </section>
+      <section id="tab-scripture" class="tab-panel" hidden>
+        <h2>Scripture</h2><p class="hint">Uses the Bible provider or offline translation selected on the studio computer.</p>
+        <form id="scripture-form" class="card form-card"><label for="reference">Bible reference</label><input id="reference" maxlength="160" required value="John 3:16-18" placeholder="Psalm 23:1-6"><span id="scripture-source" class="muted"></span><button class="primary" type="submit" data-control>Load into Preview</button></form>
+      </section>
+      <section id="cue-panel" class="card form-card" hidden>
+        <div class="section-heading"><h2>Presentation cues</h2><span class="eyebrow">PREVIEW → LIVE</span></div>
+        <label for="slide">Saved text, lyrics & scripture</label><select id="slide"></select><p id="slide-preview" class="slide-copy"></p>
+        <div class="two-grid"><button id="cue-slide" data-control>Stage selected</button><button id="show-text" class="primary" data-control>Show staged text</button></div>
+        <p id="live-slide" class="muted"></p>
+        <div class="two-grid"><button id="previous-slide" data-control>← Previous live</button><button id="next-slide" data-control>Next live →</button></div>
+        <button id="hide-lower" data-control>Hide lower third</button>
+      </section>
+      <section id="tab-ticker" class="tab-panel" hidden>
+        <h2>Scrolling announcements</h2><p class="hint">Edit a ticker already on Program. Add a Scrolling Text source in the desktop app first.</p>
+        <form id="ticker-form" class="card form-card"><label for="ticker-source">Program ticker</label><select id="ticker-source"></select><label for="ticker-text">Announcement</label><textarea id="ticker-text" maxlength="10000" rows="4"></textarea><div class="two-grid"><label for="ticker-direction">Direction<select id="ticker-direction"><option value="left">← Left</option><option value="right">Right →</option><option value="up">↑ Up</option><option value="down">↓ Down</option></select></label><label for="ticker-speed">Speed (pixels / sec)<input id="ticker-speed" type="number" min="0" max="1000" value="100" required></label></div><label class="check"><input id="ticker-enabled" type="checkbox" checked> Show ticker</label><label class="check"><input id="ticker-paused" type="checkbox"> Pause scrolling</label><button class="primary" type="submit" data-control>Apply ticker to Program</button><p id="ticker-empty" class="muted" hidden>No scrolling text on Program. Add one on the desktop, then TAKE that scene.</p></form>
+      </section>
+      <section id="tab-more" class="tab-panel" hidden>
+        <h2>Service controls</h2><div class="card form-card"><h3>Recording</h3><p class="hint">Recordings are saved on the studio computer.</p><button id="record" class="danger" data-control>Start recording</button><h3>Program audio</h3><form id="audio-form"><label for="master-gain">Master volume <output id="gain-value">100%</output></label><input id="master-gain" type="range" min="0" max="100" value="100"><button type="submit" data-control>Apply volume</button></form></div>
+        <div class="card form-card"><h3>Display controls</h3><div id="text-modes" class="two-grid"><button data-mode="show" data-control>Show text</button><button data-mode="text-only" data-control>Text only (no logo)</button><button data-mode="hide" data-control>Hide all text</button><button data-mode="theme" data-control>Theme only</button><button data-mode="logo" data-control>Logo only</button></div><button id="clear-text" data-control>Clear presentation text</button></div>
+        <div class="card form-card"><h3>Make it your remote</h3><button id="install" hidden>Install OpenChurch Remote</button><p class="hint">iPhone / iPad: open in Safari, tap Share, then Add to Home Screen. Android: use your browser’s Install app / Add to Home screen menu. Use the private HTTPS address for full app installation.</p><label class="check"><input id="awake" type="checkbox"> Keep screen awake while controlling</label><button id="share">Share this remote address</button><p class="hint">The PIN is entered separately and is never included in the address.</p></div>
+      </section>
+    </div>
+  </main>
+  <nav id="tabs" aria-label="Remote controls" hidden><button data-tab="live" aria-current="page"><span aria-hidden="true">▦</span>Live</button><button data-tab="text"><span aria-hidden="true">T</span>Text</button><button data-tab="scripture"><span aria-hidden="true">▤</span>Scripture</button><button data-tab="ticker"><span aria-hidden="true">⇠</span>Ticker</button><button data-tab="more"><span aria-hidden="true">•••</span>More</button></nav>
+  <dialog id="confirm"><form method="dialog"><h2 id="confirm-title">Confirm control</h2><p id="confirm-message"></p><div class="two-grid"><button value="cancel">Cancel</button><button class="danger" value="confirm">Confirm</button></div></form></dialog>
+</body>
+</html>

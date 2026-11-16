@@ -1,49 +1,82 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/useAppStore";
-import { getDisplayStream, pickRecorderMimeType, stopMediaStream } from "../utils/media";
-import { AudioMode, StreamingStatus } from "../../shared/types";
-
-const presetBitrateMap: Record<string, number> = {
-  low: 2_500_000,
-  medium: 4_500_000,
-  high: 6_500_000
-};
-
-const shouldIncludeSystem = (mode: AudioMode) => mode === "system" || mode === "both";
-const shouldIncludeMic = (mode: AudioMode) => mode === "microphone" || mode === "both";
-
-const formatTimer = (seconds: number) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-};
-
-const isValidRtmpUrl = (rtmpUrl: string) => {
-  try {
-    const parsed = new URL(rtmpUrl);
-    return parsed.protocol === "rtmp:" || parsed.protocol === "rtmps:";
-  } catch {
-    return false;
-  }
-};
+import { useShallow } from "zustand/react/shallow";
+import { pickStreamingRecorderMimeType, stopMediaStream } from "../utils/media";
+import { StreamDestinationInput, StreamStatusPayload, StreamingStatus } from "../../shared/types";
+import { isValidRtmpUrl } from "../../shared/streamingValidation";
+import { formatElapsedTimer } from "../utils/time";
+import { createStreamingCapture } from "../utils/streamingCapture";
+import { streamingProfile, streamingRecoverySettings } from "../../shared/streamingProfile";
+import { supports8KEncoding } from "./use8KSupport";
 
 export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
-  const { programSourceId, settings } = useAppStore();
+  const { programSceneId, programSceneSnapshot, settings, programAudioStream } = useAppStore(useShallow(state => ({
+    programSceneId: state.programSceneId, programSceneSnapshot: state.programSceneSnapshot, settings: state.settings, programAudioStream: state.programAudioStream
+  })));
   const [status, setStatus] = useState<StreamingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [formattedElapsed, setFormattedElapsed] = useState("00:00");
-  const [stats, setStats] = useState<{ fps?: number | null; bitrateKbps?: number | null; time?: string | null; droppedFrames?: number | null } | null>(null);
+  const [stats, setStats] = useState<StreamStatusPayload["stats"]>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [destinationStatuses, setDestinationStatuses] = useState<
+    NonNullable<StreamStatusPayload["destinationStatuses"]>
+  >([]);
   const startedAtRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const systemStreamRef = useRef<MediaStream | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioTracksRef = useRef<MediaStreamTrack[]>([]);
   const canvasStreamRef = useRef<MediaStream | null>(null);
+  const stopCaptureRef = useRef<(() => void) | null>(null);
   const stopRequestedRef = useRef(false);
   const startInFlightRef = useRef(false);
+  const chunkQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const captureErrorRef = useRef<string | null>(null);
+  const recovery = useRef({ active: false, pending: false, attempts: 0, lastAt: 0, timer: 0, notice: "", loadLevel: 0 });
+  const recoveryDestinations = useRef<StreamDestinationInput[]>([]);
+  const startAgain = useRef<(destinations: StreamDestinationInput[]) => Promise<{ ok: boolean; message?: string }>>(async () => ({ ok: false }));
+  const streamBegan = useRef<number | null>(null);
+
+  const scheduleRetry = () => {
+    if (!recovery.current.active) return;
+    window.clearTimeout(recovery.current.timer);
+    const delay = Math.min(15000, 750 * 2 ** Math.min(5, recovery.current.attempts - 1));
+    recovery.current.timer = window.setTimeout(() => {
+      if (!recovery.current.active) return;
+      recovery.current.pending = false;
+      void startAgain.current(recoveryDestinations.current).then(result => {
+        if (!result.ok && recovery.current.active) {
+          recovery.current.active = false;
+          captureErrorRef.current = result.message || "Streaming could not reconnect. Check the destination settings.";
+          setLastError(captureErrorRef.current); setStatusMessage(captureErrorRef.current); setStatus("error");
+        }
+      });
+    }, delay);
+  };
+
+  const requestRecovery = (reason: string, reduceLoad = false) => {
+    if (useAppStore.getState().settings.streamAutoRecover === false) return false;
+    if (stopRequestedRef.current && !recovery.current.active) return false;
+    if (recovery.current.pending) return true;
+    if (Date.now() - recovery.current.lastAt > 30000) recovery.current.attempts = 0;
+    if (recovery.current.attempts >= 5) return false;
+    recovery.current.attempts += 1; recovery.current.lastAt = Date.now();
+    if (reduceLoad || recovery.current.attempts >= 2) recovery.current.loadLevel = Math.min(2, recovery.current.loadLevel + 1);
+    recovery.current.active = recovery.current.pending = true;
+    recovery.current.notice = recovery.current.loadLevel > 0
+      ? `Recovered using 720p, up to ${recovery.current.loadLevel >= 2 ? 15 : 30} fps and lower video bandwidth. Audio quality is unchanged.`
+      : "Stream reconnected with fresh video input.";
+    captureErrorRef.current = null; setLastError(null); setStatus("reconnecting");
+    setStatusMessage(`${reason} Reconnecting automatically…`);
+    stopRequestedRef.current = true;
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    else if (!recorder) {
+      cleanupCapture(); startInFlightRef.current = false;
+      void window.dualcast.stopStream().catch(() => undefined).then(scheduleRetry);
+    }
+    return true;
+  };
 
   const clearTimer = () => {
     if (timerRef.current) {
@@ -53,26 +86,44 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
   };
 
   const cleanupCapture = () => {
+    stopCaptureRef.current?.();
+    stopCaptureRef.current = null;
     stopMediaStream(canvasStreamRef.current);
-    stopMediaStream(systemStreamRef.current);
-    stopMediaStream(micStreamRef.current);
     canvasStreamRef.current = null;
-    systemStreamRef.current = null;
-    micStreamRef.current = null;
-    audioContextRef.current?.close();
-    audioContextRef.current = null;
+    audioTracksRef.current.forEach(track => track.stop());
+    audioTracksRef.current = [];
   };
 
   useEffect(() => {
     const unsubscribe = window.dualcast.onStreamStatus((payload) => {
-      setStatus(payload.status);
-      setStatusMessage(payload.message ?? null);
-      startedAtRef.current = payload.startedAt ?? null;
+      if (payload.restartRequired) {
+        if (requestRecovery(payload.message || "The stream input fell behind.", payload.reduceLoad)) return;
+        recovery.current.active = recovery.current.pending = false;
+        captureErrorRef.current = "Streaming could not sustain delivery after five recovery attempts. Check upload capacity and reduce streaming quality before restarting.";
+        setLastError(captureErrorRef.current); setStatusMessage(captureErrorRef.current); setStatus("error");
+        stopRequestedRef.current = true;
+        const recorder = recorderRef.current;
+        if (recorder && recorder.state !== "inactive") recorder.stop();
+        else void window.dualcast.stopStream().catch(() => undefined);
+        return;
+      }
+      const recovering = recovery.current.active;
+      if (payload.status === "error") {
+        recovery.current.active = recovery.current.pending = false;
+        window.clearTimeout(recovery.current.timer);
+      }
+      if (payload.status === "live") { recovery.current.active = recovery.current.pending = false; streamBegan.current ??= payload.startedAt ?? Date.now(); }
+      setStatus(captureErrorRef.current && payload.status === "idle" ? "error" : recovering && ["idle", "connecting"].includes(payload.status) ? "reconnecting" : payload.status);
+      setStatusMessage(captureErrorRef.current ?? payload.message ?? (payload.status === "live" ? recovery.current.notice || null : null));
+      startedAtRef.current = streamBegan.current ?? payload.startedAt ?? null;
       setStats(payload.stats ?? null);
-      setLastError(payload.lastError ?? null);
+      setLastError(captureErrorRef.current ?? payload.lastError ?? null);
+      setDestinationStatuses(payload.destinationStatuses ?? []);
     });
     return () => {
       unsubscribe();
+      recovery.current.active = recovery.current.pending = false;
+      window.clearTimeout(recovery.current.timer);
     };
   }, []);
 
@@ -87,7 +138,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     const updateElapsed = () => {
       const seconds = Math.max(0, Math.floor((Date.now() - (startedAtRef.current ?? Date.now())) / 1000));
       setElapsedSeconds(seconds);
-      setFormattedElapsed(formatTimer(seconds));
+      setFormattedElapsed(formatElapsedTimer(seconds));
     };
 
     updateElapsed();
@@ -99,88 +150,97 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
   useEffect(() => {
     if ((status === "idle" || status === "error") && recorderRef.current && recorderRef.current.state !== "inactive") {
+      stopRequestedRef.current = true;
       recorderRef.current.stop();
     }
   }, [status]);
 
   const startStream = useCallback(
-    async (rtmpUrl: string, streamKey: string) => {
+    async (destinations: StreamDestinationInput[]) => {
       if (startInFlightRef.current) {
         return { ok: false, message: "Stream is already starting." };
       }
       if (!canvasRef.current) {
         return { ok: false, message: "Program output is not ready." };
       }
-      if (!programSourceId) {
-        return { ok: false, message: "Select a display and TAKE it to Program before streaming." };
+      if (!programSceneId || !programSceneSnapshot?.sourceIds.length) {
+        return { ok: false, message: "Select a scene and TAKE it to Program before streaming." };
       }
       if (recorderRef.current) {
         return { ok: false, message: "Stream is already active." };
       }
-      if (!rtmpUrl || !streamKey) {
-        return { ok: false, message: "RTMP URL and stream key are required." };
+      const enabledDestinations = destinations.filter((destination) => destination.enabled);
+      if (enabledDestinations.length === 0) {
+        return { ok: false, message: "Enable at least one stream destination." };
       }
-      if (!isValidRtmpUrl(rtmpUrl)) {
-        return { ok: false, message: "Enter a valid RTMP URL (rtmp:// or rtmps://)." };
+      const invalidDestination = enabledDestinations.find(
+        (destination) => !destination.streamKey || !isValidRtmpUrl(destination.rtmpUrl)
+      );
+      if (invalidDestination) {
+        return {
+          ok: false,
+          message: `Check the RTMP URL and stream key for ${invalidDestination.name}.`
+        };
       }
 
       startInFlightRef.current = true;
+      if (!recovery.current.active) { recovery.current.attempts = 0; recovery.current.loadLevel = 0; recovery.current.notice = ""; streamBegan.current = null; }
+      recoveryDestinations.current = enabledDestinations;
+      stopRequestedRef.current = false;
+      captureErrorRef.current = null;
+      setLastError(null);
+      if (recovery.current.loadLevel === 0 && settings.streamResolution === "8k" && !(await supports8KEncoding(settings.streamFps))) {
+        startInFlightRef.current = false;
+        return { ok: false, message: "8K streaming requires a compatible hardware encoder. Choose a lower resolution." };
+      }
       setStatusMessage(null);
       setElapsedSeconds(0);
+      const profileSettings = streamingRecoverySettings(settings, recovery.current.loadLevel);
+      const profile = streamingProfile(profileSettings.streamPreset, profileSettings.streamResolution, profileSettings.streamFps);
+      const mimeType = pickStreamingRecorderMimeType(profile.width);
 
-      const canvasStream = canvasRef.current.captureStream(settings.streamFps);
+      let capture: ReturnType<typeof createStreamingCapture>;
+      try {
+        capture = createStreamingCapture(canvasRef.current, profileSettings.streamPreset, profileSettings.streamFps, profileSettings.streamResolution);
+      } catch (error) {
+        startInFlightRef.current = false;
+        return { ok: false, message: error instanceof Error ? error.message : "Streaming capture failed." };
+      }
+      stopCaptureRef.current = capture.stop;
+      const canvasStream = capture.stream;
       canvasStreamRef.current = canvasStream;
       const tracks = [...canvasStream.getVideoTracks()];
 
-      const audioMode = settings.audioMode;
-      const captureAudio = shouldIncludeSystem(audioMode) || shouldIncludeMic(audioMode);
-      const audioContext = captureAudio ? new AudioContext() : null;
-      const destination = audioContext ? audioContext.createMediaStreamDestination() : null;
-      audioContextRef.current = audioContext;
-
-      if (shouldIncludeSystem(audioMode)) {
-        try {
-          const systemStream = await getDisplayStream(programSourceId, true);
-          systemStreamRef.current = systemStream;
-          if (audioContext && destination && systemStream.getAudioTracks().length > 0) {
-            const source = audioContext.createMediaStreamSource(systemStream);
-            source.connect(destination);
-          }
-          systemStream.getVideoTracks().forEach((track) => track.stop());
-        } catch (error) {
-          setStatusMessage("System audio is unavailable for this display.");
-        }
-      }
-
-      if (shouldIncludeMic(audioMode)) {
-        try {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          micStreamRef.current = micStream;
-          if (audioContext && destination && micStream.getAudioTracks().length > 0) {
-            const source = audioContext.createMediaStreamSource(micStream);
-            source.connect(destination);
-          }
-        } catch (error) {
-          setStatusMessage("Microphone access was denied or unavailable.");
-        }
-      }
-
-      if (destination) {
-        tracks.push(...destination.stream.getAudioTracks());
-      }
+      // The stable Program bus emits silence when audio is disabled. Retaining
+      // its track allows audio to be enabled later without restarting video.
+      audioTracksRef.current = (programAudioStream?.getAudioTracks() ?? [])
+        .filter(track => track.readyState === "live").map(track => track.clone());
+      tracks.push(...audioTracksRef.current);
 
       const outputStream = new MediaStream(tracks);
       const hasAudio = outputStream.getAudioTracks().length > 0;
 
-      const startResult = await window.dualcast.startStream({
-        rtmpUrl,
-        streamKey,
-        hasAudio,
-        preset: settings.streamPreset,
-        fps: settings.streamFps,
-        audioBitrate: settings.streamAudioBitrate,
-        encoder: settings.streamEncoder
-      });
+      let startResult;
+      try {
+        startResult = await window.dualcast.startStream({
+          destinations: enabledDestinations,
+          hasAudio,
+          preset: profileSettings.streamPreset,
+          resolution: profileSettings.streamResolution,
+          fps: profileSettings.streamFps,
+          audioBitrate: settings.streamAudioBitrate,
+          encoder: settings.streamEncoder,
+          inputVideoCodec: mimeType.includes("h264") ? "h264" : "other",
+          copyVideo: settings.streamPassthrough !== false && mimeType.includes("h264"),
+          autoRecover: settings.streamAutoRecover !== false
+        });
+      } catch (error) {
+        cleanupCapture();
+        startInFlightRef.current = false;
+        const message = error instanceof Error ? error.message : "Failed to start stream.";
+        setStatusMessage(message);
+        return { ok: false, message };
+      }
 
       if (!startResult.ok) {
         cleanupCapture();
@@ -188,56 +248,134 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
         setStatusMessage(startResult.message ?? "Failed to start stream.");
         return startResult;
       }
+      if (stopRequestedRef.current) {
+        cleanupCapture(); startInFlightRef.current = false;
+        await window.dualcast.stopStream().catch(() => undefined);
+        return { ok: false, message: "Streaming start was cancelled." };
+      }
 
       try {
-        const mimeType = pickRecorderMimeType();
-        const bitrate = presetBitrateMap[settings.streamPreset] ?? presetBitrateMap.medium;
-        const recorder = new MediaRecorder(outputStream, {
+        const bitrate = profile.videoBitsPerSecond;
+        const byteLimit = Math.max(4 * 1024 * 1024, bitrate / 8 * 1.5);
+        const options: MediaRecorderOptions & { videoKeyFrameIntervalDuration: number } = {
           mimeType: mimeType || undefined,
-          videoBitsPerSecond: bitrate
-        });
+          videoBitsPerSecond: bitrate,
+          audioBitsPerSecond: settings.streamAudioBitrate * 1000,
+          videoKeyFrameIntervalDuration: 2000
+        };
+        const recorder = new MediaRecorder(outputStream, options);
 
         recorderRef.current = recorder;
-        stopRequestedRef.current = false;
+        chunkQueueRef.current = Promise.resolve();
+        let pendingBytes = 0;
+        let pendingChunks = 0;
+        let deliveryFailed = false;
 
         recorder.ondataavailable = (event) => {
-          if (!event.data || event.data.size === 0) {
+          if (deliveryFailed || !event.data || event.data.size === 0) {
             return;
           }
-          event.data
-            .arrayBuffer()
-            .then((buffer) => window.dualcast.sendStreamChunk(new Uint8Array(buffer)))
-            .catch(() => undefined);
+          // WebM chunks depend on prior chunks: never discard random chunks.
+          // Stop with a useful error instead of accumulating minutes of delay.
+          pendingBytes += event.data.size;
+          pendingChunks += 1;
+          if (pendingBytes > byteLimit || pendingChunks > 8) {
+            deliveryFailed = true;
+            const message = "Streaming cannot keep up. Choose a lower streaming quality or fewer destinations, then restart the stream.";
+            if (requestRecovery("Streaming capture delivery fell behind.")) return;
+            captureErrorRef.current = message;
+            setLastError(message);
+            setStatusMessage(message);
+            stopRequestedRef.current = true;
+            if (recorder.state !== "inactive") recorder.stop();
+            return;
+          }
+          chunkQueueRef.current = chunkQueueRef.current
+            .then(() => event.data.arrayBuffer())
+            .then((buffer) => deliveryFailed ? undefined : window.dualcast.sendStreamChunk(new Uint8Array(buffer)))
+            .then(() => undefined)
+            .catch((error) => {
+              deliveryFailed = true;
+              const message = error instanceof Error ? error.message : "Stream data delivery failed.";
+              if (requestRecovery(message)) return;
+              captureErrorRef.current = message;
+              setLastError(message);
+              setStatusMessage(message);
+              stopRequestedRef.current = true;
+              if (recorder.state !== "inactive") recorder.stop();
+            })
+            .finally(() => { pendingBytes -= event.data.size; pendingChunks -= 1; });
         };
 
-        recorder.onstop = () => {
+        recorder.onstop = async () => {
+          if (!stopRequestedRef.current) {
+            if (!requestRecovery("Streaming capture stopped unexpectedly.")) {
+              captureErrorRef.current = "Streaming capture stopped unexpectedly. Check the selected encoder and restart the stream.";
+              setLastError(captureErrorRef.current); setStatusMessage(captureErrorRef.current); setStatus("error");
+            }
+          }
           cleanupCapture();
+          startInFlightRef.current = true;
+          await chunkQueueRef.current;
+          await window.dualcast.stopStream().catch(() => undefined);
           recorderRef.current = null;
           startInFlightRef.current = false;
-          if (stopRequestedRef.current) {
-            window.dualcast.stopStream().catch(() => undefined);
-          }
           stopRequestedRef.current = false;
+          if (recovery.current.active) scheduleRetry();
         };
 
-        recorder.start(1000);
+        recorder.onerror = event => {
+          const detail = (event as Event & { error?: Error }).error?.message;
+          if (requestRecovery(detail || "The streaming capture encoder failed.")) return;
+          captureErrorRef.current = `Streaming capture encoder failed${detail ? `: ${detail}` : ". Choose another encoder or a lower resolution."}`;
+          setLastError(captureErrorRef.current); setStatusMessage(captureErrorRef.current); setStatus("error");
+          stopRequestedRef.current = true;
+          if (recorder.state !== "inactive") recorder.stop();
+        };
+
+        recorder.start(250);
         startInFlightRef.current = false;
         return { ok: true };
       } catch {
         cleanupCapture();
+        recorderRef.current = null;
         startInFlightRef.current = false;
+        await window.dualcast.stopStream().catch(() => undefined);
         setStatusMessage("Unable to start streaming capture.");
         return { ok: false, message: "Unable to start streaming capture." };
       }
     },
-    [canvasRef, programSourceId, settings.audioMode, settings.streamFps, settings.streamPreset, settings.streamAudioBitrate, settings.streamEncoder]
+    [
+      canvasRef,
+      programSceneId,
+      programSceneSnapshot,
+      programAudioStream,
+      settings.audioMode,
+      settings.streamFps,
+      settings.streamPreset,
+      settings.streamResolution,
+      settings.streamAudioBitrate,
+      settings.streamEncoder,
+      settings.streamPassthrough,
+      settings.streamAutoRecover
+    ]
   );
+  startAgain.current = startStream;
 
   const stopStream = useCallback(() => {
+    recovery.current.active = recovery.current.pending = false;
+    recovery.current.notice = ""; window.clearTimeout(recovery.current.timer);
     if (recorderRef.current && recorderRef.current.state !== "inactive") {
       stopRequestedRef.current = true;
       recorderRef.current.stop();
+      return;
     }
+    stopRequestedRef.current = true;
+    void window.dualcast.stopStream().catch((error) => {
+      const message = error instanceof Error ? error.message : "Unable to stop the stream.";
+      setLastError(message);
+      setStatusMessage(message);
+    });
   }, []);
 
   return {
@@ -247,7 +385,10 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
     formattedElapsed,
     stats,
     lastError,
+    destinationStatuses,
     startStream,
     stopStream
   };
 };
+
+export type ProgramStreamerController = ReturnType<typeof useProgramStreamer>;

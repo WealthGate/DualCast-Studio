@@ -1,0 +1,27 @@
+.service-finder {
+  width: min(690px, calc(100vw - 32px));
+  max-height: min(690px, calc(100dvh - 32px));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.service-finder::backdrop { background: rgb(4 7 12 / 66%); }
+.service-finder header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.service-finder h2 { margin: 0; font-size: 18px; }
+.service-finder :is(form, nav, .finder-lookup, .finder-results) { margin-top: 10px; }
+.service-finder form input { width: 100%; min-height: 42px; padding: 8px 12px; font-size: 15px; }
+.service-finder :is(input, select) { border: 1px solid var(--border); border-radius: 4px; background: var(--panel); color: var(--text); }
+.service-finder :is(nav, .finder-actions) { display: flex; flex-wrap: wrap; gap: 6px; }
+.service-finder :is(.btn, select) { min-height: 34px; }
+.finder-results { display: grid; gap: 6px; }
+.finder-result { display: grid; gap: 5px; padding: 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); overflow-wrap: anywhere; }
+.finder-result :is(strong, small) { display: block; }
+.finder-result :is(small, p) { color: var(--muted); }
+.finder-result p { margin: 0; }
+.finder-note { white-space: pre-wrap; padding: 6px 0; }
+.finder-result select { min-width: 0; max-width: 100%; padding: 4px 5px; }
+.service-finder :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
