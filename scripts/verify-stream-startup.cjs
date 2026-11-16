@@ -141,7 +141,9 @@ function readFrameTimes(output) {
     if(/FIFO queue full|queue overflow/i.test(transportLog))throw Error('Output discarded media during the transport test.');
     const decoded = spawnSync(ffmpeg, [
       '-hide_banner', '-nostdin', '-loglevel', 'error', '-i', received,
-      '-map', '0:v:0', '-map', '0:a:0', '-fps_mode', 'passthrough', '-enc_time_base:v', 'demux',
+      // FLV timestamps use milliseconds. Use an explicit time base so older
+      // bundled FFmpeg versions can preserve them too.
+      '-map', '0:v:0', '-map', '0:a:0', '-fps_mode', 'passthrough', '-enc_time_base:v', '1:1000',
       '-threads:v', '1', '-f', 'framecrc', 'pipe:1'
     ], {encoding:'utf8',windowsHide:true,timeout:15000,maxBuffer:16*1024*1024});
     if (decoded.status !== 0) {
