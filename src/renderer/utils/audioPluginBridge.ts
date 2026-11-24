@@ -2,7 +2,7 @@ import { AUDIO_WORKLET_URL, AudioPluginStatus } from "../../shared/audioPlugins"
 import { createProgramAudioBus } from "./programAudioBus";
 import processorUrl from "./audioPluginProcessor.js?url";
 
-export const attachAudioPluginBridge = (bus: ReturnType<typeof createProgramAudioBus>) => {
+export const attachAudioPluginBridge = (bus: ReturnType<typeof createProgramAudioBus>, onStatus?: (status: AudioPluginStatus) => void) => {
   let stopped = false;
   let revision = 0;
   let node: AudioWorkletNode | null = null;
@@ -24,6 +24,7 @@ export const attachAudioPluginBridge = (bus: ReturnType<typeof createProgramAudi
     const routingChanged = replace !== replacing;
     replacing = replace;
     bus.setPluginReplacement(replace);
+    onStatus?.(status);
     if (node && status.session === activeSession && !routingChanged) return;
     if (initializationFailed && !status.session) return;
     const token = ++revision;

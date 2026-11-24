@@ -161,6 +161,7 @@ type AppState = {
   selectedSourceId: string | null;
   programAudioStream: MediaStream | null;
   audioInputIssues: Record<string, string>;
+  programPlugin: import("../../shared/audioPlugins").AudioPluginStatus | null;
   isProgramAudioMonitoring: boolean;
   programAudioMonitorGain: number;
   isProjecting: boolean;
@@ -255,6 +256,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedSourceId: null,
   programAudioStream: null,
   audioInputIssues: {},
+  programPlugin: null,
   isProgramAudioMonitoring: false,
   programAudioMonitorGain: 0.8,
   isProjecting: false,

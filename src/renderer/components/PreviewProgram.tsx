@@ -634,11 +634,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     setProgramAudioStream(bus.destination.stream);
     const publishLevels = () => publishAudioMeters(bus.readMeters());
     const meterTimer = window.setInterval(publishLevels, 80);
-    const detachPlugins = attachAudioPluginBridge(bus);
+    const detachPlugins = attachAudioPluginBridge(bus, programPlugin => useAppStore.setState({ programPlugin }));
     publishLevels();
     return () => {
       window.clearInterval(meterTimer);
       detachPlugins();
+      useAppStore.setState({ programPlugin: null });
       publishAudioMeters({});
       programAudioBusRef.current = null;
       programMixGainRef.current = null;

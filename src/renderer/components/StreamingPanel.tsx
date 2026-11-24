@@ -50,7 +50,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, 
     startStream,
     stopStream
   } = streamer;
-  const { settings, updateSettings } = useAppStore();
+  const { settings, updateSettings, programPlugin } = useAppStore();
   const eightK = use8KSupport(settings.streamFps);
   const [streamKeys, setStreamKeys] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
@@ -661,7 +661,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, 
       ) : null}
       <section className="stream-audio-check" aria-label="Stream audio">
         <div><strong>Stream audio</strong><button type="button" className="btn btn-outline btn-compact" onClick={onOpenMixer}>Open Audio Mixer</button></div>
-        <label>Send to stream
+        <label>{programPlugin?.routing === "replace" ? "Mixer inputs" : "Send to stream"}
           <select value={settings.audioMode} onChange={event => void updateSettings({ audioMode: event.target.value as typeof settings.audioMode })
             .catch(() => setLocalMessage("Could not save the audio routing. Choose the source again."))}>
             <option value="system">Scene audio sources</option>

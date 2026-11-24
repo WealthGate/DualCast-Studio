@@ -14,11 +14,14 @@ if (!process.versions.electron) {
     await build({ entryPoints: [path.join(root, 'electron/services/audioPluginService.ts')], bundle: true, platform: 'node', external: ['electron', 'electron-store'], outfile: path.join(temp, 'service.cjs') });
     const source = `import React from 'react';import {createRoot} from 'react-dom/client';
       import Panel from '../../src/renderer/components/AudioPluginsPanel';
+      import StreamAudioCheck from '../../src/renderer/components/StreamAudioCheck';
+      import {useAppStore} from '../../src/renderer/store/useAppStore';
       import {createProgramAudioBus} from '../../src/renderer/utils/programAudioBus';
       import {attachAudioPluginBridge} from '../../src/renderer/utils/audioPluginBridge';
-      const bus=createProgramAudioBus();const detach=attachAudioPluginBridge(bus);
+      const bus=createProgramAudioBus();const detach=attachAudioPluginBridge(bus,programPlugin=>useAppStore.setState({programPlugin}));
+      useAppStore.getState().setProgramAudioStream(bus.destination.stream);
       globalThis.testAudio={bus,detach,blocks:0};window.dualcast.onAudioPluginBlock(()=>globalThis.testAudio.blocks++);
-      createRoot(document.getElementById('root')).render(<Panel/>);`;
+      createRoot(document.getElementById('root')).render(<><Panel/><StreamAudioCheck/></>);`;
     fs.writeFileSync(path.join(temp, 'entry.tsx'), source);
     await build({ entryPoints: [path.join(temp, 'entry.tsx')], bundle: true, outfile: path.join(temp, 'panel.js'), plugins: [{ name: 'worklet-url', setup(builder) {
       builder.onResolve({ filter: /\?url$/ }, args => ({ path: path.resolve(args.resolveDir, args.path.slice(0, -4)), namespace: 'worklet' }));
@@ -96,8 +99,18 @@ if (!process.versions.electron) {
           await window.dualcast.configureAudioPlugin({action:'stop'});
           select.value=target.id;select.dispatchEvent(new Event('change',{bubbles:true}));
         }
+        const bus=testAudio.bus, tone=bus.context.createOscillator(), input=bus.context.createMediaStreamDestination();
+        tone.connect(input);tone.start();bus.setSources([{id:'tone',stream:input.stream,gain:0.2}]);
+        await until(()=>bus.readMeters().master.left>0.3);
+        await window.dualcast.configureAudioPlugin({action:'routing',routing:'replace'});
+        await until(()=>button('Use mixer audio') && bus.readMeters().master.left===0);
+        assert(document.querySelector('[role="alert"]').textContent.includes('Plugin audio is off'), 'Missing receiver warning');
+        button('Use mixer audio').click();
+        await until(()=>!button('Use mixer audio') && bus.readMeters().master.left>0.3);
+        assert((await window.dualcast.getAudioPluginStatus()).routing==='process','Mixer route did not persist');
+        tone.stop();input.stream.getTracks().forEach(track=>track.stop());
         testAudio.detach();testAudio.bus.stop();
-        return {name:target.name,nativeBlocks:testAudio.blocks,scanned:status.scan.checked,existing:status.scan.existing,issues:status.scan.issues};
+        return {name:target.name,nativeBlocks:testAudio.blocks,restoredMixerAudio:true,scanned:status.scan.checked,existing:status.scan.existing,issues:status.scan.issues};
       })()`, true);
       if (fixture) {
         process.env.OPENCHURCH_TEST_PLUGIN_CRASH_RESTORE = '1';
