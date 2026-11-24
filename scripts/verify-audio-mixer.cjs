@@ -1,4 +1,8 @@
 module.exports = async function verifyAudioMixer(window) {
+  const toneFile = require("node:path").resolve(__dirname, "../tmp/mixer-tone.wav");
+  const generated = require("node:child_process").spawnSync(require("ffmpeg-static"),
+    ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", toneFile], { windowsHide: true });
+  if (generated.status !== 0) throw Error("Could not generate the mixer audio fixture");
   const setup = await window.webContents.executeJavaScript(`(async () => {
     const { useAppStore: store } = await import('/store/useAppStore.ts');
     const assert = (value, message) => { if (!value) throw Error(message); };
@@ -30,6 +34,17 @@ module.exports = async function verifyAudioMixer(window) {
     const { store, assert, until, byLabel, button, choose, panel, program } = window.checkMixer;
     await until(() => Number(program.value) > 1, 'Master fader did not respond to Right Arrow');
     const originalTrack = (await until(() => store.getState().programAudioStream, 'Program audio missing')).getAudioTracks()[0];
+    const source = { id: 'tone', name: 'Scene tone', type: 'audio', enabled: true, audioEnabled: false,
+      rect: {x:0,y:0,width:100,height:100}, data: { url: ${JSON.stringify('/@fs/' + toneFile.replace(/\\/g, '/'))}, loop: true } };
+    const title = { ...source, id: 'title', type: 'text', data: {text:'Audio check'} };
+    const scene = { id: 'scene', name: 'Service', sourceIds: ['title','tone'] };
+    store.getState().setStudioState({scenes:[scene], sources:{tone:source,title}, groups:[], previewSceneId:'scene', programSceneId:'scene'});
+    const strip = await until(() => [...panel.querySelectorAll('.mixer-channel')].find(item => item.textContent.includes('Scene tone')), 'Missing scene strip');
+    button('Unmute', strip).click();
+    const streamMeter = document.querySelector('.stream-audio-check .meter-left');
+    await until(() => parseFloat(streamMeter.style.width) > 30, 'Unmuting the on-air file did not reach the stream meter');
+    button('Mute', strip).click();
+    await until(() => parseFloat(streamMeter.style.width) === 0, 'Muted file still reached the stream meter');
     const devices = navigator.mediaDevices;
     const originalGet = devices.getUserMedia.bind(devices);
     const originalEnumerate = devices.enumerateDevices.bind(devices);

@@ -102,6 +102,16 @@ describe("Preview and Program isolation", () => {
     expect(takenProgramSource.type === "text" && takenProgramSource.data.text).toBe("Preview edit");
   });
 
+  it("sends mixer changes straight to the live source while its staged edits stay in Preview", () => {
+    const store = useAppStore.getState();
+    store.updateSource("text-a", { name: "Staged title" });
+    store.mixSource("text-a", { volume: 0.4, audioEnabled: true, audioScope: "persistent" });
+    expect(useAppStore.getState().programSources["program:text-a"]).toMatchObject({
+      name: "Title", volume: 0.4, audioEnabled: true, audioScope: "persistent"
+    });
+    expect(useAppStore.getState().sources["text-a"].name).toBe("Staged title");
+  });
+
   it("keeps the live Program scene when Preview tries to delete it", () => {
     useAppStore.getState().removeScene("scene-a");
 

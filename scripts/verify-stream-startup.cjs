@@ -150,11 +150,18 @@ function readFrameTimes(output) {
       throw Error(`Could not decode the RTMP capture (status ${decoded.status}). ${decoded.error?.message ?? decoded.stderr?.trim() ?? ''}`);
     }
     const [videoTimes, audioTimes] = readFrameTimes(decoded.stdout);
+    const pcm = spawnSync(ffmpeg, ['-hide_banner','-nostdin','-loglevel','error','-i',received,
+      '-map','0:a:0','-ac','1','-ar','8000','-f','s16le','pipe:1'], {windowsHide:true,timeout:15000});
+    if (pcm.status !== 0) throw Error('Could not read received stream audio samples');
+    let energy = 0;
+    for (let i = 0; i < pcm.stdout.length; i += 2) energy += (pcm.stdout.readInt16LE(i) / 32768) ** 2;
+    const receivedRms = Math.sqrt(energy / (pcm.stdout.length / 2));
+    if (!(receivedRms > 0.005)) throw Error('Received audio was silent or too quiet: RMS ' + receivedRms);
     const receivedFrames = videoTimes.length;
     const avDriftMs=Math.round(Math.abs(videoTimes.at(-1)-audioTimes.at(-1))*1000);
     const maxAudioGapMs=Math.round(Math.max(...audioTimes.slice(1).map((time,i)=>time-audioTimes[i]))*1000);
     const result = {encoder,copyVideo,preset,pauseOutputMs,uploadKbps,uploadedBytes,width,height,fps,seconds,firstLiveMs:firstLive,receivedFrames,audioFrames:audioTimes.length,avDriftMs,maxAudioGapMs,statuses:[...new Set(states)],error:fatal};
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify({...result,receivedRms}));
     const requiredFrames=inputFile?fps*seconds*.8:fps*seconds-2;
     const problems = [];
     if (fatal) problems.push(fatal);

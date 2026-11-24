@@ -43,9 +43,9 @@ type SourceMedia = {
   imageEl?: HTMLImageElement;
   audioEl?: HTMLAudioElement;
   stream?: MediaStream;
-  captureStream?: MediaStream;
   lastRestartToken?: number;
   error?: string;
+  audioWarning?: string;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -88,7 +88,6 @@ const sourceMeterId = (sourceId: string) => sourceId.replace(/^program:/, "");
 
 const cleanupSourceMedia = (sourceId: string, entry: SourceMedia) => {
   stopMediaStream(entry.stream ?? null);
-  stopMediaStream(entry.captureStream ?? null);
   entry.videoEl?.pause();
   entry.audioEl?.pause();
   if (entry.type === "browser") {
@@ -334,7 +333,8 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
 
   const microphoneEnabled = settings.audioMode === "microphone" || settings.audioMode === "both";
   useEffect(() => {
-    const pool = createAudioInputCapturePool(() => setAudioInputRevision(revision => revision + 1));
+    const pool = createAudioInputCapturePool(() => setAudioInputRevision(revision => revision + 1), navigator.mediaDevices,
+      audioInputIssues => useAppStore.setState({ audioInputIssues }));
     audioInputPoolRef.current = pool;
     return () => {
       audioInputPoolRef.current = null;
@@ -437,6 +437,15 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
             stream = await getDisplayStream(source.data.captureId, false, captureFps, programSize.width, programSize.height, settings.captureEncoder);
           }
           entry.stream = stream;
+          if (source.audioEnabled) {
+            const checkAudio = () => {
+              if (stream.getAudioTracks().some(track => track.readyState === "live")) return;
+              entry.audioWarning = "Desktop audio is unavailable. Check system audio capture permissions or choose a microphone in Audio Mixer.";
+              setMediaRevision(revision => revision + 1);
+            };
+            stream.getAudioTracks().forEach(track => track.addEventListener("ended", checkAudio, { once: true }));
+            checkAudio();
+          }
           entry.canvas = getNativeCaptureCanvas(stream);
           stream.getVideoTracks().forEach(track => track.addEventListener("ended", () => {
             entry.error = "Capture stopped. Restore the source window or reselect it, then retry capture.";
@@ -490,24 +499,10 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
           if (!source.media?.paused && video.paused) {
             video.play().catch(() => undefined);
           }
-          try {
-            entry.captureStream = (
-              video as HTMLVideoElement & { captureStream?: () => MediaStream }
-            ).captureStream?.();
-            setMediaRevision((revision) => revision + 1);
-          } catch {
-            // captureStream is optional.
-          }
+          setMediaRevision((revision) => revision + 1);
         });
         if (!source.media?.paused) video.play().catch(() => undefined);
         entry.videoEl = video;
-        try {
-          entry.captureStream = (
-            video as HTMLVideoElement & { captureStream?: () => MediaStream }
-          ).captureStream?.();
-        } catch {
-          // captureStream is optional.
-        }
       } else if (source.type === "audio") {
         const audio = document.createElement("audio");
         audio.src = source.data.url;
@@ -515,25 +510,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         audio.muted = true;
         audio.autoplay = true;
         audio.crossOrigin = "anonymous";
-        audio.addEventListener("loadedmetadata", () => {
-          try {
-            entry.captureStream = (
-              audio as HTMLAudioElement & { captureStream?: () => MediaStream }
-            ).captureStream?.();
-            setMediaRevision((revision) => revision + 1);
-          } catch {
-            // captureStream is optional.
-          }
+        audio.addEventListener("error", () => {
+          entry.error = "Audio could not be played. Check the file or choose another source.";
+          setMediaRevision(revision => revision + 1);
         });
         audio.play().catch(() => undefined);
         entry.audioEl = audio;
-        try {
-          entry.captureStream = (
-            audio as HTMLAudioElement & { captureStream?: () => MediaStream }
-          ).captureStream?.();
-        } catch {
-          // captureStream is optional.
-        }
       } else if (source.type === "browser") {
         window.dualcast
           .createBrowserSource({
@@ -693,16 +675,12 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
         )
       : [];
 
-    const connectStream = (stream: MediaStream | null | undefined, id: string, gainValue: number) => {
-      if (stream) audioSources.push({ id, stream, gain: gainValue });
-    };
-
     [...sceneAudioSources, ...persistentAudioSources].forEach((source) => {
       const media = sourceMediaRef.current.get(source.id);
       const stream = source.type === "display" || source.type === "window"
         ? media?.stream
-        : media?.captureStream;
-      connectStream(stream, sourceMeterId(source.id), source.volume ?? 1);
+        : media?.audioEl ?? media?.videoEl;
+      if (stream) audioSources.push({ stream, id: sourceMeterId(source.id), gain: source.volume ?? 1 });
     });
 
     if (includeMicrophone) {
@@ -1591,9 +1569,9 @@ const PreviewProgram: React.FC<PreviewProgramProps> = ({ programCanvasRef, viewM
     <section className="display-workspace" aria-label="Preview and Program displays">
       <div className="display-controls-row"><DisplayTextControls /></div>
       {preparationMessage && <p role="status" className="field-help">{preparationMessage}</p>}
-      {Array.from(sourceMediaRef.current.entries()).filter(([, media], index, entries) => media.error && entries.findIndex(([, entry]) => entry === media) === index).map(([id, media]) => (
+      {Array.from(sourceMediaRef.current.entries()).filter(([, media], index, entries) => (media.error || media.audioWarning) && entries.findIndex(([, entry]) => entry === media) === index).map(([id, media]) => (
         <div key={id} role="alert" className="field-help">
-          {allSources[id]?.name ?? "Source"}: {media.error}
+          <strong>{allSources[id]?.name ?? "Source"}</strong> {media.error || media.audioWarning}
           <button onClick={() => {
             for (const [key, entry] of sourceMediaRef.current) if (entry === media) sourceMediaRef.current.delete(key);
             cleanupSourceMedia(id, media);

@@ -1,6 +1,6 @@
 {
   "name": "openchurch-broadcast-studio",
-  "version": "0.6.53",
+  "version": "0.6.54",
   "private": true,
   "description": "Open church production, presentation, recording, and multi-destination streaming studio",
   "author": {
@@ -107,6 +107,10 @@
       ],
       "category": "public.app-category.video",
       "entitlements": "assets/entitlements.mac.plist",
+      "extendInfo": {
+        "NSAudioCaptureUsageDescription": "Include desktop sound from the selected capture in Program audio.",
+        "NSMicrophoneUsageDescription": "Include the microphone or audio interface you select in the Program mix."
+      },
       "entitlementsInherit": "assets/entitlements.mac.plist"
     },
     "dmg": { "license": "terms-and-conditions.txt" },

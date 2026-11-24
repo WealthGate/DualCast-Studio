@@ -319,7 +319,7 @@ const App: React.FC = () => {
     {
       id: "streaming",
       title: "Live Streaming",
-      content: <StreamingPanel streamer={streamer} startRequest={streamStartRequest} />
+      content: <StreamingPanel streamer={streamer} startRequest={streamStartRequest} onOpenMixer={() => focusDock("audio")} />
     },
     { id: "venue", title: "Venue & Outputs", content: <VenuePanel /> },
     { id: "lower-third", title: "Lower Third Studio", content: <LowerThirdPanel onOpenBackgrounds={() => focusDock("backgrounds")} /> },

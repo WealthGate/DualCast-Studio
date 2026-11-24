@@ -62,7 +62,7 @@ const AudioPluginsPanel: React.FC = () => {
       <button type="button" className="btn btn-outline" disabled={busy || !plugin || status?.running} onClick={() => void action("remove")}>Remove</button>
     </div>
     <p className="field-help" role="status">{status?.message ?? "Checking audio plugin support…"}</p>
-    {plugin?.available === false && <p className="audio-plugin-error">This plugin file has moved or was removed. Scan its current folder or remove this entry and add the installed DLL again.</p>}
+    {plugin?.available === false && <p role="alert">This plugin file has moved or was removed. Scan its current folder or add the installed plugin file again.</p>}
     {status?.scan && status.scan.issues.length > 0 && <details className="audio-plugin-scan-results"><summary>Scan details ({status.scan.issues.length}{status.scan.issues.length >= 20 ? "+" : ""})</summary><ul>{status.scan.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></details>}
     {plugin && <p className="field-help">48 kHz stereo · bridge latency 43 ms{plugin.latencyFrames > 0 ? ` + plugin ${Math.round(plugin.latencyFrames / 48)} ms` : ""}. Plugin settings are saved on close and bypass.</p>}
     {status?.supported && <p className="field-help">For ReaStream, select Replace Source Audio, then enable ReaStream. In its controls, turn on Enable audio/MIDI, select Receive audio/MIDI, and match the sender’s identifier. Keep the Program master unmuted.</p>}

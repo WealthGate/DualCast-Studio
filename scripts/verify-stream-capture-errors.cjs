@@ -21,6 +21,12 @@ module.exports = async function verifyStreamCaptureErrors(rootPath, autoRecover 
   const destinations=[{id:'local',name:'Local mock',enabled:true,rtmpUrl:'rtmp://localhost/live',streamKey:'test'}];
   try {
     for(let i=0;i<50&&!controller;i++)await wait(20);
+    const programAudio = store.getState().programAudioStream;
+    store.getState().setProgramAudioStream(null);
+    try {
+      const rejected = await controller.startStream(destinations);
+      if (rejected.ok || !rejected.message?.includes('Program audio') || starts) throw Error('Missing audio started a video-only stream');
+    } finally { store.getState().setProgramAudioStream(programAudio); }
     if(!(await controller.startStream(destinations)).ok)throw Error('Hook did not start');
     if(autoRecover){
       const first=recorder;

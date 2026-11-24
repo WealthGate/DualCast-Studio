@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import YouTubeLiveChat from "./YouTubeLiveChat";
+import StreamAudioCheck from "./StreamAudioCheck";
+import Meter from "./AudioMeter";
 import { ProgramStreamerController } from "../hooks/useProgramStreamer";
 import { useAppStore } from "../store/useAppStore";
 import { VIDEO_RESOLUTIONS } from "../../shared/recording";
@@ -23,6 +25,7 @@ import {
 } from "../../shared/streamingPlatforms";
 
 type StreamingPanelProps = {
+  onOpenMixer: () => void;
   streamer: ProgramStreamerController;
   startRequest?: number;
 };
@@ -35,7 +38,7 @@ const formatEndpoint = (rtmpUrl: string, streamKey: string) => {
   return streamKey ? `${trimmed}/${streamKey}` : trimmed;
 };
 
-const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest = 0 }) => {
+const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, startRequest = 0 }) => {
   const {
     status,
     statusMessage,
@@ -50,7 +53,8 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
   const { settings, updateSettings } = useAppStore();
   const eightK = use8KSupport(settings.streamFps);
   const [streamKeys, setStreamKeys] = useState<Record<string, string>>({});
-  const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
+  const setLocalMessage = (text: string | null, error = true) => setNotice(text ? { text, error } : null);
   const [logPath, setLogPath] = useState<string | null>(null);
   const [availableEncoders, setAvailableEncoders] = useState<StreamingEncoder[]>([]);
   const [secureStorageAvailable, setSecureStorageAvailable] = useState<boolean | null>(null);
@@ -266,7 +270,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
       }
     }
     setAuthorizingId(destination.id);
-    setLocalMessage("Opening secure authorization in your browser...");
+    setLocalMessage("Opening secure authorization in your browser...", false);
     try {
       const result = await window.dualcast.authorizeStreaming({
         provider: destination.platform,
@@ -278,7 +282,7 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
         fps: settings.streamFps,
         forceAccountSelection
       });
-      setLocalMessage(result.message);
+      setLocalMessage(result.message, !result.ok);
       if (!result.ok) return;
       await updateDestination(destination.id, {
         authorizedAccount: result.account ?? destination.authorizedAccount,
@@ -633,12 +637,11 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
         {stats?.fps ? <span className="tag">FPS: {stats.fps.toFixed(0)}</span> : null}
         {stats?.time ? <span className="tag">Time: {stats.time}</span> : null}
         {typeof stats?.droppedFrames === "number" ? <span className="tag">Dropped: {stats.droppedFrames}</span> : null}
-        {statusMessage ? <span className="error-pill">{statusMessage}</span> : null}
-        {localMessage ? <span className="error-pill">{localMessage}</span> : null}
-        {lastError && (status === "error" || status === "reconnecting") ? (
-          <span className="warn-pill">{lastError}</span>
-        ) : null}
       </div>
+      {notice && <div className="stream-notice" role={notice.error ? "alert" : "status"}>{notice.text}</div>}
+      {statusMessage && statusMessage !== notice?.text && <div className="stream-notice" role={status === "error" ? "alert" : "status"}>{statusMessage}</div>}
+      {lastError && lastError !== statusMessage && lastError !== notice?.text && (status === "error" || status === "reconnecting") &&
+        <div className="stream-notice" role="alert">{lastError}</div>}
       {status === "live" ? <p className="field-help">Video output is running. Confirm publication on the destination's live page; YouTube verification appears on its destination card.</p> : null}
       {status === "live" && elapsedSeconds >= 15 && stats?.speed != null && stats.speed < 0.9 ? (
         <div className="profile-message" role="status">
@@ -651,11 +654,26 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, startRequest 
             <div key={destination.id} className={`destination-status ${destination.status}`}>
               <strong>{destination.name}</strong>
               <span>{destination.status === "live" ? "Sending video" : destination.status}</span>
-              {destination.message ? <small>{destination.message}</small> : null}
+              {destination.message ? <div className="stream-notice" role={destination.status === "error" ? "alert" : "status"}>{destination.message}</div> : null}
             </div>
           ))}
         </div>
       ) : null}
+      <section className="stream-audio-check" aria-label="Stream audio">
+        <div><strong>Stream audio</strong><button type="button" className="btn btn-outline btn-compact" onClick={onOpenMixer}>Open Audio Mixer</button></div>
+        <label>Send to stream
+          <select value={settings.audioMode} onChange={event => void updateSettings({ audioMode: event.target.value as typeof settings.audioMode })
+            .catch(() => setLocalMessage("Could not save the audio routing. Choose the source again."))}>
+            <option value="system">Scene audio sources</option>
+            <option value="microphone">Microphones &amp; instruments</option>
+            <option value="both">Scene audio + microphones &amp; instruments</option>
+            <option value="none">Mute all</option>
+          </select>
+        </label>
+        <Meter id="master" label="Stream Program level" horizontal />
+        <StreamAudioCheck />
+        <small className="field-help">Streaming and recording share this Program mix.</small>
+      </section>
       <div className="streaming-actions">
         <button
           className="btn btn-primary"

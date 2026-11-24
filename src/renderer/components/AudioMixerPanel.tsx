@@ -7,6 +7,8 @@ import { useAudioMeterLevels } from "../audioMeterBus";
 import { useAppStore } from "../store/useAppStore";
 import ProgramEqualizerControls from "./ProgramEqualizerControls";
 import AudioPluginsPanel from "./AudioPluginsPanel";
+import Meter from "./AudioMeter";
+import StreamAudioCheck from "./StreamAudioCheck";
 
 const supportsAudio = (source: Source) =>
   source.type === "display" ||
@@ -15,24 +17,6 @@ const supportsAudio = (source: Source) =>
   source.type === "audio";
 
 type MicrophoneDevice = { deviceId: string; label: string };
-
-const Meter: React.FC<{ id: string; label: string; horizontal?: boolean }> = ({ id, label, horizontal }) => {
-  const meters = useAudioMeterLevels();
-  const level = meters[id] ?? { left: 0, right: 0, channels: 1 as const, clipping: false };
-  return (
-    <div
-      className={`mixer-meter ${horizontal ? "horizontal" : ""} ${level.channels === 1 ? "mono" : "stereo"} ${level.clipping ? "clipping" : ""}`}
-      aria-label={`${label}: ${level.channels === 1 ? "mono" : "stereo"}${level.clipping ? ", clipping" : ""}`}
-    >
-      <span className="meter-scale meter-safe" />
-      <span className="meter-scale meter-warning" />
-      <span className="meter-scale meter-clip" />
-      <span className="meter-bar meter-left" style={{ [horizontal ? "width" : "height"]: `${level.left * 100}%` }} />
-      {level.channels === 2 ? <span className="meter-bar meter-right" style={{ [horizontal ? "width" : "height"]: `${level.right * 100}%` }} /> : null}
-      <small>{level.channels === 1 ? "M" : "L R"}</small>
-    </div>
-  );
-};
 
 const Fader: React.FC<{
   label: string; gain: number; onChange: (gain: number) => void; onCommit?: () => void; max?: number; disabled?: boolean;
@@ -73,6 +57,7 @@ const InputLineControls: React.FC<{
     if (name !== line.name) onChange({ name });
   };
   const deviceMissing = line.deviceId && !devices.some(device => device.deviceId === line.deviceId);
+  const issue = useAppStore(state => state.audioInputIssues[line.deviceId || "default"]);
 
   return (
     <article className="mixer-input-line" aria-label={line.name}>
@@ -91,7 +76,7 @@ const InputLineControls: React.FC<{
             aria-pressed={line.preset === key} onClick={() => onChange({ preset: key })}>{preset.label}</button>
         ))}
       </div>
-      {enabled && !line.muted ? <InputStatus id={meterId} wholeDevice={line.channel === null} /> : null}
+      {enabled && !line.muted && (issue ? <p role="alert">{issue}</p> : <InputStatus id={meterId} wholeDevice={line.channel === null} />)}
       <details className="mixer-input-settings" open={openSettings}>
         <summary>Input settings</summary>
         <div className="mixer-input-fields">
@@ -129,12 +114,11 @@ const InputLineControls: React.FC<{
 const AudioMixerPanel: React.FC = () => {
   const {
     sources,
+    programSources,
     settings,
     updateSettings,
-    updateSource,
-    toggleSourceAudio,
+    mixSource,
     persistStudioState,
-    programAudioStream,
     isProgramAudioMonitoring,
     programAudioMonitorGain,
     setProgramAudioMonitoring,
@@ -144,7 +128,10 @@ const AudioMixerPanel: React.FC = () => {
   const [newLineId, setNewLineId] = useState<string>();
   const [settingsError, setSettingsError] = useState("");
   const vstSection = useRef<HTMLDivElement>(null);
-  const audioSources = Object.values(sources).filter(supportsAudio);
+  const audioSources = Object.values(sources).filter(supportsAudio).map(source => {
+    const live = programSources[`program:${source.id}`];
+    return live ? { ...source, volume: live.volume, audioEnabled: live.audioEnabled, audioScope: live.audioScope } : source;
+  });
   const microphoneEnabled = settings.audioMode === "microphone" || settings.audioMode === "both";
   const lines = settings.audioInputLines ?? [];
 
@@ -198,9 +185,12 @@ const AudioMixerPanel: React.FC = () => {
     void saveSettings({ audioInputLines: [...current, line] });
   };
 
-  const persistSourceUpdate = (sourceId: string, update: Partial<Source>) => {
-    updateSource(sourceId, update);
-    persistStudioState().catch(() => undefined);
+  const saveMix = () => {
+    persistStudioState().catch(() => setSettingsError("The live mix changed, but it could not be saved. Try the mixer change again."));
+  };
+  const persistSourceUpdate = (sourceId: string, update: Parameters<typeof mixSource>[1]) => {
+    mixSource(sourceId, update);
+    saveMix();
   };
 
   return (
@@ -219,6 +209,7 @@ const AudioMixerPanel: React.FC = () => {
           onChange={masterAudioGain => { void saveSettings({ masterAudioGain }); }} />
       </div>
       <div className="mixer-routing">
+        <StreamAudioCheck />
         <label>
           Program audio
           <select
@@ -226,8 +217,8 @@ const AudioMixerPanel: React.FC = () => {
             onChange={(event) => saveSettings({ audioMode: event.target.value as AudioMode })}
           >
             <option value="system">Scene audio sources</option>
-            <option value="microphone">Input lines (all scenes)</option>
-            <option value="both">Scene sources + input lines</option>
+            <option value="microphone">Microphones &amp; instruments</option>
+            <option value="both">Scene audio + microphones &amp; instruments</option>
             <option value="none">Mute all</option>
           </select>
         </label>
@@ -239,7 +230,7 @@ const AudioMixerPanel: React.FC = () => {
             disabled={lines.length >= maxAdditionalAudioInputs}>Add input line</button>
         </div>
         {settingsError ? <p role="alert" className="mixer-input-status">{settingsError}</p> : null}
-        {!microphoneEnabled ? <p className="field-help">Choose a Program audio mode that includes input lines to send them to Program.</p> : null}
+        {!microphoneEnabled ? <button className="btn btn-outline" onClick={() => void saveSettings({ audioMode: settings.audioMode === "system" ? "both" : "microphone" })}>Include input lines in Program</button> : null}
         {lines.length >= maxAdditionalAudioInputs ? <p className="field-help">All eight input lines are in use.</p> : null}
         <InputLineControls meterId="microphone" devices={microphones} enabled={microphoneEnabled}
           line={{ id: "microphone", name: "Primary microphone", deviceId: settings.microphoneDeviceId === "default" ? null : settings.microphoneDeviceId,
@@ -266,8 +257,8 @@ const AudioMixerPanel: React.FC = () => {
             <div className="mixer-channel-name" title={source.name}>{source.name}</div>
             <Meter id={source.id} label={source.name} />
             <Fader label={`${source.name} volume`} gain={source.volume ?? 1}
-              onChange={volume => updateSource(source.id, { volume })}
-              onCommit={() => persistStudioState().catch(() => undefined)} />
+              onChange={volume => mixSource(source.id, { volume })}
+              onCommit={saveMix} />
             <span className="mixer-value">{Math.round((source.volume ?? 1) * 100)}%</span>
             <select
               className="mixer-scope"
@@ -280,16 +271,15 @@ const AudioMixerPanel: React.FC = () => {
             </select>
             <button
               className={`mixer-mute ${source.audioEnabled ? "" : "active"}`}
-              onClick={() => {
-                toggleSourceAudio(source.id);
-                persistStudioState().catch(() => undefined);
-              }}
+              onClick={() => persistSourceUpdate(source.id, { audioEnabled: !source.audioEnabled })}
             >
               {source.audioEnabled ? "Mute" : "Unmute"}
             </button>
           </div>
         ))}
       </div> : null}
+      {audioSources.some(source => source.type === "display" || source.type === "window") &&
+        <p className="field-help">Desktop audio captures system playback. Enable it on one capture source to avoid doubling the sound.</p>}
       <ProgramEqualizerControls />
       <div className="mixer-output-mode">
         <span>Program output</span>
@@ -312,9 +302,6 @@ const AudioMixerPanel: React.FC = () => {
             disabled={!isProgramAudioMonitoring} onChange={setProgramAudioMonitorGain} />
           <span>{Math.round(programAudioMonitorGain * 100)}%</span>
         </label>
-        <span className={`monitor-status ${programAudioStream ? "ready" : "waiting"}`}>
-          {programAudioStream ? "Program audio ready" : "Waiting for Program audio"}
-        </span>
         <p>Use headphones to prevent feedback. Monitor volume affects only what you hear locally.</p>
       </div>
       <p className="mixer-help">Lower the channel or master fader if its meter shows CLIP.</p>

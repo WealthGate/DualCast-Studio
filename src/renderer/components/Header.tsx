@@ -217,7 +217,7 @@ const Header: React.FC<HeaderProps> = ({
             <option value="none">Mute All</option>
           </select>
         </div>
-        {recordingError ? <span className="error-pill">{recordingError}</span> : null}
+        {recordingError ? <span role="alert">{recordingError}</span> : null}
         {recordingResult?.usedFallback ? (
           <span className="warn-pill">Saved as WebM (FFmpeg fallback)</span>
         ) : null}

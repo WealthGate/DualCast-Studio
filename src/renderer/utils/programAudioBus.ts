@@ -7,7 +7,7 @@ import { createAudioInputEffect } from "./audioInputEffects";
 
 export type ProgramAudioSource = {
   id: string;
-  stream: MediaStream;
+  stream: MediaStream | HTMLMediaElement;
   gain: number;
   channel?: number | null;
   preset?: AudioInputPreset;
@@ -68,9 +68,10 @@ export const createProgramAudioBus = () => {
   output.connect(destination);
   const monitor = createProgramAudioMonitor(context, output, false, 0);
   const masterMeter = createMeter(context, output, 2);
-  const inputs = new Map<MediaStream, { source: MediaStreamAudioSourceNode; splitter?: ChannelSplitterNode; users: number }>();
+  const mediaNodes = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
+  const inputs = new Map<ProgramAudioSource["stream"], { source: AudioNode; splitter?: ChannelSplitterNode; users: number }>();
   const routes = new Map<string, {
-    stream: MediaStream;
+    stream: ProgramAudioSource["stream"];
     channel: number | null;
     input: AudioNode;
     gain: GainNode;
@@ -124,10 +125,11 @@ export const createProgramAudioBus = () => {
       const active = new Set<string>();
       for (const entry of sources) {
         if (active.has(entry.id)) continue;
-        const track = entry.stream.getAudioTracks().find(track => track.readyState !== "ended");
-        if (!track) continue;
+        const media = entry.stream;
+        const track = "getAudioTracks" in media ? media.getAudioTracks().find(track => track.readyState !== "ended") : undefined;
+        if ("getAudioTracks" in media && !track) continue;
         const channel = entry.channel ?? null;
-        const availableChannels = track.getSettings().channelCount;
+        const availableChannels = track?.getSettings().channelCount;
         if (channel && channel > (availableChannels ?? 1)) continue;
         const channels = channel || availableChannels === 1 ? 1 : 2;
         const meterChannels = entry.preset === "choir" ? 2 : channels;
@@ -139,7 +141,16 @@ export const createProgramAudioBus = () => {
           let input = inputs.get(entry.stream);
           if (!input) {
             try {
-              input = { source: context.createMediaStreamSource(entry.stream), users: 0 };
+              if ("getAudioTracks" in media) {
+                input = { source: context.createMediaStreamSource(media), users: 0 };
+              } else {
+                // Chromium permits one source node per element. Reuse it across
+                // mute and TAKE, with local playback routed only via the monitor.
+                const source = mediaNodes.get(media) ?? context.createMediaElementSource(media);
+                mediaNodes.set(media, source);
+                media.muted = false;
+                input = { source, users: 0 };
+              }
             } catch {
               // A restricted or stopped source cannot silence the rest of Program.
               continue;

@@ -10,8 +10,8 @@ import { streamingProfile, streamingRecoverySettings } from "../../shared/stream
 import { supports8KEncoding } from "./use8KSupport";
 
 export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>) => {
-  const { programSceneId, programSceneSnapshot, settings, programAudioStream } = useAppStore(useShallow(state => ({
-    programSceneId: state.programSceneId, programSceneSnapshot: state.programSceneSnapshot, settings: state.settings, programAudioStream: state.programAudioStream
+  const { programSceneId, programSceneSnapshot, settings } = useAppStore(useShallow(state => ({
+    programSceneId: state.programSceneId, programSceneSnapshot: state.programSceneSnapshot, settings: state.settings
   })));
   const [status, setStatus] = useState<StreamingStatus>("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -213,18 +213,16 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
 
       // The stable Program bus emits silence when audio is disabled. Retaining
       // its track allows audio to be enabled later without restarting video.
-      audioTracksRef.current = (programAudioStream?.getAudioTracks() ?? [])
-        .filter(track => track.readyState === "live").map(track => track.clone());
-      tracks.push(...audioTracksRef.current);
-
-      const outputStream = new MediaStream(tracks);
-      const hasAudio = outputStream.getAudioTracks().length > 0;
-
+      let outputStream: MediaStream;
       let startResult;
       try {
+        const audio = useAppStore.getState().programAudioStream?.getAudioTracks().find(track => track.readyState === "live" && track.enabled);
+        if (!audio) throw new Error("Program audio is unavailable. Open Audio Mixer and retry when the Program output is ready.");
+        audioTracksRef.current = [audio.clone()];
+        outputStream = new MediaStream([...tracks, ...audioTracksRef.current]);
         startResult = await window.dualcast.startStream({
           destinations: enabledDestinations,
-          hasAudio,
+          hasAudio: true,
           preset: profileSettings.streamPreset,
           resolution: profileSettings.streamResolution,
           fps: profileSettings.streamFps,
@@ -349,8 +347,6 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
       canvasRef,
       programSceneId,
       programSceneSnapshot,
-      programAudioStream,
-      settings.audioMode,
       settings.streamFps,
       settings.streamPreset,
       settings.streamResolution,

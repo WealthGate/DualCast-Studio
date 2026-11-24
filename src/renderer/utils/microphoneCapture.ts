@@ -3,7 +3,7 @@ import { unprocessedAudioConstraints } from "../../shared/programAudio";
 type MicrophoneCaptureOptions = {
   deviceId?: string | null;
   channelCount?: number;
-  onStream: (stream: MediaStream | null) => void;
+  onStream: (stream: MediaStream | null, issue?: string) => void;
   devices?: Pick<MediaDevices, "getUserMedia" | "addEventListener" | "removeEventListener">;
 };
 
@@ -39,10 +39,15 @@ export const createMicrophoneCapture = ({ deviceId, channelCount = 2, onStream, 
     } catch (error) {
       if (stopped) return;
       if (liveTrack()) return;
-      onStream(null);
+      const name = error instanceof DOMException ? error.name : "";
+      const denied = name === "NotAllowedError" || name === "SecurityError";
+      const issue = denied ? "Allow microphone access in system privacy settings, then reselect the input or turn input lines off and on."
+        : name === "NotFoundError" || name === "OverconstrainedError" ? "Reconnect this input or select another device in Input settings."
+        : "The device could not be opened. Check its connection and close other apps using it.";
+      onStream(null, issue);
       // Permission denial needs an operator change; repeatedly requesting it
       // would interrupt a broadcast. Missing/busy devices can recover in place.
-      if (!(error instanceof DOMException) || !["NotAllowedError", "SecurityError"].includes(error.name)) {
+      if (!denied) {
         retry = setTimeout(() => { void open(); }, 2000);
       }
     } finally {
@@ -77,11 +82,19 @@ export const createMicrophoneCapture = ({ deviceId, channelCount = 2, onStream, 
 type CaptureInput = { deviceId: string | null; channel: number | null };
 const deviceKey = (deviceId: string | null) => deviceId || "default";
 
-export const createAudioInputCapturePool = (onChange: () => void, devices?: MicrophoneCaptureOptions["devices"]) => {
+export const createAudioInputCapturePool = (onChange: () => void, devices?: MicrophoneCaptureOptions["devices"], onIssues?: (issues: Record<string, string>) => void) => {
+  const issues = new Map<string, string>();
+  const setIssue = (key: string, issue?: string) => {
+    if (issues.get(key) === issue) return;
+    if (issue) issues.set(key, issue);
+    else issues.delete(key);
+    onIssues?.(Object.fromEntries(issues));
+  };
   const captures = new Map<string, { capture: ReturnType<typeof createMicrophoneCapture>; stream: MediaStream | null }>();
   const remove = (key: string) => {
     captures.get(key)?.capture.stop();
     captures.delete(key);
+    setIssue(key);
   };
   return {
     setInputs: (inputs: CaptureInput[]) => {
@@ -101,10 +114,11 @@ export const createAudioInputCapturePool = (onChange: () => void, devices?: Micr
           deviceId: key === "default" ? null : key,
           channelCount,
           devices,
-          onStream: (stream) => {
+          onStream: (stream, issue) => {
             const entry = captures.get(key);
             if (!entry) return;
             entry.stream = stream;
+            setIssue(key, issue);
             onChange();
           }
         });

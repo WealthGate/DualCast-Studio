@@ -160,6 +160,7 @@ type AppState = {
   programRevision: number;
   selectedSourceId: string | null;
   programAudioStream: MediaStream | null;
+  audioInputIssues: Record<string, string>;
   isProgramAudioMonitoring: boolean;
   programAudioMonitorGain: number;
   isProjecting: boolean;
@@ -207,6 +208,7 @@ type AppState = {
   moveSourceInScene: (sceneId: string, sourceId: string, direction: -1 | 1) => void;
   updateSourceRect: (sourceId: string, rect: SourceRect) => void;
   updateSource: (sourceId: string, update: Partial<Source>) => void;
+  mixSource: (sourceId: string, update: Partial<Pick<Source, "volume" | "audioEnabled" | "audioScope">>) => void;
   toggleSourceEnabled: (sourceId: string) => void;
   toggleSourceAudio: (sourceId: string) => void;
   toggleSourceLocked: (sourceId: string) => void;
@@ -252,6 +254,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   presentedProgram: null,
   selectedSourceId: null,
   programAudioStream: null,
+  audioInputIssues: {},
   isProgramAudioMonitoring: false,
   programAudioMonitorGain: 0.8,
   isProjecting: false,
@@ -580,6 +583,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       };
     }),
+  mixSource: (sourceId, update) => set(state => {
+    const source = state.sources[sourceId];
+    if (!source) return state;
+    const programId = `program:${sourceId}`;
+    const live = state.programSources[programId];
+    return {
+      sources: { ...state.sources, [sourceId]: { ...source, ...update } },
+      programSources: live ? { ...state.programSources, [programId]: { ...live, ...update } } : state.programSources
+    };
+  }),
   toggleSourceEnabled: (sourceId) =>
     set((state) => {
       const current = state.sources[sourceId];

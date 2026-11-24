@@ -74,6 +74,7 @@ jobs:
         run: |
           npm run verify:audio-fidelity
           node scripts/verify-live-output.cjs --mixer-only
+          node scripts/verify-live-output.cjs --stream-errors-only
 
       - name: Verify release tag matches package version
         shell: bash
