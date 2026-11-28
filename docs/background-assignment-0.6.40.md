@@ -1,0 +1,21 @@
+# Display backgrounds · v0.6.40
+
+For the current mode routing, slide animations, expanded designs and file deletion, see [the v0.6.42 guide](display-workflow-0.6.42.md). This page documents the original v0.6.40 behavior.
+
+Open **Controls → Backgrounds** or **Tools → Background Library & Display Backgrounds**.
+
+1. **Choose a screen or output.** Connected screen cards show their OpenChurch number, monitor name, resolution, primary/operator status, output role, whether the output is open and its current background. **Identify screens · show numbers** briefly displays matching numbers on each physical screen. These are OpenChurch's screen numbers; operating-system display settings can use different numbers. The editor initially selects an external screen when available.
+2. **Choose a background.** Use **Upload images** or **Upload videos** to copy one or several files into the local library. **Your uploaded files** shows saved names, image/video thumbnails and media types. Search by name or filter to images/videos. The first newly uploaded file is selected for preview. Upload success and individual errors are reported together, so successful files remain available even when another file fails. Click any previously uploaded file to reuse it.
+3. **Preview & apply.** Check the destination name and selected file above the preview. **Color, fit & opacity** contains optional adjustments. **Apply background** saves the choice and updates an already open output. **Apply & show** also opens the chosen screen. Showing on the primary screen covers the studio; press **Escape** to close outputs and return to the controls.
+
+Uploads and file selection only update the preview. They do not change live outputs until Apply. Files are copied into OpenChurch's application data on this computer and remain available after reopening the studio or moving the originals. Missing copied files are marked unavailable; upload them again. Unplayable media reports a preview error. For compatible video use MP4 with H.264 or WebM; background video is silent and loops.
+
+**Program / Preview** places a background behind scene sources, including recordings, streaming, Virtual Camera and mirrored screens. A full-screen opaque camera, photo or video can cover it. **All sanctuary screens · shared default** supplies the independent sanctuary text layout on screens without an individual assignment. Individual screen choices take precedence. **Use shared sanctuary layout** removes a screen's own assignment. The shared **Apply & show** button opens the connected sanctuary screens selected in **Manage display outputs…**.
+
+**Lower-third band** sets media inside the text band on Program and the dedicated lower-third output. A live lower-third slide must be visible for the background to appear. Selecting a physical screen currently assigned to that output edits the same band background. Choose its dedicated screen under **Manage display outputs…** if one has not been selected. The rest of the dedicated output stays transparent. **None · solid color** clears image/video media after Apply.
+
+Disconnected screen choices remain saved for reconnection. Opening a disconnected display reports an error instead of falling back to the primary display. Failed settings saves restore the failed values while retaining newer settings edits. If saving succeeds but opening the output fails, the editor reports that the background was saved and explains the output failure.
+
+## Verification
+
+The regression suite covers managed file copying, successful/partial/failed/canceled uploads, moved originals, missing files, studio ownership and failed settings-save ordering. `npm run verify:backgrounds` runs the real Electron bridge and renderers with an isolated test profile and normal file security. It checks matching screen identifiers, disconnected display rejection, visible image/video uploads, search/filter, draft isolation, Apply & show, independent/shared routing, unaffected mirrored Program, lower-third video pixels and animation, Freeze/Black, clearing media, persisted files/assignments after reopening, narrow-dock sizing and repeated shutdown. Release CI runs this on Windows, plus the full test suite, streaming checks and existing lower-third/native-host checks before packaging Windows, macOS and Linux.
