@@ -392,9 +392,6 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, 
               return (
                 <fieldset className="youtube-broadcast-setup" disabled={isActive || authorizingId === destination.id}>
                   <legend>YouTube Broadcast Setup</legend>
-                  <p className="field-help">
-                    Enter a title, click Connect & Create, choose the Google account that owns your channel, and allow YouTube access. The stream address and key are filled in automatically; then click Start Stream. Connect again only to create a new broadcast.
-                  </p>
                   <div className="field">
                     <label htmlFor={`youtube-title-${index}`}>Broadcast Title *</label>
                     <input
@@ -465,7 +462,6 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, 
                         value={broadcast.scheduledStartTime}
                         onChange={(event) => updateYouTubeBroadcast(destination, { scheduledStartTime: event.target.value })}
                       />
-                      <span className="field-help">Leave blank to schedule five minutes from creation.</span>
                     </div>
                     <div className="field">
                       <label htmlFor={`youtube-latency-${index}`}>Latency</label>
@@ -572,7 +568,6 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, 
           <select id="streamResolution" value={settings.streamResolution ?? "auto"} onChange={event => updateSettings({ streamResolution: event.target.value as VideoResolution })}>
             {VIDEO_RESOLUTIONS.map(item => <option key={item.value} value={item.value} disabled={item.value==="8k"&&eightK!==true}>{item.label}{item.value==="8k"&&eightK===false?" — hardware encoding unavailable":""}</option>)}
           </select>
-          <p className="field-help">The Program resolution and source determine the available detail. 4K and 8K need a capable encoder and sufficient upload bandwidth.</p>
         </div>
         <div className="field">
         <label htmlFor="streamFps">FPS</label>
@@ -617,15 +612,10 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, 
             );
           })}
         </select>
-        <span className="field-help">
-          Hardware options are enabled only after a real local encoding test. Auto falls through to the next working encoder and always keeps software x264 as a fallback.
-        </span>
       </div>
       <div className="field">
         <label><input type="checkbox" disabled={isActive} checked={settings.streamPassthrough !== false} onChange={event => updateSettings({ streamPassthrough: event.target.checked })} /> Reuse compatible H.264 video to reduce CPU load</label>
-        <span className="field-help">The selected encoder is used when video conversion is needed. Audio is still encoded for streaming.</span>
         <label><input type="checkbox" disabled={isActive} checked={settings.streamAutoRecover !== false} onChange={event => updateSettings({ streamAutoRecover: event.target.checked })} /> Reconnect automatically after stalls</label>
-        <span className="field-help">Repeated stalls switch this stream to 720p, up to 30 fps and lower bandwidth. Program and local displays keep their settings.</span>
       </div>
       <div className="streaming-status-row">
         <div className="streaming-status">
@@ -642,7 +632,6 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, 
       {statusMessage && statusMessage !== notice?.text && <div className="stream-notice" role={status === "error" ? "alert" : "status"}>{statusMessage}</div>}
       {lastError && lastError !== statusMessage && lastError !== notice?.text && (status === "error" || status === "reconnecting") &&
         <div className="stream-notice" role="alert">{lastError}</div>}
-      {status === "live" ? <p className="field-help">Video output is running. Confirm publication on the destination's live page; YouTube verification appears on its destination card.</p> : null}
       {status === "live" && elapsedSeconds >= 15 && stats?.speed != null && stats.speed < 0.9 ? (
         <div className="profile-message" role="status">
           Stream delivery is behind real time ({stats.speed.toFixed(2)}×). Choose a lower streaming quality or fewer destinations to reduce buffering.
@@ -672,7 +661,6 @@ const StreamingPanel: React.FC<StreamingPanelProps> = ({ streamer, onOpenMixer, 
         </label>
         <Meter id="master" label="Stream Program level" horizontal />
         <StreamAudioCheck />
-        <small className="field-help">Streaming and recording share this Program mix.</small>
       </section>
       <div className="streaming-actions">
         <button

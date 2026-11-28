@@ -105,7 +105,6 @@ const SettingsPanel: React.FC = () => {
             <option value="power-saving">Power-saving GPU (integrated graphics)</option>
             <option value="software">Software rendering (CPU)</option>
           </select>
-          <p className="field-help">Close and reopen the app to apply graphics-device changes. The operating system chooses the matching available device.</p>
           {hardware && (settings.graphicsMode ?? "auto") !== hardware.graphicsMode && <p role="status" className="field-help">Graphics preference saved. Restart the app when your live session is finished.</p>}
         </div>
         <div className="field">
@@ -122,13 +121,9 @@ const SettingsPanel: React.FC = () => {
             {STREAMING_ENCODER_OPTIONS.filter(option => ["nvenc", "qsv", "amf", "x264"].includes(option.id)).map(option => <option key={option.id} value={option.id} disabled={!hardware.captureEncoders.includes(option.id)}>{option.label}{hardware.captureEncoders.includes(option.id) ? "" : " — unavailable with this driver/runtime"}</option>)}
           </select>
         </div>}
-        <p className="field-help">Encoder options are tested on this device. Windows, macOS and Linux offer their supported hardware backends; a detected graphics card alone does not guarantee driver support for every encoder.</p>
       </details>
-      <p className="field-help">The pointer stays visible to the operator. Live displays always hide it.</p>
       <details className="settings-section streaming-account-settings" open>
         <summary>Streaming Accounts</summary>
-        <p className="settings-path"><strong>You are here:</strong> Controls → Settings → System Settings → Streaming Accounts</p>
-        <p className="field-help">Application credentials identify this installed desktop app to the platform. Your personal Google or Facebook password is never entered here; sign-in happens in the platform's secure browser page.</p>
         {(["youtube", "facebook"] as const).map((provider) => {
           const status = credentialStatus[provider];
           const label = provider === "youtube" ? "YouTube Live" : "Facebook Live";
@@ -170,7 +165,6 @@ const SettingsPanel: React.FC = () => {
           </button>
         </div>
       </div>
-      <p className="field-help">Adjust Master Program Audio in Audio Mixer.</p>
       <div className="field">
         <label htmlFor="quality">Recording compression quality</label>
         <select
@@ -188,14 +182,12 @@ const SettingsPanel: React.FC = () => {
         <select id="outputResolution" value={settings.outputResolution ?? "auto"} onChange={event => updateSettings({ outputResolution: event.target.value as VideoResolution })}>
           {resolutionOptions}
         </select>
-        <p className="field-help">Automatic uses 720p with Low compression quality and 1080p otherwise. Choose QHD, 4K or 8K explicitly when the device can sustain it.</p>
       </div>
       <div className="field">
         <label htmlFor="displayResolution">Live display resolution</label>
         <select id="displayResolution" value={settings.displayResolution ?? "auto"} onChange={event => updateSettings({ displayResolution: event.target.value as VideoResolution })}>
           {resolutionOptions}
         </select>
-        <p className="field-help">Automatic keeps local displays efficient. Explicit resolutions up to 8K use the selected output size, limited by the source, screen and device capabilities.</p>
       </div>
       <div className="field">
         <label htmlFor="frameRate">Frame rate</label>

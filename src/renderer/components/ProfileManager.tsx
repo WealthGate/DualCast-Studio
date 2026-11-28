@@ -128,7 +128,7 @@ const ProfileManager: React.FC<ProfileManagerProps> = ({ intent, onClose }) => {
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="studio-modal profile-manager" role="dialog" aria-modal="true" aria-labelledby="profile-manager-title">
         <div className="panel-header">
-          <div><h2 id="profile-manager-title">Studio Profiles</h2><p>Save complete settings and scene arrangements for different services or venues.</p></div>
+          <div><h2 id="profile-manager-title">Studio Profiles</h2></div>
           <button className="btn btn-outline" onClick={onClose}>Close</button>
         </div>
         <div className="profile-manager-grid">
@@ -154,7 +154,6 @@ const ProfileManager: React.FC<ProfileManagerProps> = ({ intent, onClose }) => {
             </div>
             <input ref={importRef} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importProfile(file); event.currentTarget.value = ""; }} />
             {message ? <div className="profile-message" role="status">{message}</div> : null}
-            <p className="field-help">Stream keys, OAuth tokens, and account secrets are never exported with a profile.</p>
           </div>
         </div>
       </section>

@@ -38,14 +38,14 @@ const AutoConfigurationWizard: React.FC<AutoConfigurationWizardProps> = ({ onClo
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="studio-modal auto-config-wizard" role="dialog" aria-modal="true" aria-labelledby="auto-config-title">
-        <div className="panel-header"><div><h2 id="auto-config-title">Auto-Configuration Wizard</h2><p>Choose the priority and enter the tested upload speed at this venue.</p></div><button className="btn btn-outline" onClick={onClose}>Cancel</button></div>
+        <div className="panel-header"><div><h2 id="auto-config-title">Auto-Configuration Wizard</h2></div><button className="btn btn-outline" onClick={onClose}>Cancel</button></div>
         <div className="wizard-options">
           <fieldset><legend>How will you use OpenChurch most?</legend>
             <label><input type="radio" name="useCase" checked={useCase === "stream-first"} onChange={() => setUseCase("stream-first")} /> Streaming first; recording is secondary</label>
             <label><input type="radio" name="useCase" checked={useCase === "balanced"} onChange={() => setUseCase("balanced")} /> Streaming and recording equally</label>
             <label><input type="radio" name="useCase" checked={useCase === "record-first"} onChange={() => setUseCase("record-first")} /> Recording quality first</label>
           </fieldset>
-          <div className="field"><label htmlFor="uploadSpeed">Stable upload speed (Mbps)</label><input id="uploadSpeed" type="number" min={0.5} max={1000} step={0.5} value={uploadMbps} onChange={(event) => setUploadMbps(Number(event.target.value))} /><span className="field-help">Use a wired connection and enter a conservative result, not the highest short burst.</span></div>
+          <div className="field"><label htmlFor="uploadSpeed">Stable upload speed (Mbps)</label><input id="uploadSpeed" type="number" min={0.5} max={1000} step={0.5} value={uploadMbps} onChange={(event) => setUploadMbps(Number(event.target.value))} /></div>
           <div className="field"><label htmlFor="motionLevel">Typical movement</label><select id="motionLevel" value={motion} onChange={(event) => setMotion(event.target.value as "normal" | "high")}><option value="normal">Sermon / normal worship movement</option><option value="high">Fast stage movement / sports-like motion</option></select></div>
         </div>
         <div className="wizard-result">

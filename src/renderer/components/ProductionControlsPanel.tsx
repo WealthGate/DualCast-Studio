@@ -77,8 +77,7 @@ const ProductionControlsPanel: React.FC<ProductionControlsPanelProps> = ({
           aria-pressed={virtualCamera.status.state === "running"}
           onClick={() => void virtualCamera.configure(!virtualCamera.status.installed ? "install" : virtualCamera.status.state === "running" ? "stop" : "start")}
         >{virtualCamera.busy || virtualCamera.status.state === "starting" ? "Preparing Virtual Camera…" : !virtualCamera.status.installed ? "Install Virtual Camera" : virtualCamera.status.state === "running" ? "Stop Virtual Camera" : "Start Virtual Camera"}</button>
-        <small role="status" aria-live="polite">{virtualCamera.status.message || (virtualCamera.status.state === "running" ? "Sending Program · 720p / 30 fps. Select OpenChurch Virtual Camera in your other app." : "Send Program to another app as a camera.")}</small>
-        <small>Video only. Choose your microphone or audio input in the receiving app.</small>
+        <small role="status" aria-live="polite">{virtualCamera.status.message || (virtualCamera.status.state === "running" ? "Sending Program · 720p / 30 fps" : "")}</small>
         {virtualCamera.status.installed && virtualCamera.status.state !== "running" ? <button className="subtle" disabled={virtualCamera.busy} onClick={() => void virtualCamera.configure("uninstall")}>Remove Virtual Camera</button> : null}
       </div>
       <div className="control-status-line"><span className={`indicator ${streamer.status === "live" ? "live" : ""}`} /><span>{streamer.status === "live" ? `Live ${streamer.formattedElapsed}` : streamer.status.charAt(0).toUpperCase() + streamer.status.slice(1)}</span></div>

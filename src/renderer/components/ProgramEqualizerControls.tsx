@@ -34,7 +34,6 @@ const ProgramEqualizerControls: React.FC = () => {
           </label>
         ))}
       </div>
-      <p className="field-help">Applies to the stream, recording and Program monitor. Start flat and watch the master meter when boosting.</p>
     </section>
   );
 };

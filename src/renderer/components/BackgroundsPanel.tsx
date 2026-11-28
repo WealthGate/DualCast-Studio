@@ -158,7 +158,6 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
   const selectedMedia = items.find(item => item.id === draft.assetId || item.url === draft.url);
   return <section className="compact-dock-panel backgrounds-panel" aria-label="Display backgrounds">
     <h3>Display backgrounds</h3>
-    <p className="field-help">Choose where it goes, pick a file, then apply.</p>
     {message && <p role="status" className="background-status" style={{ whiteSpace: "pre-wrap" }}>{message}</p>}
     <fieldset disabled={busy} className="background-step"><legend>1. Choose a screen or output</legend>
     <button className="btn btn-outline" onClick={() => void identify()} disabled={!displays.length}>Identify screens · show numbers</button>
@@ -169,13 +168,9 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
         <span className="background-target-info"><strong>{item.name}</strong><small>{item.detail}</small><small>{item.status}</small><span>Current: {item.assignment}</span></span>
       </button>)}
     </div>
-    {effectiveTarget === "program" ? <p className="field-help">Full-screen photos, videos and cameras in the scene cover this background.</p>
-      : effectiveTarget === "lowerThird" ? <p className="field-help">Appears inside the text band when a lower-third slide is live. The rest of the dedicated output stays transparent.</p>
-      : <p className="field-help">Apply switches the chosen screen to its independent text layout. Choose Mirror Program in display outputs to show Program again; saved backgrounds remain available.</p>}
     </fieldset>
     <fieldset disabled={busy} className="background-step"><legend>2. Choose a background</legend>
     <div className="background-upload-actions"><button onClick={() => void upload("image")}>Upload images</button><button onClick={() => void upload("video")}>Upload videos</button></div>
-    <p className="field-help">Files are copied into OpenChurch on this computer and stay here for reuse.</p>
     <strong>Your uploaded files ({items.length})</strong>
     <div className="background-library-filters"><input aria-label="Search uploaded backgrounds" placeholder="Search your files…" value={search} onChange={event => setSearch(event.target.value)} /><select aria-label="Filter uploaded backgrounds" value={filter} onChange={event => setFilter(event.target.value)}><option value="all">All files</option><option value="image">Images</option><option value="video">Videos</option></select></div>
     {libraryLoading && <p className="field-help">Loading uploaded files…</p>}
@@ -202,7 +197,6 @@ const BackgroundsPanel: React.FC<{ onOpenDisplays?: () => void }> = ({ onOpenDis
     </details>
     <button className="btn btn-primary" disabled={previewError || Boolean(selectedMedia?.missing)} onClick={() => void apply()}>{busy ? "Working…" : "Apply background"}</button>
     {canShow && <button className="btn btn-primary" disabled={previewError || Boolean(selectedMedia?.missing)} onClick={() => void apply(false, true)}>Apply & show{connectedTarget ? ` on Screen ${displays.indexOf(connectedTarget) + 1}` : effectiveTarget === "lowerThird" ? " on lower-third screen" : " on selected sanctuary screens"}</button>}
-    {connectedTarget?.isPrimary && <p className="field-help">Showing on the primary screen covers the studio. Press Escape to return.</p>}
     <button className="btn btn-outline" onClick={() => void apply(true)}>{effectiveTarget.startsWith("display:") ? "Use shared sanctuary layout" : "Restore existing layout"}</button>
     {onOpenDisplays && <button onClick={onOpenDisplays}>Manage display outputs…</button>}
     </fieldset>

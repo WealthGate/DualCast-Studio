@@ -544,7 +544,6 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
           </div>
         ))}
       </div>
-      <div className="panel-context-hint">Right-click a source or empty space for options.</div>
 
       {toolOverlay === "properties" && selectedSource ? (
         <div className="selected-source-panel panel-tool-overlay">
@@ -609,12 +608,10 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
                     setCaptureRegion({ sourceId: selectedSource.id, imageUrl });
                   } catch { setCaptureMessage("Could not refresh captures. Check screen-recording permissions and retry."); }
                 }}>Select video-only area</button>
-                <span className="field-help">For Zoom and similar apps, choose a separate video-only window, or crop away controls and chat. Review Preview before TAKE.</span>
                 {captureMessage && <p role="status">{captureMessage}</p>}
               </>}
             </div>
           ) : null}
-          <div className="field-help">Edit source content in Preview, then TAKE to apply it to Program.</div>
           {selectedSource.type === "scrolling-text" && <ScrollingTextControls data={selectedSource.data} paused={Boolean(selectedSource.media?.paused)} disabled={activeSceneLocked || Boolean(selectedSource.locked)}
             onChange={update => { updateSource(selectedSource.id, { data: normalizeScrollingText({ ...selectedSource.data, ...update }) }); void persistStudioState(); }}
             onPlace={rect => { updateSourceRect(selectedSource.id, rect); void persistStudioState(); }}
@@ -702,14 +699,12 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
                   <button className="btn btn-outline btn-compact" onClick={() => handleApplyTextLayout("quarter-video-left")} disabled={activeSceneLocked || selectedSource.locked}>Text 3/4 - Video Left</button>
                   <button className="btn btn-outline btn-compact" onClick={() => handleApplyTextLayout("quarter-video-right")} disabled={activeSceneLocked || selectedSource.locked}>Text 3/4 - Video Right</button>
                 </div>
-                <span className="field-help">Uses a visual source in the same group when grouped; otherwise it uses the top visual source in this scene.</span>
               </div>
             </div>
           ) : null}
           {(selectedSource.type === "display" || selectedSource.type === "window") ? (
             <div className="field">
               <label>Cursor in Program</label>
-              <span className="field-help">Always hidden from live output, recordings, and streams. The operator can still see the pointer on their PC.</span>
             </div>
           ) : null}
           {hasAudioToggle(selectedSource.type) ? (
@@ -788,7 +783,6 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
                   </label>
                 ))}
               </div>
-              <span className="field-help">Trim in Preview, then press TAKE. Program stays unchanged until TAKE.</span>
             </div>
           ) : null}
           <div className="field-grid">
@@ -1005,7 +999,6 @@ const SceneSourcesPanel: React.FC<{ followProgram?: boolean }> = ({ followProgra
                 Pick File
               </button>
             ) : null}
-            {sourceType === "browser" ? <div className="field-help">Paste a YouTube, website, dashboard, or hosted media URL.</div> : null}
           </div>
         ) : null}
         {sourceType === "text" || sourceType === "scrolling-text" ? (

@@ -449,26 +449,6 @@ body.multiview-mode {
   font-size: 12px;
 }
 
-.multiview-help {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.multiview-help span {
-  padding: 6px 9px;
-  border: 1px solid #3e424d;
-  border-radius: 3px;
-  background: #20232b;
-  color: #d8dce5;
-  font-size: 11px;
-}
-
-.multiview-help b {
-  color: #ffffff;
-  margin-right: 4px;
-}
-
 .multiview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -2832,12 +2812,6 @@ body {
   grid-column: 1 / -1;
 }
 
-.mixer-help {
-  margin: 5px 8px 0;
-  color: #aeb5c2;
-  font-size: 9px;
-}
-
 .layout-preset-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3235,13 +3209,6 @@ body {
 .scene-lock {
   color: #f2c96d;
   font-size: 8px;
-}
-
-.panel-context-hint {
-  margin-top: auto;
-  padding: 8px 3px 2px;
-  color: #7f8796;
-  font-size: 9px;
 }
 
 .source-row {
@@ -4028,7 +3995,7 @@ body.projection-mode, body.projection-mode * { cursor: none !important; }
   color: var(--text);
   border-color: var(--border);
 }
-:root[data-theme] :is(.studio-toolbar span, .pane-meta, .mixer-value, .mixer-channel-name, .mixer-monitor label, .mixer-monitor label span, .mixer-monitor p, .mixer-help, .lower-third-dock-section, .display-target-toolbar, .dock-empty-state) {
+:root[data-theme] :is(.studio-toolbar span, .pane-meta, .mixer-value, .mixer-channel-name, .mixer-monitor label, .mixer-monitor label span, .mixer-monitor p, .lower-third-dock-section, .display-target-toolbar, .dock-empty-state) {
   color: var(--muted);
 }
 :root[data-theme] :is(.dock-tab.active, .scene-list-item.active, .source-row.selected, .context-menu button:hover:not(:disabled), .context-menu button:focus-visible, .dock-menu button:hover, .row-action:hover:not(:disabled), .row-action:focus-visible, .studio-toolbar-button:hover) {

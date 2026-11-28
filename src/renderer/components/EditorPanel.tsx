@@ -88,10 +88,6 @@ const EditorPanel: React.FC = () => {
           Show Exported Clip
         </button>
       ) : null}
-      <p className="panel-note">
-        This first editor module trims a recording and exports a new H.264/AAC MP4. Timeline titles and multi-track
-        editing remain future modules.
-      </p>
     </section>
   );
 };

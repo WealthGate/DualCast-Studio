@@ -28,21 +28,19 @@ const SanctuaryLayoutEditor: React.FC<{ onOpenBackgrounds?: () => void }> = ({ o
   return <section className="sanctuary-layout-editor" aria-label="Sanctuary display layout">
     <h3>Sanctuary display layout</h3>
     {onOpenBackgrounds && <button onClick={onOpenBackgrounds}>Background library & display assignments…</button>}
-    <p className="field-help">Mirror Program shows the same picture and animations on every sanctuary screen. Independent Layout uses sanctuary text and saved backgrounds.</p>
     <label className="field">Display mode
       <select aria-label="Sanctuary display mode" value={individual ? "individual" : draft.mode} disabled={saving} onChange={event => {
         const next = { ...draft, mode: event.target.value as SanctuaryDisplaySettings["mode"], displayModes: {} };
         setDraft(next); void apply(next);
       }}>{individual && <option value="individual" disabled>Individual screen layouts</option>}<option value="program">Mirror Program · all screens</option><option value="independent">Independent Layout · all screens</option></select>
     </label>
-    {draft.mode === "program" ? <p className="field-help">The sanctuary screens receive the same picture as Program. Select Independent Layout to style their background and text separately.</p> : <>
+    {draft.mode === "program" ? null : <>
       <label className="field">Sanctuary text
         <select aria-label="Sanctuary text source" value={draft.textSource} onChange={event => edit({ textSource: event.target.value as "program" | "custom" })}>
           <option value="program">Follow live Program text</option><option value="custom">Sanctuary-only text</option>
         </select>
       </label>
       {draft.textSource === "custom" && <label className="field">Sanctuary-only text<textarea value={draft.customText} onChange={event => edit({ customText: event.target.value })} /></label>}
-      <p className="field-help">Following Program uses its live Scripture, lyrics, or scene text with the sanctuary styling below. Program and recordings keep their own layout.</p>
       <div className="field-grid">
         <label className="field">Font<input value={draft.fontFamily} onChange={event => edit({ fontFamily: event.target.value })} /></label>
         <label className="field">Font size (at 1920 px)<input type="number" min={12} max={240} value={draft.fontSize} onChange={event => edit({ fontSize: Number(event.target.value) })} /></label>

@@ -86,7 +86,6 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
           </button>
         ))}
       </div>
-      <p className="field-help">Each button sends Preview to Program using that effect. The selector prepares the effect for TAKE. Live Preview Blend remains a separate manual control.</p>
       <label><input type="checkbox" checked={settings.swapPreviewProgram !== false} onChange={(event) => updateSettings({ swapPreviewProgram: event.target.checked })} /> Swap Preview and Program after transitions</label>
       <div className="manual-blend-control">
         <div className="manual-blend-heading">
@@ -120,7 +119,6 @@ const TransitionsPanel: React.FC<TransitionsPanelProps> = ({ canBlend = true }) 
           }}
         />
         <div className="blend-scale"><span>Program</span><span>Preview</span></div>
-        <p>Drag to blend live. Release to return smoothly to Program. Reaching 100% completes one take and resets the fader.</p>
         <div className="quick-transition-buttons blend-actions">
           <button onClick={() => { stopReturn(); setManualBlend(0); }} disabled={manualBlend === 0}>Reset to Program</button>
           <button onClick={() => { stopReturn(); completeManualBlend(); }} disabled={manualBlend === 0 || !previewSceneId}>Complete to Preview</button>

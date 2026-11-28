@@ -375,7 +375,6 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
           />
           Allow more than one text presentation on screen
         </label>
-        <span className="field-help">When off, new presentation text replaces previous managed text. Enter or Show Live sends it to Preview and Program together.</span>
       </div>
 
       {lowerThird.mode !== "designer" && <div className="field">
@@ -397,7 +396,6 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
           <button className="btn btn-outline" onClick={() => addManualSlide()} disabled={!manualText.trim()}>Add to Queue</button>
         </div>
         <AddToScheduleButton label="manual text" disabled={!manualText.trim()} getItem={() => ({ kind: "slides", title: manualText.trim().split("\n")[0].slice(0, 120), slides: [{ id: createId(), kind: "text", text: manualText.trim() }] })} />
-        <span className="field-help">Enter shows text in Preview and Program. Shift+Enter adds a new line. Add to Queue saves it for later.</span>
       </div>}
 
       <div className="field">
@@ -424,7 +422,6 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
         </div>
         <button className="btn btn-outline" onClick={splitBulkText} disabled={!bulkText.trim()}>Auto-Separate Text into Slides</button>
         <AddToScheduleButton label="song or lyrics" disabled={!bulkText.trim()} getItem={() => ({ kind: "slides", title: bulkTitle.trim() || "Lyrics", slides: createBulkSlides() })} />
-        <span className="field-help">The app wraps long lines, then groups one or more lines into each slide using your selection.</span>
       </div>
 
       <details className="song-library-manager">
@@ -474,7 +471,6 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
       </div>}
       {queueMessage && <p className="panel-note" role="status">{queueMessage}</p>}
       <AddToScheduleButton label="selected presentation" disabled={!navigationSlides.length} getItem={() => ({ kind: "slides", title: activeSlide?.deckTitle || activeSlide?.reference || activeSlide?.title || "Presentation", slides: navigationSlides })} />
-      <div className="field-help">Click a slide to cue it, then Enter to show it in Preview and Program. Arrow keys move within the selected deck. Program text reaches connected projection and streaming outputs.</div>
 
       <div className="lower-third-slide-list">
         {visibleSlides.map(({ slide, index }) => (
@@ -496,7 +492,6 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
                   <AddToScheduleButton label="edited slide" disabled={!editingText.trim()} getItem={() => ({ kind: "slides", title: editingTitle.trim() || slide.deckTitle || "Presentation", slides: [{ ...slide, title: editingTitle.trim(), text: editingText.trim() }] })} />
                   <button className="btn btn-outline btn-compact" onClick={cancelSlideEdit}>Cancel</button>
                 </div>
-                <span className="field-help">Each Line → Slide keeps the first line here and inserts every remaining non-empty line directly after it.</span>
               </div>
             ) : (
               <button className="lower-third-slide-cue" onClick={() => void activateSlide(slide.id)} onDoubleClick={() => void showSlideLive(slide.id)}
@@ -570,7 +565,6 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
           <div className="field">
             <label htmlFor="lowerThirdMaxLines">Maximum Lines</label>
             <input id="lowerThirdMaxLines" type="number" min={0} max={20} value={lowerThird.maxLines} onChange={(event) => saveLowerThird({ maxLines: Number(event.target.value) })} />
-            <span className="field-help">0 displays the complete text.</span>
           </div>
           <div className="field">
             <label htmlFor="lowerThirdEntrance">Entrance</label>
@@ -587,7 +581,6 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
           <div className="field">
             <label htmlFor="lowerThirdDuration">Animation (ms)</label>
             <input id="lowerThirdDuration" type="number" min={100} max={3000} step={50} value={lowerThird.animationDurationMs} onChange={(event) => saveLowerThird({ animationDurationMs: Number(event.target.value) })} />
-            <span className="field-help">Also sets the fade duration when stopping display outputs.</span>
           </div>
         </div>
         <div className="feature-toggle-list">
@@ -621,7 +614,6 @@ const LowerThirdPanel: React.FC<{ onOpenBackgrounds?: () => void }> = ({ onOpenB
             <option value="right">Bible Image Right</option>
             <option value="background">Bible Image Background</option>
           </select>
-          <span className="field-help">Used only for slides sent from the Scripture dock.</span>
         </div>
         {onOpenBackgrounds && <button className="btn btn-outline" onClick={onOpenBackgrounds}>Background library & lower-third background…</button>}
       </details>

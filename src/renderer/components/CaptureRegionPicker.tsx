@@ -32,7 +32,6 @@ const CaptureRegionPicker: React.FC<Props> = ({ imageUrl, crop, onApply, onClose
           <img src={imageUrl} alt="Full captured window. Drag to select the video region." draggable={false} />
           <div className="capture-region-selection" style={{ left: `${selection.left}%`, right: `${selection.right}%`, top: `${selection.top}%`, bottom: `${selection.bottom}%` }} />
         </div>
-        <p className="field-help">Keep the meeting window size and layout fixed after cropping. For a clean feed, prefer the app's separate video-only window. Notifications drawn inside the selected video remain visible; disable them in the meeting app.</p>
         <div className="button-row">
           <button onClick={() => setSelection({ top: 0, right: 0, bottom: 0, left: 0 })}>Full window</button>
           <button onClick={onClose}>Cancel</button>

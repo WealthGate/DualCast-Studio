@@ -35,7 +35,6 @@ const AudioPluginsPanel: React.FC = () => {
   const plugin = status?.plugins.find(item => item.id === selected);
   return <div className="audio-plugins">
     <div className="audio-plugin-heading"><strong>VST audio plugin</strong><span>{status?.running ? "Processing" : "Bypassed"}</span></div>
-    <p className="field-help">Add a Windows x64 VST2 or VST3 effect for Program, recordings and streams.</p>
     <div className="audio-plugin-actions">
       <button type="button" className="btn btn-outline" disabled={busy || !status?.supported} onClick={() => void action("scan")}>Scan installed VST plugins</button>
       <button type="button" className="btn btn-outline" disabled={busy || !status?.supported} onClick={() => void action("scan-folder")}>Scan folder…</button>
@@ -55,7 +54,6 @@ const AudioPluginsPanel: React.FC = () => {
       </select>
     </label>}
     {status?.routing === "replace" && <p className="field-help">Program takes audio only from the plugin. Program stays silent if the plugin is stopped or has no audio.</p>}
-    {status?.supported && status.routing !== "replace" && <p className="field-help">Process Source Audio sends the combined scene and input-line mix through the effect. Choose a plugin and select Enable plugin.</p>}
     <div className="audio-plugin-actions">
       <button type="button" className="btn btn-primary" aria-pressed={status?.running ?? false} disabled={busy || (!status?.running && (!status?.supported || !plugin || plugin.available === false))} onClick={() => void action(status?.running ? "stop" : "start")}>{busy ? "Please wait…" : status?.running ? "Bypass plugin" : "Enable plugin"}</button>
       <button type="button" className="btn btn-outline" disabled={busy || !status?.running || !plugin?.hasEditor} onClick={() => void action("editor")}>Open plugin controls</button>
@@ -64,8 +62,7 @@ const AudioPluginsPanel: React.FC = () => {
     <p className="field-help" role="status">{status?.message ?? "Checking audio plugin support…"}</p>
     {plugin?.available === false && <p role="alert">This plugin file has moved or was removed. Scan its current folder or add the installed plugin file again.</p>}
     {status?.scan && status.scan.issues.length > 0 && <details className="audio-plugin-scan-results"><summary>Scan details ({status.scan.issues.length}{status.scan.issues.length >= 20 ? "+" : ""})</summary><ul>{status.scan.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></details>}
-    {plugin && <p className="field-help">48 kHz stereo · bridge latency 43 ms{plugin.latencyFrames > 0 ? ` + plugin ${Math.round(plugin.latencyFrames / 48)} ms` : ""}. Plugin settings are saved on close and bypass.</p>}
-    {status?.supported && <p className="field-help">For ReaStream, select Replace Source Audio, then enable ReaStream. In its controls, turn on Enable audio/MIDI, select Receive audio/MIDI, and match the sender’s identifier. Keep the Program master unmuted.</p>}
+    {plugin && <p className="field-help">48 kHz stereo · bridge latency 43 ms{plugin.latencyFrames > 0 ? ` + plugin ${Math.round(plugin.latencyFrames / 48)} ms` : ""}.</p>}
     {error && <p className="audio-plugin-error" role="alert">{error}</p>}
   </div>;
 };

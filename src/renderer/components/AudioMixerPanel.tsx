@@ -278,8 +278,6 @@ const AudioMixerPanel: React.FC = () => {
           </div>
         ))}
       </div> : null}
-      {audioSources.some(source => source.type === "display" || source.type === "window") &&
-        <p className="field-help">Desktop audio captures system playback. Enable it on one capture source to avoid doubling the sound.</p>}
       <ProgramEqualizerControls />
       <div className="mixer-output-mode">
         <span>Program output</span>
@@ -289,7 +287,6 @@ const AudioMixerPanel: React.FC = () => {
           onClick={() => saveSettings({ audioChannelMode: settings.audioChannelMode === "mono" ? "stereo" : "mono" })}>
           {settings.audioChannelMode === "mono" ? "Mono" : "Stereo"}
         </button>
-        <span className="field-help">Mono sends the combined mix to both speakers. Stereo preserves left and right.</span>
       </div>
       <div className="mixer-monitor">
         <button type="button" className={`monitor-toggle ${isProgramAudioMonitoring ? "active" : ""}`}
@@ -302,9 +299,7 @@ const AudioMixerPanel: React.FC = () => {
             disabled={!isProgramAudioMonitoring} onChange={setProgramAudioMonitorGain} />
           <span>{Math.round(programAudioMonitorGain * 100)}%</span>
         </label>
-        <p>Use headphones to prevent feedback. Monitor volume affects only what you hear locally.</p>
       </div>
-      <p className="mixer-help">Lower the channel or master fader if its meter shows CLIP.</p>
       <div ref={vstSection} tabIndex={-1} aria-label="VST effects"><AudioPluginsPanel /></div>
     </section>
   );

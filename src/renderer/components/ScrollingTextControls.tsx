@@ -46,10 +46,8 @@ const ScrollingTextControls: React.FC<Props> = ({ data, paused, disabled, onChan
         <div className="field"><label htmlFor="scroll-logoSide">Logo side</label><select id="scroll-logoSide" value={data.logoPosition} onChange={event => onChange({ logoPosition: event.target.value as "left" | "right" })}><option value="left">Left</option><option value="right">Right</option></select></div>
         {number("logoWidthPercent", "Logo area width (%)", 3, 40)}
       </div>
-      <p className="field-help">The logo stays fixed beside the message. Text is clipped to its own area and cannot scroll under the logo. Remote image URLs must allow cross-origin use; choose a local file if an image does not load.</p>
       <div className="button-row"><button onClick={() => onPlace({ x: 0, y: 0, width: 100, height: 12 })}>Top banner</button><button onClick={() => onPlace({ x: 0, y: 88, width: 100, height: 12 })}>Bottom banner</button><button onClick={() => onPlace({ x: 2, y: 10, width: 26, height: 80 })}>Left panel</button><button onClick={() => onPlace({ x: 72, y: 10, width: 26, height: 80 })}>Right panel</button></div>
       <div className="button-row"><button onClick={onPause}>{paused ? "Resume in Preview" : "Pause in Preview"}</button><button onClick={onRestart}>Restart in Preview</button></div>
-      <p className="field-help">Drag or resize the source in Preview, or set X, Y, W and H below. Changes are staged; TAKE sends them live.</p>
     </fieldset>
   );
 };

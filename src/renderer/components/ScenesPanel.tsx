@@ -124,7 +124,6 @@ const ScenesPanel: React.FC<ScenesPanelProps> = ({ directToProgram = false }) =>
           </div>
         ))}
       </div>
-      <div className="panel-context-hint">{directToProgram ? "Program Focus: one click sends a scene directly live. Right-click for options." : "Right-click a scene or empty space for options."}</div>
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} ariaLabel="Scene options">
           <div className="context-menu-title">{selectedScene?.name ?? "Scenes"}</div>

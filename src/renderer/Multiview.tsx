@@ -50,11 +50,6 @@ const Multiview: React.FC = () => {
       <header className="multiview-header">
         <div>
           <h1>OpenChurch Multiview</h1>
-          <p>All configured scenes and connected camera sources</p>
-        </div>
-        <div className="multiview-help">
-          <span><b>Click</b> Preview</span>
-          <span><b>Double-click</b> Program</span>
         </div>
       </header>
       {payload.tiles.length > 0 ? (

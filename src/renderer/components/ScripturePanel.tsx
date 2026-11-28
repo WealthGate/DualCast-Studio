@@ -446,7 +446,6 @@ const ScripturePanel: React.FC = () => {
           <button className="btn btn-outline" onClick={() => void savePassageOffline()} disabled={loading || !verseText.trim()}>Save Passage Offline</button>
           <AddToScheduleButton label="selected Scripture" disabled={loading || !verseOptions.length} getItem={() => scheduleScripture(`${selectedBook} ${selectedChapter}:${startVerse}${endVerse > startVerse ? `-${endVerse}` : ""}`)} />
         </div>
-        <span className="field-help">Select Verse and optional Through verse, then Show Live or Enter. Jump live (or Enter in Jump to verse) displays one verse immediately. Previous and Next move beyond the selected range. Offline lists follow the selected library; online lists use standard KJV verse numbering and the provider validates the passage.</span>
       </div>
       <details className="scripture-direct-reference">
         <summary>Type a reference instead</summary>
@@ -471,12 +470,11 @@ const ScripturePanel: React.FC = () => {
           }
         }}
         onDoubleClick={() => void showScriptureLive()} placeholder="Fetched, offline, or manually pasted Scripture text appears here." />
-        <span className="field-help">Enter shows this text in Preview and Program. Shift+Enter adds a line break.</span></div>
+        </div>
       <AddToScheduleButton label="displayed Scripture" disabled={loading || !verseText.trim()} getItem={() => scheduleScripture(resolvedReference || reference, true)} />
       <div className="field">
         <label htmlFor="scriptureLines">Lower-Third Line Limit</label>
         <input id="scriptureLines" type="number" min={0} max={20} value={settings.lowerThird.maxLines} onChange={(event) => updateSettings({ lowerThird: { ...settings.lowerThird, maxLines: Number(event.target.value) } })} />
-        <span className="field-help">0 shows the complete selected passage and reference.</span>
       </div>
       <div className="presentation-safety-card">
         <strong>Scripture Slide Arrangement</strong>
@@ -508,7 +506,6 @@ const ScripturePanel: React.FC = () => {
             <input type="number" min={100} max={3000} step={50} value={settings.lowerThird.animationDurationMs} onChange={(event) => updateSettings({ lowerThird: { ...settings.lowerThird, animationDurationMs: Number(event.target.value) } })} />
           </label>
         </div>
-        <span className="field-help">Scripture uses the same lower-third formatting, Bible image, background and animated transitions as songs.</span>
       </div>
       <details className="scripture-scene-layout" open>
         <summary>Add Scripture to Preview Scene</summary>
@@ -534,7 +531,6 @@ const ScripturePanel: React.FC = () => {
           </div>
         ) : null}
         <button className="btn btn-primary" onClick={addToPreviewScene} disabled={!verseText.trim() || !activeScene}>Add to Preview Scene</button>
-        <span className="field-help">The text remains private in Preview until TAKE. Custom text can be dragged and resized like any other source.</span>
       </details>
 
       <details className="scripture-library-manager">

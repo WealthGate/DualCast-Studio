@@ -94,9 +94,6 @@ const VenuePanel: React.FC = () => {
             <option value="stream">Streaming</option>
           </select>
         </div>
-        <p className="panel-note">
-          Use Mobile Control from Android, iPhone, iPad, or a laptop. The remote PIN grants production control; the station role labels this desktop workspace.
-        </p>
       </section>
 
       <section className="panel">
@@ -145,7 +142,6 @@ const VenuePanel: React.FC = () => {
           <input id="remoteUrl" type="url" placeholder="https://studio.your-tailnet.ts.net" value={remoteUrlDraft}
             onChange={event => setRemoteUrlDraft(event.target.value)} disabled={networkStatus.running || networkBusy} />
         </div>
-        <p className="panel-note">Same Wi-Fi: open a non-loopback operator address below and enter the PIN. Stop the hub to change its PIN or address. Restarting revokes all mobile sessions.</p>
         <details>
           <summary>Control from mobile data or another Wi-Fi network</summary>
           <p className="panel-note">Install Tailscale on the studio computer and mobile device, and connect both to the same private Tailscale network. On the studio computer, run:</p>
@@ -225,9 +221,6 @@ const VenuePanel: React.FC = () => {
             }
           />
         </div>
-        <p className="panel-note">
-          Mark a text source as “Lower Third,” then choose its dedicated display beneath Program.
-        </p>
       </section>
 
       <section className="panel">
