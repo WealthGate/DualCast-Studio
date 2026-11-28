@@ -5,12 +5,19 @@
   let sceneKey = "", slideKey = "", tickerKey = "", tickerDirty = false, selectedTicker = "", lastActiveSlideId = null;
   let monitorPaused = false, frameUrl = null, installPrompt = null, wakeLock = null;
   let sessionEpoch = 0, locking = false, gainDirty = false;
+  let books = [], services = [], entries = [], lastVerse = "", lastTap = 0;
+  const libraryRequests = { bible: 0, service: 0 };
+  $("remote-update").onclick = () => location.reload();
   const toast = (message, error = false) => { $("toast").textContent = message; $("toast").classList.toggle("error", error); };
   const availability = () => {
     document.querySelectorAll("[data-control]").forEach(button => {
       button.disabled = !connected || busy || (button.dataset.mode === "logo" && !state?.hasLogo);
     });
     if (!state?.tickers.length) $("ticker-form").querySelector("button").disabled = true;
+    const item = entries.find(item => item.id === $("service-item").value);
+    if (!item || item.kind === "note" || (item.kind !== "scene" && !$("service-slide").options.length)) {
+      $("service-live").disabled = $("service-preview").disabled = true;
+    }
   };
   const setConnected = value => {
     if (value && !connected && !monitorPaused) { $("monitor-note").textContent = "Waiting for Program picture…"; $("monitor-note").hidden = false; }
@@ -29,6 +36,13 @@
         headers: body === undefined ? {} : { "Content-Type": "application/json", "X-OpenChurch-Remote": "1" },
         body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal });
       const data = await response.json();
+      const version = response.headers.get("X-OpenChurch-Version");
+      if (path === "/api/state" && version && version !== document.querySelector('meta[name="studio-version"]').content) {
+        if (!busy && !tickerDirty && !gainDirty && !$("text-body").value && !$("text-title").value &&
+            !$("pin").value && !document.querySelector("dialog[open],input:focus,textarea:focus,select:focus")) {
+          location.reload();
+        } else { $("remote-update").hidden = false; }
+      }
       if (!response.ok) {
         if (response.status === 401 && path !== "/api/session") showLogin();
         throw new Error(data.message || "The studio rejected this request.");
@@ -38,6 +52,9 @@
   }
   function showLogin() {
     sessionEpoch++;
+    books = []; services = []; entries = []; lastVerse = "";
+    for (const id of ["service-group", "service-item", "service-slide", "verse-grid", "bible-book", "bible-chapter"]) $(id).replaceChildren();
+    $("service-detail").textContent = "";
     authenticated = false;
     setConnected(false);
     $("login").hidden = false; $("desk").hidden = true; $("tabs").hidden = true;
@@ -57,6 +74,94 @@
     select.replaceChildren(...values.map(({ id, label }) => { const option = element("option", label); option.value = id; return option; }));
     if (values.some(value => value.id === selected)) select.value = selected;
   }
+  async function loadLibrary(kind) {
+    if (!connected) return;
+    const epoch = sessionEpoch, revision = ++libraryRequests[kind];
+    try {
+      const { catalog, message } = await api("/api/" + kind);
+      if (epoch !== sessionEpoch || revision !== libraryRequests[kind]) return;
+      if (kind === "bible") {
+        books = catalog.books;
+        options($("bible-book"), books.map(book => ({ id: book.name, label: book.name })), $("bible-book").value || "John");
+        renderChapters();
+      } else {
+        services = catalog.schedules.map(service => ({ id: "schedule:" + service.id, label: service.name, items: service.items, scheduleId: service.id }));
+        services.push({ id: "songs", label: "Songs & hymns", items: catalog.songs.map(song => ({ ...song, kind: "song" })) });
+        const decks = new Map();
+        for (const slide of state.slides) {
+          const id = slide.deckId || slide.id;
+          if (!decks.has(id)) decks.set(id, { id, title: slide.deckTitle || slide.title || slide.reference || slide.text.slice(0, 55), kind: "deck", choices: [], ids: [] });
+          decks.get(id).choices.push([slide.reference, slide.text].filter(Boolean).join(" ").slice(0, 100));
+          decks.get(id).ids.push(slide.id);
+        }
+        services.push({ id: "queue", label: "Prepared slides", items: [...decks.values()] });
+        options($("service-group"), services, $("service-group").value || "schedule:" + catalog.activeScheduleId);
+        renderItems();
+        if (message) toast(message, true);
+      }
+    } catch (error) { if (epoch === sessionEpoch && revision === libraryRequests[kind]) toast(error.message, true); }
+  }
+  function renderChapters() {
+    const book = books.find(book => book.name === $("bible-book").value);
+    options($("bible-chapter"), (book?.chapters || []).map(chapter => ({ id: String(chapter.number), label: String(chapter.number) })), $("bible-chapter").value);
+    renderVerses();
+  }
+  function renderVerses() {
+    lastVerse = "";
+    const book = books.find(book => book.name === $("bible-book").value);
+    const chapter = book?.chapters.find(chapter => String(chapter.number) === $("bible-chapter").value);
+    const numbers = chapter?.verses || Array.from({ length: chapter?.count || 0 }, (_, i) => i + 1);
+    $("verse-grid").replaceChildren(...numbers.map(number => {
+      const ref = book.name + " " + chapter.number + ":" + number;
+      const button = element("button", String(number));
+      button.setAttribute("aria-label", ref);
+      button.setAttribute("aria-pressed", String($("reference").value === ref));
+      button.onclick = () => {
+        $("reference").value = ref;
+        $("verse-grid").querySelector('[aria-pressed="true"]')?.setAttribute("aria-pressed", "false");
+        button.setAttribute("aria-pressed", "true");
+        const now = performance.now();
+        if (lastVerse === ref && now - lastTap <= 450) { lastVerse = ""; void command({ action: "scripture-live", reference: ref }); }
+        else { lastVerse = ref; lastTap = now; }
+      };
+      return button;
+    }));
+  }
+  function renderItems() {
+    const group = services.find(group => group.id === $("service-group").value);
+    const query = $("cue-search").value.toLocaleLowerCase().trim();
+    entries = (group?.items || []).filter(item => [item.title, item.note || "", ...item.choices].some(value => value.toLocaleLowerCase().includes(query)));
+    options($("service-item"), entries.map(item => ({ id: item.id, label: item.title })), $("service-item").value);
+    renderServiceSlides();
+  }
+  function renderServiceSlides() {
+    const item = entries.find(item => item.id === $("service-item").value);
+    const choices = item?.choices || [];
+    const query = $("cue-search").value.trim().toLocaleLowerCase();
+    options($("service-slide"), choices.map((text, i) => ({ id: String(i), label: (i + 1) + " · " + text })), String(Math.max(0, choices.findIndex(text => text.toLocaleLowerCase().includes(query)))));
+    $("section-label").hidden = !choices.length;
+    $("service-detail").textContent = item?.note || (item ? item.kind === "scene" ? "Scene cue" : "" : "No matching service items.");
+    availability();
+  }
+  function playService(live) {
+    const group = services.find(group => group.id === $("service-group").value);
+    const item = entries.find(item => item.id === $("service-item").value);
+    const slide = Number($("service-slide").value);
+    if (!item || item.kind === "note") return;
+    if (item.kind === "deck") return command({ action: "slide-cue", slideId: item.ids[slide], live });
+    if (item.kind === "song") return command({ action: "song-cue", songId: item.id, slide, live });
+    return command({ action: "service-cue", scheduleId: group.scheduleId, itemId: item.id, slide, live });
+  }
+  $("bible-book").onchange = renderChapters;
+  $("bible-chapter").onchange = renderVerses;
+  $("load-bible").onclick = () => loadLibrary("bible");
+  $("load-service").onclick = () => loadLibrary("service");
+  $("service-group").onchange = renderItems;
+  $("cue-search").oninput = renderItems;
+  $("service-item").onchange = renderServiceSlides;
+  $("service-preview").onclick = () => playService(false);
+  $("service-live").onclick = () => playService(true);
+  $("verse-live").onclick = () => { if ($("reference").reportValidity()) command({ action: "scripture-live", reference: $("reference").value }); };
   function render(next) {
     state = next;
     $("station").textContent = state.stationName || "Main studio";
@@ -171,6 +276,9 @@
   });
   document.querySelectorAll("[data-tab]").forEach(button => button.addEventListener("click", () => {
     activeTab = button.dataset.tab;
+    lastVerse = "";
+    if (activeTab === "service") void loadLibrary("service");
+    if (activeTab === "scripture") void loadLibrary("bible");
     document.querySelectorAll(".tab-panel").forEach(panel => panel.hidden = panel.id !== "tab-" + activeTab);
     document.querySelectorAll("[data-tab]").forEach(tab => tab === button ? tab.setAttribute("aria-current", "page") : tab.removeAttribute("aria-current"));
     $("cue-panel").hidden = activeTab !== "text" && activeTab !== "scripture";

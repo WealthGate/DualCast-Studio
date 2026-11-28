@@ -163,6 +163,19 @@ describe("stream shutdown", () => {
     expect(buildFfmpegArgs({...payload,copyVideo:true,inputVideoCodec:"other"},"x264")).toContain("libx264");
   });
 
+  it("detects sustained recent slowdown even when the lifetime speed still reads real time", async () => {
+    const child = encoder(); mocks.spawn.mockReturnValue(child.process);
+    const publish = vi.fn(); setStreamStatusPublisher(publish);
+    await startStreaming({ ...payload, autoRecover: true });
+    const report = (seconds: number) => child.process.stderr.emit("data", `frame=1000 time=01:00:${String(seconds).padStart(2, "0")}.00 speed=1.00x\r`);
+    report(1);
+    report(2);
+    await vi.advanceTimersByTimeAsync(6000); report(5);
+    expect(publish.mock.lastCall?.[0].restartRequired).toBe(false);
+    await vi.advanceTimersByTimeAsync(6000); report(8);
+    expect(publish.mock.lastCall?.[0]).toMatchObject({ restartRequired: true, reduceLoad: true });
+  });
+
   it("recognizes stream-copy delivery without an encoded-frame counter", async () => {
     const child = encoder(); mocks.spawn.mockReturnValue(child.process);
     const publish = vi.fn(); setStreamStatusPublisher(publish);

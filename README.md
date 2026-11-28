@@ -10,7 +10,7 @@ Press **Escape** while the studio or any display window is focused to close all 
 
 Download the current Windows, macOS, or Linux installer from the [latest GitHub release](https://github.com/WealthGate/DualCast-Studio/releases/latest).
 
-The current release is **v0.6.56**.
+The current release is **v0.6.57**.
 
 - Windows: download the `.exe` installer or portable `.zip`.
 - macOS: download the `.dmg` or `.zip`.
@@ -20,7 +20,16 @@ The current builds are not code-signed. Windows SmartScreen or macOS Gatekeeper 
 
 Starting with v0.4.0, the installed app checks GitHub Releases automatically. The v0.6.9 header keeps an update button visible at all times, shows the installed version, changes to `Update to v[version]` when a newer release is detected, reports download progress, and then changes to `Restart & Install`. `Menu > Check for Updates` remains available as an additional manual check, and the alert includes a GitHub download fallback.
 
-### What's new in v0.6.56
+### What's new in v0.6.57
+
+- On the mobile Scripture tab, select a book and chapter, then double-tap a verse to show it in Preview and Program.
+- Open **Service** on the remote to find a saved schedule, song, hymn or prepared slide and cue it privately or take it live.
+- Use **Panels → Lock dock layout** to preserve floating and docked panel positions and sizes.
+- Automatic stream recovery detects sustained delivery slowdowns during long broadcasts.
+
+See the [v0.6.57 release notes](docs/releases/v0.6.57.md).
+
+### Included from v0.6.56
 
 Select **Send to stream** in Streaming Destinations, then speak or play a source and check the Program level. **Open Audio Mixer** leads directly to device selection, mutes and faders. Mixer changes to an on-air source take effect immediately.
 

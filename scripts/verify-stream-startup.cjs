@@ -7,7 +7,10 @@ const { setTimeout: wait } = require('node:timers/promises');
 const root = path.resolve(__dirname, '..'), ffmpeg = require('ffmpeg-static');
 const temp = path.join(root, 'tmp/stream-startup');
 const ci = process.argv.includes('--ci');
-const width = ci ? 1280 : 1920, height = ci ? 720 : 1080;
+const resolution = process.argv.find(arg => arg.startsWith('--resolution='))?.slice(13) || (ci ? '720p' : '1080p');
+const dimensions = { '720p':[1280,720], '1080p':[1920,1080], '1440p':[2560,1440], '4k':[3840,2160], '8k':[7680,4320] };
+if (!dimensions[resolution]) throw Error('Unknown test resolution: ' + resolution);
+const [width, height] = dimensions[resolution];
 const fps = Number(process.argv.find(arg => arg.startsWith('--fps='))?.split('=')[1]) || (ci ? 30 : 60);
 const preset = process.argv.find(arg => arg.startsWith('--preset='))?.split('=')[1] || 'high';
 const seconds = Number(process.argv.find(arg => arg.startsWith('--seconds='))?.split('=')[1]) || (ci ? 6 : 10);
@@ -110,7 +113,7 @@ function readFrameTimes(output) {
   service.setStreamStatusPublisher(state => { states.push(state.status); if(state.status==='live') firstLive ??= Date.now()-began; if(state.status==='error') fatal=state.lastError||state.message; if(state.restartRequired&&state.reduceLoad){congestion ??= Date.now()-began;reportCongestion();} });
   try {
     await wait(1000);
-    const started = await service.startStreaming({destinations:[{id:'probe',name:'Local integration test',enabled:true,rtmpUrl:`rtmp://127.0.0.1:${publishPort}/live`,streamKey:'probe'}],hasAudio:true,preset,resolution:ci?'720p':'1080p',fps,audioBitrate:192,encoder,copyVideo,inputVideoCodec:'h264',autoRecover:expectCongestion});
+    const started = await service.startStreaming({destinations:[{id:'probe',name:'Local integration test',enabled:true,rtmpUrl:`rtmp://127.0.0.1:${publishPort}/live`,streamKey:'probe'}],hasAudio:true,preset,resolution,fps,audioBitrate:192,encoder,copyVideo,inputVideoCodec:'h264',autoRecover:expectCongestion});
     if(!started.ok)throw Error(started.message);
     console.log('Streaming integration: local RTMP output started.');
     source = spawn(ffmpeg, ['-hide_banner','-loglevel','error','-re','-i',fixture,'-c','copy','-cluster_time_limit','250','-flush_packets','1','-f','matroska','pipe:1'], {windowsHide:true});
@@ -134,7 +137,7 @@ function readFrameTimes(output) {
     await wait(500);
     console.log('Streaming integration: timed source finished.');
     await service.stopStreaming();
-    const receiverExit = await Promise.race([receiverClosed, wait(6000, null, {ref:false})]);
+    const receiverExit = await Promise.race([receiverClosed, wait(14000, null, {ref:false})]);
     if (!receiverExit) throw Error(`RTMP receiver did not finish writing its capture. ${receiverError.trim()}`);
     const transportLog = fs.readFileSync(service.getStreamLogPath(),'utf8');
     if(/Non-monoton(?:ic|ous).*DTS/i.test(transportLog))throw Error('Output timestamps moved backwards or collided.');

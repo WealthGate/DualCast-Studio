@@ -1,4 +1,4 @@
-const CACHE = "openchurch-remote-v1";
+const CACHE = "openchurch-remote-__STUDIO_VERSION__";
 const SHELL = ["/operator", "/mobile/app.css", "/mobile/app.js", "/mobile/icon-192.png", "/mobile/icon-512.png"];
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

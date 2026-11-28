@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { executeRemoteCommand, getRemoteControlState } from "../utils/remoteControl";
+import { handleRemoteCommand, getRemoteControlState } from "../utils/remoteControl";
 import type { useProgramRecorder } from "./useProgramRecorder";
 
 export const useRemoteControl = (recorder: ReturnType<typeof useProgramRecorder>, streamStatus: string) => {
@@ -11,9 +11,9 @@ export const useRemoteControl = (recorder: ReturnType<typeof useProgramRecorder>
     const interval = window.setInterval(publish, 1000);
     const off = window.dualcast.onRemoteCommand(async ({ id, command, expiresAt }) => {
       try {
-        const message = await executeRemoteCommand(command, latest.current.recorder, expiresAt);
+        const result = await handleRemoteCommand(command, latest.current.recorder, expiresAt);
         publish();
-        window.dualcast.replyRemoteCommand({ id, ok: true, message });
+        window.dualcast.replyRemoteCommand({ id, ...result });
       } catch (error) {
         publish();
         window.dualcast.replyRemoteCommand({ id, ok: false, message: error instanceof Error ? error.message : "Mobile command failed." });

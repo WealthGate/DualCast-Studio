@@ -78,6 +78,19 @@ module.exports = async function verifyFloatingDocks(window) {
         const panel = await until(floating, 'Scenes did not float.');
         checkPanel(panel.querySelector('[data-dock-panel-id="scenes"]'));
       },
+      async checkLock() {
+        const menu = () => document.querySelector('.dock-workspace button[aria-haspopup="menu"]');
+        const option = name => [...document.querySelectorAll('[role="menuitem"]')].find(node => node.textContent === name);
+        menu().click();
+        (await until(() => option("Lock dock layout"), "Missing dock lock")).click();
+        await until(() => localStorage.getItem("openchurch:docks-locked") === "true", "Dock lock was not saved");
+        assert(button("Dock Scenes").disabled && button("Move Scenes").disabled && button("Resize Scenes").disabled, "Floating movement remained enabled");
+        assert(!document.querySelector('[role="tab"][draggable="true"]'), "Tabs remained draggable");
+        menu().click();
+        assert((await until(() => option("Reset Workspace Layout"), "Missing layout reset")).disabled, "Locked layout could be reset");
+        option("Unlock dock layout").click();
+        await until(() => !button("Move Scenes").disabled, "Unlock did not restore floating controls");
+      },
       async keyboardMoveAndResize() {
         const panel = floating();
         const x = panel.offsetLeft, width = panel.offsetWidth;
@@ -174,6 +187,7 @@ module.exports = async function verifyFloatingDocks(window) {
   try {
     contents.focus();
     await call('float');
+    await call('checkLock');
     await call('keyboardMoveAndResize');
     const previous = await call('floatingPosition');
     await drag('center');

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="studio-version" content="__STUDIO_VERSION__">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b111b">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,6 +18,7 @@
 <body>
   <header class="topbar"><a class="brand" href="/operator"><span class="brand-mark">✚</span><span>OpenChurch<small>BROADCAST REMOTE</small></span></a><span id="connection" class="connection">Disconnected</span></header>
   <main>
+    <button id="remote-update" hidden>Reload updated remote</button>
     <section id="login" class="login card">
       <span class="eyebrow">YOUR STUDIO. IN YOUR HAND.</span>
       <h1>Ready when<br>you are.</h1>
@@ -47,7 +49,24 @@
       </section>
       <section id="tab-scripture" class="tab-panel" hidden>
         <h2>Scripture</h2><p class="hint">Uses the Bible provider or offline translation selected on the studio computer.</p>
-        <form id="scripture-form" class="card form-card"><label for="reference">Bible reference</label><input id="reference" maxlength="160" required value="John 3:16-18" placeholder="Psalm 23:1-6"><span id="scripture-source" class="muted"></span><button class="primary" type="submit" data-control>Load into Preview</button></form>
+        <div class="card form-card">
+          <div class="two-grid"><label>Book<select id="bible-book"></select></label><label>Chapter<select id="bible-chapter"></select></label></div>
+          <p class="hint">Tap a verse to select it. Double-tap the same verse to show it in Preview and live on Program.</p>
+          <div id="verse-grid" aria-label="Verses"></div>
+          <button id="load-bible" type="button" data-control>Refresh Bible books</button>
+        </div>
+        <form id="scripture-form" class="card form-card"><label for="reference">Bible reference</label><input id="reference" maxlength="160" required value="John 3:16-18" placeholder="Psalm 23:1-6"><span id="scripture-source" class="muted"></span><button class="primary" type="submit" data-control>Load into Preview</button><button id="verse-live" type="button" data-control>Show reference live</button></form>
+      </section>
+      <section id="tab-service" class="tab-panel" hidden>
+        <div class="section-heading"><h2>Service library</h2><button id="load-service" data-control>Refresh</button></div>
+        <div class="card form-card">
+          <label>Browse<select id="service-group"></select></label>
+          <label>Find a cue<input id="cue-search" type="search" placeholder="Song, hymn, sermon or slide text"></label>
+          <label>Service item<select id="service-item"></select></label>
+          <label id="section-label">Slide or verse<select id="service-slide"></select></label>
+          <p id="service-detail" class="hint" aria-live="polite"></p>
+          <div class="two-grid"><button id="service-preview" data-control>Stage in Preview</button><button id="service-live" class="primary" data-control>Show live</button></div>
+        </div>
       </section>
       <section id="cue-panel" class="card form-card" hidden>
         <div class="section-heading"><h2>Presentation cues</h2><span class="eyebrow">PREVIEW → LIVE</span></div>
@@ -68,7 +87,7 @@
       </section>
     </div>
   </main>
-  <nav id="tabs" aria-label="Remote controls" hidden><button data-tab="live" aria-current="page"><span aria-hidden="true">▦</span>Live</button><button data-tab="text"><span aria-hidden="true">T</span>Text</button><button data-tab="scripture"><span aria-hidden="true">▤</span>Scripture</button><button data-tab="ticker"><span aria-hidden="true">⇠</span>Ticker</button><button data-tab="more"><span aria-hidden="true">•••</span>More</button></nav>
+  <nav id="tabs" aria-label="Remote controls" hidden><button data-tab="live" aria-current="page"><span aria-hidden="true">▦</span>Live</button><button data-tab="service"><span aria-hidden="true">☷</span>Service</button><button data-tab="text"><span aria-hidden="true">T</span>Text</button><button data-tab="scripture"><span aria-hidden="true">▤</span>Scripture</button><button data-tab="ticker"><span aria-hidden="true">⇠</span>Ticker</button><button data-tab="more"><span aria-hidden="true">•••</span>More</button></nav>
   <dialog id="confirm"><form method="dialog"><h2 id="confirm-title">Confirm control</h2><p id="confirm-message"></p><div class="two-grid"><button value="cancel">Cancel</button><button class="danger" value="confirm">Confirm</button></div></form></dialog>
 </body>
 </html>

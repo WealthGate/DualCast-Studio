@@ -10,7 +10,7 @@ export const registerRemoteControlIpc = (studio: WebContents) => {
     if (event.sender === studio && state && Array.isArray(state.scenes) && Array.isArray(state.slides)) updateRemoteControlState(state);
   };
   const onReply = (event: IpcMainEvent, reply: RemoteCommandReply) => {
-    if (event.sender === studio && reply && typeof reply.id === "string" && typeof reply.ok === "boolean" && typeof reply.message === "string") pending.get(reply.id)?.finish({ ok: reply.ok, message: reply.message });
+    if (event.sender === studio && reply && typeof reply.id === "string" && typeof reply.ok === "boolean" && typeof reply.message === "string") pending.get(reply.id)?.finish({ ok: reply.ok, message: reply.message, ...(reply.catalog && { catalog: reply.catalog }) });
   };
   ipcMain.on(IpcChannels.remoteControlState, onState);
   ipcMain.on(IpcChannels.remoteCommandReply, onReply);

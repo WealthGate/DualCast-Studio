@@ -280,7 +280,7 @@ export const useProgramStreamer = (canvasRef: React.RefObject<HTMLCanvasElement>
           if (pendingBytes > byteLimit || pendingChunks > 8) {
             deliveryFailed = true;
             const message = "Streaming cannot keep up. Choose a lower streaming quality or fewer destinations, then restart the stream.";
-            if (requestRecovery("Streaming capture delivery fell behind.")) return;
+            if (requestRecovery("Streaming capture delivery fell behind.", true)) return;
             captureErrorRef.current = message;
             setLastError(message);
             setStatusMessage(message);

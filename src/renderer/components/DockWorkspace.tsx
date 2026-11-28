@@ -332,6 +332,8 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   const panelMap = useMemo(() => new Map(panels.map((panel) => [panel.id, panel])), [panels]);
   const panelIds = useMemo(() => new Set(panelMap.keys()), [panelMap]);
   const [layout, setLayout] = useState<DockLayout>(() => loadLayout(panelIds));
+  const [locked, setLocked] = useState(() => localStorage.getItem("openchurch:docks-locked") === "true");
+  useEffect(() => { localStorage.setItem("openchurch:docks-locked", String(locked)); }, [locked]);
   const [floating, setFloating] = useState(() => loadFloating(panelIds));
   const [floatBounds, setFloatBounds] = useState({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight });
   const slots = useRef(new Map<string, HTMLDivElement>());
@@ -372,6 +374,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
           return next;
         }
       }
+      if (locked) return current;
       const target = next.right[0];
       if (target) {
         target.panelIds.push(panelId);
@@ -421,7 +424,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   const hiddenPanels = panels.filter((panel) => !visiblePanelIds.has(panel.id));
 
   const movePanel = (panelId: string, zoneId: DockZoneId, groupId?: string) => {
-    if (!panelMap.has(panelId)) {
+    if (locked || !panelMap.has(panelId)) {
       return;
     }
     setFloating(current => current.filter(panel => panel.id !== panelId));
@@ -436,7 +439,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     targetGroupId: string,
     position: DockSplitPosition
   ) => {
-    if (!panelMap.has(panelId)) {
+    if (locked || !panelMap.has(panelId)) {
       return;
     }
     setFloating(current => current.filter(panel => panel.id !== panelId));
@@ -446,6 +449,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const closePanel = (panelId: string) => {
+    if (locked) return;
     setFloating(current => current.filter(panel => panel.id !== panelId));
     setLayout((current) => closeDockPanel(current, panelId));
     setContextMenu(null);
@@ -464,6 +468,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const resetLayout = () => {
+    if (locked) return;
     setFloating([]);
     setLayout(normalizeLayout(defaultLayout, panelIds));
     setSizes(defaultSizes);
@@ -472,6 +477,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const floatPanel = (panelId: string) => {
+    if (locked) return;
     setFloating(current => {
       if (current.some(panel => panel.id === panelId)) return current;
       const offset = (current.length % 8) * 26;
@@ -485,6 +491,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     return panel ? [...current.filter(item => item !== panel), panel] : current;
   });
   const redockPanel = (id: string) => {
+    if (locked) return;
     const home = zoneIds.find(zone => layout[zone].some(group => group.panelIds.includes(id)));
     const group = home && layout[home].find(item => item.panelIds.includes(id));
     if (home && group) setActivePanel(home, group.id, id);
@@ -492,6 +499,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
     setContextMenu(null);
   };
   const adjustFloating = (panel: FloatingDock, dx: number, dy: number, resize: boolean) => {
+    if (locked) return;
     const next = resize ? {
       ...panel, width: Math.min(floatBounds.width - panel.x, panel.width + dx), height: Math.min(floatBounds.height - panel.y, panel.height + dy)
     } : { ...panel, x: panel.x + dx, y: panel.y + dy };
@@ -539,7 +547,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const beginFloatingDrag = (event: React.PointerEvent<HTMLButtonElement>, panel: FloatingDock) => {
-    if (event.button !== 0 || !event.isPrimary || floatingDrag.current) return;
+    if (locked || event.button !== 0 || !event.isPrimary || floatingDrag.current) return;
     event.preventDefault();
     event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -602,6 +610,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const beginZoneResize = (event: React.PointerEvent, zoneId: DockZoneId) => {
+    if (locked) return;
     event.preventDefault();
     const workspace = workspaceRef.current;
     if (!workspace) {
@@ -621,6 +630,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   };
 
   const beginGroupResize = (event: React.PointerEvent, zoneId: DockZoneId, beforeId: string, afterId: string) => {
+    if (locked) return;
     event.preventDefault();
     const handle = event.currentTarget as HTMLDivElement;
     const before = handle.previousElementSibling as HTMLElement | null;
@@ -715,7 +725,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                           aria-controls={`dock-panel-${panelId}`}
                           tabIndex={group.activePanelId === panelId ? 0 : -1}
                           aria-selected={group.activePanelId === panelId}
-                          draggable
+                          draggable={!locked}
                           onClick={() => setActivePanel(zoneId, group.id, panelId)}
                           onKeyDown={event => {
                             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -747,7 +757,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
                       );
                     })}
                   </div>
-                  <button type="button" className="dock-float-button" title="Float panel" aria-label={`Float ${panelMap.get(group.activePanelId)?.title ?? "panel"}`}
+                  <button type="button" className="dock-float-button" disabled={locked} title="Float panel" aria-label={`Float ${panelMap.get(group.activePanelId)?.title ?? "panel"}`}
                     onClick={() => floatPanel(group.activePanelId)}>↗</button>
                 </div>
                 <div className="dock-panel-content">
@@ -826,7 +836,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
   const contextPanel = contextMenu?.panelId ? panelMap.get(contextMenu.panelId) : null;
 
   return (
-    <div className={`dock-workspace${draggingPanelId ? " dock-drag-active" : ""}`} ref={workspaceRef}>
+    <div data-layout-locked={locked || undefined} className={`dock-workspace${draggingPanelId ? " dock-drag-active" : ""}`} ref={workspaceRef}>
       <div
         className="studio-toolbar"
         onContextMenu={(event) => {
@@ -841,7 +851,7 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
           onClick={event => {
             const bounds = event.currentTarget.getBoundingClientRect();
             setContextMenu({ x: bounds.right - 255, y: bounds.bottom + 5 });
-          }}>Panels</button>
+          }}>{locked ? "Panels (locked)" : "Panels"}</button>
       </div>
 
       {renderZone("top")}
@@ -876,17 +886,17 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
             data-dock-dragging={draggingPanelId === item.id || undefined}
             style={{ left: x, top: y, width, height, zIndex }} onPointerDownCapture={() => bringForward(item.id)} onFocusCapture={() => bringForward(item.id)}>
             <div className="dock-tabbar floating-dock-header">
-              <button type="button" className="floating-dock-title" aria-label={`Move ${panel.title}`} title="Drag to dock. Hold Ctrl or Cmd to keep floating. Use the arrow keys to move."
+              <button type="button" className="floating-dock-title" disabled={locked} aria-label={`Move ${panel.title}`} title="Drag to dock. Hold Ctrl or Cmd to keep floating. Use the arrow keys to move."
                 onPointerDown={event => beginFloatingDrag(event, bounds)} onPointerMove={dragFloating}
                 onPointerUp={event => finishFloatingDrag(event.pointerId, event)}
                 onPointerCancel={event => finishFloatingDrag(event.pointerId)}
                 onLostPointerCapture={event => finishFloatingDrag(event.pointerId)}
                 onContextMenu={event => { event.preventDefault(); setContextMenu({ x: event.clientX, y: event.clientY, panelId: item.id }); }}
                 onKeyDown={event => keyboardMove(event, bounds, false)}>{panel.title}</button>
-              <button type="button" className="dock-float-button" title="Return to dock" aria-label={`Dock ${panel.title}`} onClick={() => redockPanel(item.id)}>↙</button>
+              <button type="button" className="dock-float-button" disabled={locked} title="Return to dock" aria-label={`Dock ${panel.title}`} onClick={() => redockPanel(item.id)}>↙</button>
             </div>
             <div className="dock-panel-content"><DockPanelSlot id={item.id} title={panel.title} container={getSlot(item.id)} /></div>
-            <button type="button" className="floating-dock-resize" aria-label={`Resize ${panel.title}`} title="Drag or use the arrow keys to resize"
+            <button type="button" className="floating-dock-resize" disabled={locked} aria-label={`Resize ${panel.title}`} title="Drag or use the arrow keys to resize"
               onPointerDown={event => resizeFloating(event, bounds)} onKeyDown={event => keyboardMove(event, bounds, true)} />
           </section>;
         })}
@@ -917,29 +927,30 @@ const DockWorkspace: React.FC<DockWorkspaceProps> = ({ panels, center, focusRequ
 
       {contextMenu ? (
         <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} ariaLabel="Dock menu">
+          <button role="menuitem" onClick={() => { setLocked(!locked); setContextMenu(null); }}>{locked ? "Unlock dock layout" : "Lock dock layout"}</button>
           {contextPanel ? (
             <>
               <div className="context-menu-title">{contextPanel.title}</div>
               {floating.some(panel => panel.id === contextPanel.id)
-                ? <button role="menuitem" onClick={() => redockPanel(contextPanel.id)}>Return to previous dock</button>
-                : <button role="menuitem" onClick={() => floatPanel(contextPanel.id)}>Float Panel</button>}
+                ? <button disabled={locked} role="menuitem" onClick={() => redockPanel(contextPanel.id)}>Return to previous dock</button>
+                : <button disabled={locked} role="menuitem" onClick={() => floatPanel(contextPanel.id)}>Float Panel</button>}
               {zoneIds.map((zoneId) => (
-                <button key={zoneId} role="menuitem" onClick={() => movePanel(contextPanel.id, zoneId)}>Dock {zoneId}</button>
+                <button key={zoneId} disabled={locked} role="menuitem" onClick={() => movePanel(contextPanel.id, zoneId)}>Dock {zoneId}</button>
               ))}
               <div className="context-menu-separator" />
-              <button className="danger" role="menuitem" onClick={() => closePanel(contextPanel.id)}>Hide Dock</button>
+              <button className="danger" disabled={locked} role="menuitem" onClick={() => closePanel(contextPanel.id)}>Hide Dock</button>
             </>
           ) : (
             <>
               <div className="context-menu-title">Workspace Docks</div>
               {panels.map((panel) => (
-                <button key={panel.id} role="menuitem" onClick={() => {
+                <button key={panel.id} disabled={locked && hiddenPanels.includes(panel)} role="menuitem" onClick={() => {
                   focusPanel(panel.id);
                   setContextMenu(null);
                 }}>{hiddenPanels.includes(panel) ? `Show ${panel.title}` : panel.title}</button>
               ))}
               <div className="context-menu-separator" />
-              <button role="menuitem" onClick={resetLayout}>Reset Workspace Layout</button>
+              <button disabled={locked} role="menuitem" onClick={resetLayout}>Reset Workspace Layout</button>
             </>
           )}
         </ContextMenu>

@@ -49,7 +49,9 @@ type DestinationRuntime = {
   stats: StreamStatusPayload["stats"];
 };
 
-const STOP_TIMEOUT_MS = 4000;
+// Allow the six-second muxer queue and the five-second network write deadline
+// to drain before forcing a healthy encoder to quit.
+const STOP_TIMEOUT_MS = 12000;
 const STARTUP_TIMEOUT_MS = 10000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const ffmpegPath = resolveFfmpegExecutablePath(bundledFfmpegPath);
@@ -409,6 +411,8 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
 
   process.stderr.setEncoding("utf8");
   let stderrRemainder = "";
+  let progressSample: { clock: number; media: number } | undefined;
+  let slowWindows = 0;
   process.stderr.on("data", (chunk: string) => {
     if (stopRequested || runtime.process !== process) return;
     const lines = `${stderrRemainder}${chunk}`.split(/[\r\n]+/);
@@ -438,6 +442,20 @@ const startDestination = (runtime: DestinationRuntime, isReconnect: boolean) => 
         const encodedFrames = Number(/frame=\s*(\d+)/.exec(line)?.[1] ?? 0);
         // Stream copy reports output time without an encoded-frame counter.
         const outputTime = stats?.time?.split(":").reduce((seconds, part) => seconds * 60 + Number(part), 0) ?? 0;
+        if (runtime.status === "live" && stats?.time && Number.isFinite(outputTime)) {
+          // FFmpeg reports lifetime-average speed. After a long service that
+          // can still read 1.0x while the current output falls behind.
+          const clock = performance.now();
+          if (!progressSample || outputTime < progressSample.media) {
+            progressSample = { clock, media: outputTime };
+            slowWindows = 0;
+          } else if (clock - progressSample.clock >= 6000) {
+            const speed = (outputTime - progressSample.media) * 1000 / (clock - progressSample.clock);
+            slowWindows = speed < 0.8 ? slowWindows + 1 : 0;
+            progressSample = { clock, media: outputTime };
+            if (slowWindows >= 2 && requestFreshInput("Stream delivery has stayed below real time.", true)) return;
+          }
+        }
         const copiedVideoProgress = lastStartPayload?.copyVideo === true && lastStartPayload.inputVideoCodec === "h264" && outputTime >= 1;
         if (runtime.steadySince === null && (encodedFrames >= (lastStartPayload?.fps ?? 30) || copiedVideoProgress)) {
           runtime.steadySince = Date.now();
@@ -652,7 +670,7 @@ export const sendStreamChunk = async (payload: Uint8Array) => {
   if (stopRequested || restartRequired || !payload?.length) {
     return;
   }
-  const chunk = Buffer.from(payload);
+  const chunk = Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
   cachedHeader = cachedHeader ?? chunk;
 
   runtimes.forEach(runtime => {
@@ -694,7 +712,7 @@ export const stopStreaming = async (): Promise<StreamStopResult> => {
       if (process.exitCode === null && process.signalCode === null) {
         process.kill("SIGKILL");
       }
-    }, STOP_TIMEOUT_MS);
+    }, runtime.steadySince === null || failure ? 4000 : STOP_TIMEOUT_MS);
     timeout.unref();
     process.once("close", () => clearTimeout(timeout));
   });

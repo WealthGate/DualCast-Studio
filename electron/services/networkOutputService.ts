@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import fs from "fs/promises";
 import { randomBytes, timingSafeEqual } from "crypto";
+import { version as studioVersion } from "../../package.json";
 import type { NetworkOutputStatus, RemoteOperatorAction } from "../../src/shared/types";
 import { isRemoteCommand, normalizeRemoteUrl } from "../../src/shared/remoteControl";
 import type { RemoteCommand, RemoteCommandResult, RemoteControlState } from "../../src/shared/remoteControl";
@@ -53,7 +54,7 @@ const readJsonBody = (request: http.IncomingMessage) => new Promise<Record<strin
   request.on("aborted", () => done(null));
 });
 type HubOptions = { operatorPin: string; remoteUrl?: string; assetDirectory?: string };
-type Session = { expiresAt: number; commands: Map<string, { fingerprint: string; result: Promise<RemoteCommandResult> }> };
+type Session = { expiresAt: number; commands: Map<string, { fingerprint: string; result: Promise<RemoteCommandResult> }>; browsing: Map<string, Promise<RemoteCommandResult>> };
 
 // Tests exercise real HTTP and cookies without launching Electron.
 export const createNetworkOutputServer = (options: HubOptions) => {
@@ -86,6 +87,7 @@ export const createNetworkOutputServer = (options: HubOptions) => {
       }
       const url = new URL(request.url ?? "/", `http://${host}`);
       const isApi = url.pathname.startsWith("/api/");
+      if (isApi) response.setHeader("X-OpenChurch-Version", studioVersion);
       if (isApi) {
         const origin = request.headers.origin;
         if (origin && origin !== `http://${host}` && origin !== `https://${host}` && origin !== externalOrigin) { json(response, 403, { message: "Cross-origin control is not allowed." }); return; }
@@ -104,7 +106,9 @@ export const createNetworkOutputServer = (options: HubOptions) => {
         response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
         const [file, mime] = routes[url.pathname];
         const data = await fs.readFile(path.join(assets, file));
-        response.setHeader("Content-Type", mime); response.end(data); return;
+        response.setHeader("Content-Type", mime);
+        response.end(file === "index.html" || file === "sw.js" ? data.toString("utf8").replace("__STUDIO_VERSION__", studioVersion) : data);
+        return;
       }
       if (url.pathname === "/manifest.webmanifest" && request.method === "GET") {
         response.setHeader("Content-Type", "application/manifest+json");
@@ -122,7 +126,7 @@ export const createNetworkOutputServer = (options: HubOptions) => {
         if (supplied.length !== pinBytes.length || !timingSafeEqual(supplied, pinBytes)) { json(response, 401, { message: "Incorrect operator PIN." }); return; }
         if (sessions.size >= 64) { json(response, 429, { message: "Too many remote sessions. Restart the hub to revoke sessions." }); return; }
         const token = randomBytes(32).toString("hex");
-        sessions.set(token, { expiresAt: now + 8 * 60 * 60_000, commands: new Map() });
+        sessions.set(token, { expiresAt: now + 8 * 60 * 60_000, commands: new Map(), browsing: new Map() });
         const secure = externalOrigin && (host === new URL(externalOrigin).host || request.headers.origin === externalOrigin) ? "; Secure" : "";
         response.setHeader("Set-Cookie", `openchurch-remote=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${secure}`);
         json(response, 200, { ok: true }); return;
@@ -135,13 +139,22 @@ export const createNetworkOutputServer = (options: HubOptions) => {
           sessions.delete(token); response.setHeader("Set-Cookie", "openchurch-remote=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"); json(response, 200, { ok: true }); return;
         }
         if (url.pathname === "/api/state" && request.method === "GET") { json(response, 200, { online: online(), state: remoteState }); return; }
+        if (request.method === "GET" && (url.pathname === "/api/bible" || url.pathname === "/api/service")) {
+          if (!online() || !remoteCommandPublisher) { json(response, 503, { message: "Studio disconnected." }); return; }
+          const pending = session.browsing.get(url.pathname) ?? remoteCommandPublisher({ action: url.pathname === "/api/bible" ? "browse-bible" : "browse-service" })
+            .finally(() => session.browsing.delete(url.pathname));
+          session.browsing.set(url.pathname, pending);
+          const result = await pending;
+          json(response, result.ok ? 200 : 503, result);
+          return;
+        }
         if (url.pathname === "/api/frame" && request.method === "GET") {
           if (!online() || !latestFrame || Date.now() - frameUpdatedAt > 5000) { response.writeHead(204); response.end(); return; }
           response.writeHead(200, { "Content-Type": latestFrameMime, "Content-Length": latestFrame.length }); response.end(latestFrame); return;
         }
         if (url.pathname === "/api/command" && request.method === "POST") {
           const body = await readJsonBody(request);
-          if (!body || typeof body.id !== "string" || !/^[a-zA-Z0-9-]{8,100}$/.test(body.id) || !isRemoteCommand(body.command)) {
+          if (!body || typeof body.id !== "string" || !/^[a-zA-Z0-9-]{8,100}$/.test(body.id) || !isRemoteCommand(body.command) || body.command.action.startsWith("browse-")) {
             json(response, 400, { ok: false, message: "Invalid control command." }); return;
           }
           const fingerprint = JSON.stringify(body.command), existing = session.commands.get(body.id);

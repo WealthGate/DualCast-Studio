@@ -56,7 +56,9 @@ if (!process.versions.electron) {
         store.getState().setStudioState({scenes:[{id:'wide',name:'Sanctuary wide',sourceIds:['stage','ticker']},{id:'close',name:'Pulpit camera',sourceIds:['pulpit']},{id:'worship',name:'Worship team',sourceIds:['stage']}],sources:{
           stage:picture('stage','#153d3a'),pulpit:picture('pulpit','#293556'),
           ticker:{id:'ticker',name:'Service notices',type:'scrolling-text',enabled:true,audioEnabled:false,rect:{x:0,y:90,width:100,height:10},data:{...defaultScrollingText,text:'Welcome to our Sunday service'}}},groups:[],previewSceneId:'close',programSceneId:'wide'});
-        store.getState().setSettings({...store.getState().settings,operatorStationName:'Sunday service',swapPreviewProgram:false});
+        store.getState().setSettings({...store.getState().settings,operatorStationName:'Sunday service',swapPreviewProgram:false,
+          serviceSchedules:[{id:'sunday',name:'Sunday service',date:'',items:[{id:'opening',title:'Opening hymn',kind:'slides',minutes:0,notes:'',slides:[{id:'h1',kind:'song',text:'First verse'},{id:'h2',kind:'song',text:'Second verse'}]}]}]});
+        window.dualcast.listSongs=async()=>[{id:'library-hymn',title:'Evening hymn',lyrics:'Evening hymn lyrics'}];
         window.dualcast.fetchScripture=async({reference})=>({reference,text:'<p>The Lord is my shepherd; I shall not want.</p>'});
         window.__mobileFixturePublish=()=>{
           window.__mobileBridge.publish(remote.getRemoteControlState('idle'));
@@ -64,7 +66,7 @@ if (!process.versions.electron) {
           if(canvas&&canvas.width) window.__mobileBridge.frame(canvas.toDataURL('image/webp',0.6));
         };
         window.__mobileBridge.on(async({id,command,expiresAt})=>{
-          try{const message=await remote.executeRemoteCommand(command,{startRecording:async()=>{},stopRecording:()=>{}},expiresAt);window.__mobileFixturePublish();window.__mobileBridge.reply({id,ok:true,message});}
+          try{const result=await remote.handleRemoteCommand(command,{startRecording:async()=>{},stopRecording:()=>{}},expiresAt);window.__mobileFixturePublish();window.__mobileBridge.reply({id,...result});}
           catch(error){window.__mobileBridge.reply({id,ok:false,message:error.message});}
         });
         window.__mobileFixturePublish();
@@ -95,6 +97,26 @@ if (!process.versions.electron) {
       await until(`document.getElementById('toast').textContent.includes('Psalm 23:1 staged')`, "scripture lookup");
       await until(`document.getElementById('live-slide').textContent.includes('Psalm 23:1')`, "scripture cue state refresh");
       assert(await js(`document.getElementById('live-slide').textContent.includes('Psalm 23:1')`), "Scripture loaded through the desktop adapter appears in presentation cues");
+      await until(`document.querySelector('#verse-grid button') && !document.getElementById('verse-live').disabled`, "Bible navigator ready");
+      await js(`const book=document.getElementById('bible-book');book.value='John';book.onchange();const chapter=document.getElementById('bible-chapter');chapter.value='3';chapter.onchange();const verse=document.querySelector('[aria-label="John 3:16"]');verse.click();verse.click()`);
+      await until(`document.getElementById('toast').textContent.includes('John 3:16 is in Preview and live')`, "double tap on verse");
+      const liveReference = () => studio.webContents.executeJavaScript(`import('/store/useAppStore.ts').then(({useAppStore:s})=>{const l=s.getState().settings.lowerThird;return l.activeSlideId===l.programSlideId && l.slides.find(x=>x.id===l.programSlideId)?.reference})`);
+      assert(await liveReference()==='John 3:16',"Double-tapped verse reaches Preview and Program together");
+      await js(`document.querySelector('[data-tab=service]').click()`);
+      await until(`document.getElementById('service-item').value==='opening' && !document.getElementById('service-preview').disabled`, "schedule items");
+      await js(`document.getElementById('service-slide').value='1';document.getElementById('service-preview').click()`);
+      await until(`document.getElementById('toast').textContent==='Service cue is in Preview.'`, "stage scheduled hymn");
+      assert(await studio.webContents.executeJavaScript(`import('/store/useAppStore.ts').then(({useAppStore:s})=>{const l=s.getState().settings.lowerThird;return l.slides.find(x=>x.id===l.activeSlideId)?.text==='Second verse' && l.slides.find(x=>x.id===l.programSlideId)?.reference==='John 3:16'})`), "Browsing a saved hymn preserves live Scripture");
+      await js(`const group=document.getElementById('service-group');group.value='songs';group.onchange();document.getElementById('service-live').click()`);
+      await until(`document.getElementById('toast').textContent==='Song is live.'`, "song library live cue");
+      await studio.webContents.executeJavaScript(`(async()=>{
+        const {useAppStore:store}=await import('/store/useAppStore.ts');
+        store.getState().setSettings({...store.getState().settings,scriptureSourceId:'test-offline'});
+        window.dualcast.getScriptureLibraryCatalog=async()=>({libraryId:'test-offline',books:[{name:'Psalms',chapters:[{number:23,verses:[1,4]}]}]});
+      })()`);
+      await js(`document.querySelector('[data-tab=scripture]').click()`);
+      await until(`document.querySelector('[aria-label="Psalms 23:4"]')`, "offline verse selection");
+      assert(await js(`document.querySelectorAll('#verse-grid button').length===2`), "Offline Bible picker respects missing verse numbers");
       await js(`document.querySelector('[data-tab=ticker]').click();document.getElementById('ticker-text').value='Prayer meeting Wednesday';document.getElementById('ticker-speed').value='75';document.getElementById('ticker-form').requestSubmit()`);
       await until(`document.getElementById('toast').textContent==='Program ticker updated.'`, "ticker apply");
       assert(await studio.webContents.executeJavaScript(`import('/store/useAppStore.ts').then(({useAppStore:s})=>s.getState().programSources['program:ticker'].data.text==='Prayer meeting Wednesday')`), "Phone changes only the committed Program ticker");
@@ -108,7 +130,7 @@ if (!process.versions.electron) {
         assert(await js(`document.documentElement.scrollWidth<=innerWidth`), `${width}×${height} layout has no horizontal overflow`);
       }
       phone.setContentSize(320, 740);
-      for (const tab of ["text", "scripture", "ticker", "more"]) {
+      for (const tab of ["service", "text", "scripture", "ticker", "more"]) {
         await js(`document.querySelector('[data-tab=${tab}]').click()`); await wait(50);
         assert(await js(`document.documentElement.scrollWidth<=innerWidth`), `${tab} controls fit a 320px phone`);
       }

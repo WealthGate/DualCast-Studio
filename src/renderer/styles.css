@@ -4054,3 +4054,5 @@ body.projection-mode, body.projection-mode * { cursor: none !important; }
   border-color: var(--accent-2);
 }
 .mixer-master-heading .mixer-vst-jump { padding: 2px 7px; font-size: 11px; }
+[data-layout-locked] :is(.dock-zone-resizer,.dock-group-resizer,.dock-tab,.floating-dock-title){cursor:default}
+[data-layout-locked] :is(.dock-grip,.floating-dock-resize){visibility:hidden}

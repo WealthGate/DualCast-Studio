@@ -6,7 +6,10 @@ export type RemoteCommand =
   | { action: "black" | "freeze" | "record" | "lower-third"; enabled: boolean }
   | { action: "text-mode"; mode: import("./displayText").DisplayTextMode }
   | { action: "text-stage"; text: string; title: string; lines: number }
-  | { action: "scripture-stage"; reference: string }
+  | { action: "scripture-stage" | "scripture-live"; reference: string }
+  | { action: "browse-bible" | "browse-service" }
+  | { action: "service-cue"; scheduleId: string; itemId: string; slide: number; live: boolean }
+  | { action: "song-cue"; songId: string; slide: number; live: boolean }
   | { action: "text-live" | "text-clear" }
   | { action: "slide-cue"; slideId: string; live: boolean }
   | { action: "slide-step"; direction: -1 | 1; live: boolean }
@@ -14,7 +17,13 @@ export type RemoteCommand =
   | { action: "master-gain"; gain: number };
 
 export type RemoteCommandRequest = { id: string; command: RemoteCommand };
-export type RemoteCommandResult = { ok: boolean; message: string };
+export type RemoteCatalog = {
+  books?: { name: string; chapters: { number: number; count?: number; verses?: number[] }[] }[];
+  schedules?: { id: string; name: string; items: { id: string; title: string; kind: string; choices: string[]; note?: string }[] }[];
+  songs?: { id: string; title: string; choices: string[] }[];
+  activeScheduleId?: string | null;
+};
+export type RemoteCommandResult = { ok: boolean; message: string; catalog?: RemoteCatalog };
 export type RemoteCommandReply = RemoteCommandResult & { id: string };
 
 // A deliberate allowlist: credentials, filesystem paths and provider settings
@@ -53,7 +62,11 @@ export const isRemoteCommand = (value: unknown): value is RemoteCommand => {
     case "black": case "freeze": case "record": case "lower-third": return typeof c.enabled === "boolean";
     case "text-mode": return choice(c.mode, ["show", "text-only", "hide", "theme", "logo"]);
     case "text-stage": return string(c.text, 10_000) && typeof c.title === "string" && c.title.length <= 120 && number(c.lines, 1, 6) && Number.isInteger(c.lines);
-    case "scripture-stage": return string(c.reference, 160);
+    case "scripture-stage": case "scripture-live": return string(c.reference, 160);
+    case "browse-bible": case "browse-service": return true;
+    case "service-cue": case "song-cue":
+      return (c.action === "service-cue" ? string(c.scheduleId, 200) && string(c.itemId, 200) : string(c.songId, 200))
+        && number(c.slide, 0, 499) && Number.isInteger(c.slide) && typeof c.live === "boolean";
     case "text-live": case "text-clear": return true;
     case "slide-cue": return string(c.slideId, 200) && typeof c.live === "boolean";
     case "slide-step": return (c.direction === -1 || c.direction === 1) && typeof c.live === "boolean";

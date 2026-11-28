@@ -44,9 +44,11 @@ export const createStreamingCapture = (source: HTMLCanvasElement, preset: Stream
       const frameSource = writer && source.width === size.width && source.height === size.height ? source : canvas;
       if (frameSource === canvas) context.drawImage(source, 0, 0, canvas.width, canvas.height);
       if (writer) {
-        writing++;
         const began=performance.now();
         const frame = new VideoFrame(frameSource, { timestamp: Math.round(now * 1000) });
+        // A transient canvas/encoder reset can throw during construction.
+        // Reserve a write slot only after a frame exists to release it.
+        writing++;
         void writer.write(frame).catch(() => undefined).finally(() => { frame.close(); writing--; stats.maxWriteMs=Math.max(stats.maxWriteMs,performance.now()-began); });
       } else track.requestFrame();
     };
