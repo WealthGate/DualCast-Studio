@@ -20,7 +20,7 @@ type ProjectionProps = {
 const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   const [programState, setProgramState] = useState<ProgramState>(defaultState);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const latestFrameRef = useRef<DecodedFrame | HTMLCanvasElement | null>(null);
+  const latestFrameRef = useRef<DecodedFrame | VideoFrame | null>(null);
   const encodedAtRef = useRef(-Infinity);
   const drawFrameRef = useRef<() => void>(() => undefined);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -88,14 +88,20 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
 
   useEffect(()=>{
     if(mode!=="program"||independent)return;
-    const buffer=document.createElement("canvas"),context=buffer.getContext("2d",{alpha:false});
+    let retained: VideoFrame | null = null;
     const decoder=createVideoFrameDecoder(frame=>{
-      if(!context)return;
-      resizeCanvas(buffer,frame.displayWidth,frame.displayHeight);context.drawImage(frame,0,0);
-      latestFrameRef.current=buffer;encodedAtRef.current=performance.now();setVideoReady(false);drawFrameRef.current();
+      // Keep one reference to the decoded surface for resize and blackout redraws.
+      // The decoder releases its own reference after this callback returns.
+      const next = frame.clone();
+      retained?.close();
+      retained = next;
+      latestFrameRef.current = next;
+      encodedAtRef.current = performance.now();
+      setVideoReady(false);
+      drawFrameRef.current();
     },()=>{encodedAtRef.current=-Infinity;window.dualcast.sendProjectionSignal({type:"fallback"});});
     const off=window.dualcast.onProgramVideoFrame(frame=>decoder.decode(frame));
-    return()=>{off();decoder.stop();encodedAtRef.current=-Infinity;if(latestFrameRef.current===buffer)latestFrameRef.current=null;};
+    return()=>{off();decoder.stop();encodedAtRef.current=-Infinity;if(latestFrameRef.current===retained)latestFrameRef.current=null;retained?.close();};
   },[mode,independent]);
 
   useEffect(() => {
@@ -126,6 +132,7 @@ const Projection: React.FC<ProjectionProps> = ({ mode = "program" }) => {
   useEffect(() => {
     const subscribe = mode === "lower-third" ? window.dualcast.onLowerThirdFrame : window.dualcast.onProgramFrame;
     const decoder = createFrameDecoder((image) => {
+      if (mode === "program" && (videoReadyRef.current || performance.now() - encodedAtRef.current < 750)) return;
       latestFrameRef.current = image;
       drawFrameRef.current();
     });

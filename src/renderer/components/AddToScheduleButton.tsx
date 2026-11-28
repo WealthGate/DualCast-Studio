@@ -22,9 +22,9 @@ const AddToScheduleButton: React.FC<{ getItem: () => ScheduleItemDraft | Promise
   return <div className="add-to-schedule">
     <div className="field-row">
       <button type="button" className="btn btn-outline" aria-label={`Add ${label} to schedule`} disabled={disabled || busy} onClick={() => void add()}>{busy ? "Adding…" : "Add to Schedule"}</button>
-      {schedules.length > 0 && <select aria-label={`Schedule for ${label}`} disabled={busy} value={target} onChange={event => useAppStore.setState({ activeScheduleId: event.target.value })}>
+      {schedules.length > 0 && <div className="schedule-picker"><select aria-label={`Schedule for ${label}`} disabled={busy} value={target} onChange={event => useAppStore.setState({ activeScheduleId: event.target.value })}>
         {schedules.map(schedule => <option key={schedule.id} value={schedule.id}>{schedule.name}</option>)}<option value="new">New service…</option>
-      </select>}
+      </select></div>}
     </div>
     {message && <span role="status" className="field-help">{message}</span>}
   </div>;

@@ -1,5 +1,6 @@
 import type { NativeCaptureFrame, VideoResolution } from "../../shared/types";
 import { streamingCaptureSize } from "./streamingCapture";
+import { createFrameCadence } from "./frameCadence";
 
 // One hardware encoder serves every local display. Skip excess work before
 // allocating a frame; never build an encoder queue of old Program pictures.
@@ -25,12 +26,14 @@ export const createProgramVideoEncoder = async (source: HTMLCanvasElement, fps: 
     send({id:"program",dataUrl:null,data,codec,keyFrame:chunk.type==="key",timestamp:chunk.timestamp});
   }, error: error => {if(active) fail(error);} });
   encoder.configure(selected);
+  const due = createFrameCadence(fps);
   return {
     requestKeyFrame:()=>{forceKey=true;},
     draw:(now:number)=>{
-      if(!active || encoder.state!=="configured" || encoder.encodeQueueSize>=2)return;
-      context.drawImage(source,0,0,canvas.width,canvas.height);
-      const frame=new VideoFrame(canvas,{timestamp:Math.round(now*1000)});
+      if(!active || encoder.state!=="configured" || !due(now) || encoder.encodeQueueSize>=2)return;
+      const needsScaling = source.width !== size.width || source.height !== size.height;
+      if (needsScaling) context.drawImage(source, 0, 0, size.width, size.height);
+      const frame=new VideoFrame(needsScaling ? canvas : source,{timestamp:Math.round(now*1000)});
       const keyFrame=forceKey || now-lastKey>=500;
       if(keyFrame){lastKey=now;forceKey=false;}
       try{encoder.encode(frame,{keyFrame});}finally{frame.close();}

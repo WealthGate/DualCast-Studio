@@ -78,7 +78,7 @@ if (!process.versions.electron) {
         console.log(JSON.stringify(await window.webContents.executeJavaScript(`(async()=>({mimes:Object.fromEntries(['video/mp4;codecs=avc1.42E02A,mp4a.40.2','video/webm;codecs=h264,opus','video/mp4;codecs=hvc1.1.6.L186.B0,mp4a.40.2','video/webm;codecs=av1,opus'].map(m=>[m,MediaRecorder.isTypeSupported(m)])),encoder:await VideoEncoder.isConfigSupported({codec:'avc1.42002a',width:1920,height:1080,framerate:60,bitrate:8000000,hardwareAcceleration:'prefer-hardware',avc:{format:'annexb'}})}))()`)));
         app.exit(0); return;
       }
-      if (!process.argv.includes("--performance-only") && !process.argv.includes("--recovery-only")) {
+      if (!process.argv.includes("--performance-only") && !process.argv.includes("--recovery-only") && !process.argv.includes("--mirrored-video-only")) {
       result = await window.webContents.executeJavaScript(`(async () => {
         const { useAppStore: store } = await import('/store/useAppStore.ts');
         const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -290,6 +290,28 @@ if (!process.versions.electron) {
         result.frameRecovery = await window.webContents.executeJavaScript(`(${require("./verify-frame-recovery.cjs").toString()})()`);
         result.nativeRenderer = await window.webContents.executeJavaScript(`(${require("./verify-native-renderer.cjs").toString()})()`);
         console.log(JSON.stringify(result)); app.exit(0); return;
+      }
+      if (process.argv.includes("--mirrored-video-only")) {
+        await window.webContents.executeJavaScript(`(async () => {
+          const {createStreamingCapture} = await import('/utils/streamingCapture.ts');
+          const source = document.querySelector('.program-pane canvas');
+          window.testStream = createStreamingCapture(source, 'high', 60, '1080p');
+          window.testRecorder = new MediaRecorder(window.testStream.stream);
+          window.testRecorder.start();
+        })()`);
+        const display = await require("./verify-projection-video.cjs")(window, root);
+        const capture = await window.webContents.executeJavaScript(`(async () => {
+          const recorder = window.testRecorder;
+          const bytes = new Promise(resolve => recorder.ondataavailable = event => resolve(event.data.size));
+          recorder.stop();
+          const size = await bytes;
+          window.testStream.stop();
+          return {bytes: size, frames: window.testStream.stats.accepted};
+        })()`);
+        if (!capture.bytes || capture.frames < 2) throw Error("Concurrent stream capture did not deliver video.");
+        console.log(JSON.stringify({display, capture}));
+        app.exit(0);
+        return;
       }
       const performanceFps = process.argv.includes("--fps=60") ? 60 : 30;
       result.performance = await window.webContents.executeJavaScript(`(${require("./verify-output-performance.cjs").toString()})(${performanceFps})`);

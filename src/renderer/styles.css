@@ -1429,7 +1429,40 @@ textarea:focus-visible {
 .schedule-items li.drop-target { border-color: var(--accent); box-shadow: 0 -3px var(--accent); }
 .add-to-schedule { min-width: 0; display: grid; gap: 5px; }
 .add-to-schedule .field-row { flex-wrap: wrap; }
-.add-to-schedule select { min-width: 0; max-width: 100%; flex: 1 1 130px; }
+.schedule-picker { position: relative; min-width: 0; flex: 1 1 130px; }
+.add-to-schedule .schedule-picker select {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 30px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-strong);
+  color: var(--text);
+  font: inherit;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.schedule-picker::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border: solid var(--accent-2);
+  border-width: 0 2px 2px 0;
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+.add-to-schedule .schedule-picker select:hover:enabled { border-color: var(--accent-2); }
+.add-to-schedule .schedule-picker select:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.schedule-picker select:disabled { opacity: .6; cursor: default; }
+@media (forced-colors: active) {
+  .add-to-schedule .schedule-picker select { appearance: auto; }
+  .schedule-picker::after { display: none; }
+}
 
 .streaming-status {
   display: flex;

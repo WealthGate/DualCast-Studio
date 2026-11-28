@@ -112,6 +112,11 @@ jobs:
         timeout-minutes: 3
         run: npm run verify:mobile
 
+      - name: Verify simultaneous file playback to stream capture and sanctuary display
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: node scripts/verify-live-output.cjs --mirrored-video-only
+
       - name: Verify presentation controls, direct scheduling and drag ordering
         if: runner.os == 'Windows'
         timeout-minutes: 3
